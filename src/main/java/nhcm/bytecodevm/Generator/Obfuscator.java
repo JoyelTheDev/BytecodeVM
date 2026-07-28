@@ -289,7 +289,8 @@ public class Obfuscator
 
     private static boolean shouldIgnoreMethod(MethodNode methodNode)
     {
-        return MethodUtils.isAbstract(methodNode) ||
+        return "<init>".equals(methodNode.name) ||
+               MethodUtils.isAbstract(methodNode) ||
                MethodUtils.isNative(methodNode) ||
                usesStackTraceIntrospection(methodNode);
     }

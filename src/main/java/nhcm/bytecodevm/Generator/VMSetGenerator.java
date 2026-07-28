@@ -3,6 +3,7 @@ package nhcm.bytecodevm.Generator;
 import lombok.Getter;
 import nhcm.bytecodevm.Config.BytecodeVMConfig;
 import nhcm.bytecodevm.Data.CompiledMethod;
+import nhcm.bytecodevm.Data.VMInsn.VMInstruction;
 import nhcm.bytecodevm.Data.VMInsn.VMMethod;
 import nhcm.bytecodevm.Data.VirtualizationResult;
 import nhcm.bytecodevm.Generator.GlobalClass.MethodFrameGenerator;
@@ -44,6 +45,7 @@ public class VMSetGenerator
     private final VMMethodCompiler compiler;
     private final InvocationBridgeGenerator invocationBridgeGenerator = new InvocationBridgeGenerator();
     private final List<CompiledMethod> compiledMethods = new ArrayList<>();
+    private final List<CompiledMethod> codePoolMethods = new ArrayList<>();
     @Getter
     private final List<CodePoolGenerator> codePoolGenerators = new ArrayList<>();
     private final BytecodeVMConfig config;
@@ -97,6 +99,7 @@ public class VMSetGenerator
     public VirtualizationResult compile(ProgressListener progress)
     {
         compiledMethods.clear();
+        codePoolMethods.clear();
         codePoolGenerators.clear();
         int methodCount = methodsToObfuscate.size();
         int totalSteps = methodCount * 2 + 3;
@@ -112,14 +115,32 @@ public class VMSetGenerator
             VMMethod vmMethod = compiler.compile(owner, method);
 
             int codeId = generateUniqueCodeId();
-            compiledMethods.add(new CompiledMethod(owner, method, vmMethod, codeId, method.desc, MethodUtils.isStatic(method)));
+            CompiledMethod compiledMethod = new CompiledMethod(owner, method, vmMethod, codeId, method.desc, MethodUtils.isStatic(method));
+            List<CompiledMethod> codePoolParts = splitForCodePools(compiledMethod);
+            codePoolMethods.addAll(codePoolParts);
+            if (codePoolParts.size() == 1)
+            {
+                compiledMethods.add(compiledMethod);
+            }
+            else
+            {
+                compiledMethods.add(new CompiledMethod(
+                        owner,
+                        method,
+                        vmMethod,
+                        codePoolParts.getFirst().codeId,
+                        codePoolParts.stream().map(part -> part.codeId).toList(),
+                        method.desc,
+                        MethodUtils.isStatic(method),
+                        false));
+            }
             completedSteps++;
             reportProgress(progress, completedSteps, totalSteps, "Compiling methods");
         }
 
+        totalSteps = methodCount + codePoolMethods.size() + 3;
         reportProgress(progress, completedSteps, totalSteps, "Planning pools");
-        createCodePools(progress, completedSteps, totalSteps, methodCount);
-        completedSteps += methodCount + 1;
+        completedSteps += createCodePools(progress, completedSteps, totalSteps);
         reportProgress(progress, completedSteps, totalSteps, "Built code pools");
 
         reportProgress(progress, completedSteps, totalSteps, "Generating VM");
@@ -148,14 +169,15 @@ public class VMSetGenerator
         }
     }
 
-    private void createCodePools(ProgressListener progress, int completedSteps, int totalSteps, int methodCount)
+    private int createCodePools(ProgressListener progress, int completedSteps, int totalSteps)
     {
         List<List<CompiledMethod>> partitions = partitionCompiledMethods(progress, completedSteps, totalSteps);
+        int plannedSteps = codePoolMethods.size();
         for (int index = 0; index < partitions.size(); index++)
         {
             reportProgress(
                     progress,
-                    completedSteps + methodCount,
+                    completedSteps + plannedSteps,
                     totalSteps,
                     "Building pool " + (index + 1) + "/" + partitions.size());
             String poolClassName = partitions.size() == 1
@@ -169,6 +191,7 @@ public class VMSetGenerator
                     config,
                     true));
         }
+        return plannedSteps + 1;
     }
 
     private List<List<CompiledMethod>> partitionCompiledMethods(ProgressListener progress, int completedSteps, int totalSteps)
@@ -176,14 +199,14 @@ public class VMSetGenerator
         List<List<CompiledMethod>> partitions = new ArrayList<>();
         List<CompiledMethod> current = new ArrayList<>();
 
-        for (int index = 0; index < compiledMethods.size(); index++)
+        for (int index = 0; index < codePoolMethods.size(); index++)
         {
-            CompiledMethod method = compiledMethods.get(index);
+            CompiledMethod method = codePoolMethods.get(index);
             reportProgress(
                     progress,
                     completedSteps + index + 1,
                     totalSteps,
-                    "Planning " + (index + 1) + "/" + compiledMethods.size());
+                    "Planning " + (index + 1) + "/" + codePoolMethods.size());
             current.add(method);
             if (fitsInCodePool(current))
             {
@@ -221,6 +244,74 @@ public class VMSetGenerator
                 config,
                 false);
         return candidate.getMaxGeneratedMethodSize() <= CODE_POOL_METHOD_SIZE_LIMIT;
+    }
+
+    private List<CompiledMethod> splitForCodePools(CompiledMethod method)
+    {
+        if (fitsInCodePool(List.of(method)))
+        {
+            return List.of(method);
+        }
+
+        List<VMInstruction> instructions = method.vmMethod.getInstructions();
+        if (instructions.size() <= 1)
+        {
+            throw methodTooLarge(method);
+        }
+        return splitRange(method, instructions, 0, instructions.size());
+    }
+
+    private List<CompiledMethod> splitRange(
+            CompiledMethod method,
+            List<VMInstruction> instructions,
+            int from,
+            int to)
+    {
+        CompiledMethod segment = segment(method, instructions, from, to);
+        if (fitsInCodePool(List.of(segment)))
+        {
+            return List.of(segment);
+        }
+        if (to - from <= 1)
+        {
+            throw methodTooLarge(method);
+        }
+
+        int mid = from + (to - from) / 2;
+        List<CompiledMethod> parts = new ArrayList<>();
+        parts.addAll(splitRange(method, instructions, from, mid));
+        parts.addAll(splitRange(method, instructions, mid, to));
+        return parts;
+    }
+
+    private CompiledMethod segment(
+            CompiledMethod method,
+            List<VMInstruction> instructions,
+            int from,
+            int to)
+    {
+        int startPc = instructions.get(from).programCounter;
+        int endPc = instructions.get(to - 1).nextProgramCounter;
+        int codeStart = startPc - method.vmMethod.pcBase;
+        int codeEnd = endPc - method.vmMethod.pcBase;
+        VMMethod segmentMethod = new VMMethod(
+                Arrays.copyOfRange(method.vmMethod.code, codeStart, codeEnd),
+                method.vmMethod.constants,
+                method.vmMethod.exceptionHandlers,
+                method.vmMethod.maxLocals,
+                method.vmMethod.maxStack,
+                method.vmMethod.getOpcMutator(),
+                startPc,
+                method.vmMethod.methodEndPc);
+        int codeId = generateUniqueCodeId();
+        return new CompiledMethod(
+                method.owner,
+                method.source,
+                segmentMethod,
+                codeId,
+                method.descriptor,
+                method.isStatic,
+                false);
     }
 
     private static IllegalStateException methodTooLarge(CompiledMethod method)

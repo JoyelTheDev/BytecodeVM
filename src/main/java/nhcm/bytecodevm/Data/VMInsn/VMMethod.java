@@ -12,6 +12,8 @@ public class VMMethod implements Iterable<VMInstruction>
     public final int[] exceptionHandlers;
     public final int maxLocals;
     public final int maxStack;
+    public final int pcBase;
+    public final int methodEndPc;
 
     private final OpcMutator opcMutator;
     private List<VMInstruction> instructionCache;
@@ -40,12 +42,27 @@ public class VMMethod implements Iterable<VMInstruction>
             int maxStack,
             OpcMutator opcMutator)
     {
+        this(code, constants, exceptionHandlers, maxLocals, maxStack, opcMutator, 0, code.length);
+    }
+
+    public VMMethod(
+            int[] code,
+            Object[] constants,
+            int[] exceptionHandlers,
+            int maxLocals,
+            int maxStack,
+            OpcMutator opcMutator,
+            int pcBase,
+            int methodEndPc)
+    {
         this.code = Objects.requireNonNull(code, "code");
         this.constants = Objects.requireNonNull(constants, "constants");
         this.exceptionHandlers = Objects.requireNonNull(exceptionHandlers, "exceptionHandlers");
         this.maxLocals = maxLocals;
         this.maxStack = maxStack;
         this.opcMutator = opcMutator;
+        this.pcBase = pcBase;
+        this.methodEndPc = methodEndPc;
     }
 
     public synchronized List<VMInstruction> getInstructions()
@@ -85,7 +102,7 @@ public class VMMethod implements Iterable<VMInstruction>
 
         while (pc < code.length)
         {
-            int instructionPc = pc;
+            int instructionPc = pcBase + pc;
             int mutatedOpcode = code[pc++];
             Opcs opcode = mutator.fromMutated(mutatedOpcode);
 
@@ -136,7 +153,7 @@ public class VMMethod implements Iterable<VMInstruction>
 
             instructions.add(new VMInstruction(
                     instructionPc,
-                    pc,
+                    pcBase + pc,
                     mutatedOpcode,
                     opcode,
                     operands));
@@ -151,6 +168,11 @@ public class VMMethod implements Iterable<VMInstruction>
         VMInstruction instruction = instructionByPc.get(pc);
         if (instruction != null) return instruction;
         throw new NoSuchElementException("No VM instruction at pc " + pc);
+    }
+
+    public OpcMutator getOpcMutator()
+    {
+        return opcMutator;
     }
 
     @Override

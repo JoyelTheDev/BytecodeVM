@@ -64,14 +64,38 @@ public class MethodsReplacer
             Local value = ib.getLocal("DOES_NOT_MATTER" + i, parameters[i], sourceLocal + i);
             ib.setArray(argArray, AdvInsnBuilder.constant(i), value);
         }
-        Expr execute = AdvInsnBuilder.callStatic(
-                vmClassName,
-                "execute",
-                "Ljava/lang/Object;",
-                AdvInsnBuilder.constant(compiledMethod.codeId),
-                (isStatic ? AdvInsnBuilder.constant(null) : AdvInsnBuilder.cast(AdvInsnBuilder.self(owner.name), "java/lang/Object")),
-                argArray
-        );
+        Expr receiver = isStatic
+                ? AdvInsnBuilder.constant(null)
+                : AdvInsnBuilder.cast(AdvInsnBuilder.self(owner.name), "java/lang/Object");
+        Expr execute;
+        if (compiledMethod.isSegmented())
+        {
+            Local codeIds = ib.var("codeIds", "[I");
+            ib.set(codeIds, AdvInsnBuilder.newArray("int", AdvInsnBuilder.constant(compiledMethod.codeIds.size())));
+            for (int index = 0; index < compiledMethod.codeIds.size(); index++)
+            {
+                ib.setArray(codeIds, AdvInsnBuilder.constant(index), AdvInsnBuilder.constant(compiledMethod.codeIds.get(index)));
+            }
+            execute = AdvInsnBuilder.callStatic(
+                    vmClassName,
+                    "execute",
+                    "Ljava/lang/Object;",
+                    codeIds,
+                    receiver,
+                    argArray
+            );
+        }
+        else
+        {
+            execute = AdvInsnBuilder.callStatic(
+                    vmClassName,
+                    "execute",
+                    "Ljava/lang/Object;",
+                    AdvInsnBuilder.constant(compiledMethod.codeId),
+                    receiver,
+                    argArray
+            );
+        }
         if(returnType.equals(Type.VOID_TYPE))
         {
             ib.directCall(execute);
@@ -92,7 +116,7 @@ public class MethodsReplacer
         {
             throw new IllegalArgumentException("Method does not belong to owner: " + method.name + method.desc);
         }
-        if ("<init>".equals(method.name) || "<clinit>".equals(method.name))
+        if ("<init>".equals(method.name))
         {
             throw new IllegalArgumentException("Initializers cannot be replaced: " + method.name + method.desc);
         }

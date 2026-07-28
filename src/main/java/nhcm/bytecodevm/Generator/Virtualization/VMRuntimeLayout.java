@@ -31,6 +31,8 @@ public class VMRuntimeLayout
     public final MethodRef setField;
     public final MethodRef fieldHandle;
     public final MethodRef adaptFieldHandle;
+    public final MethodRef unsafe;
+    public final MethodRef unsafeSetStaticField;
     public final MethodRef findField;
     public final MethodRef findMethod;
     public final MethodRef adaptMethodHandle;
@@ -90,6 +92,12 @@ public class VMRuntimeLayout
         this.adaptFieldHandle = method(
                 "adaptFieldHandle",
                 "(Ljava/lang/reflect/Field;ZZ)Ljava/lang/invoke/MethodHandle;");
+        this.unsafe = method(
+                "unsafe",
+                "()Lsun/misc/Unsafe;");
+        this.unsafeSetStaticField = method(
+                "unsafeSetStaticField",
+                "(Ljava/lang/reflect/Field;Ljava/lang/Object;)V");
         this.findField = method(
                 "findField",
                 "(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;");

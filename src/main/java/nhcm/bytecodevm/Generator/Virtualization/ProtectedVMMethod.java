@@ -62,13 +62,16 @@ public class ProtectedVMMethod
         VMMethod method = compiledMethod.vmMethod;
         List<VMInstruction> instructions = method.getInstructions();
         boolean protect = config.protectCodePool;
+        boolean virtualizeInstructionAddresses = protect &&
+                                                config.virtualizeInstructionAddresses &&
+                                                compiledMethod.virtualizeInstructionAddresses;
         int methodKey = protect ? nonZeroRandom() : 0;
 
-        Map<Integer, Integer> virtualPcByOriginalPc = createVirtualPcMap(instructions, config);
+        Map<Integer, Integer> virtualPcByOriginalPc = createVirtualPcMap(instructions, virtualizeInstructionAddresses);
         ConstantLayout constantLayout = createConstantLayout(method.constants, config);
         OpcodeLayout opcodeLayout = createOpcodeLayout(instructions, config, methodKey);
         List<VMInstruction> records = new ArrayList<>(instructions);
-        if (protect && (config.shuffleInstructionBlocks || config.virtualizeInstructionAddresses))
+        if (protect && (config.shuffleInstructionBlocks || virtualizeInstructionAddresses))
         {
             RandomUtils.shuffle(records);
         }
@@ -94,9 +97,9 @@ public class ProtectedVMMethod
         {
             int slot = slotByInstruction.get(instruction);
             int virtualPc = virtualPcByOriginalPc.get(instruction.programCounter);
-            int nextPc = instruction.nextProgramCounter >= method.code.length
+            int nextPc = instruction.nextProgramCounter >= method.methodEndPc
                     ? -1
-                    : virtualPcByOriginalPc.get(instruction.nextProgramCounter);
+                    : remapProgramCounter(instruction.nextProgramCounter, method, virtualPcByOriginalPc, virtualizeInstructionAddresses);
             int operandStart = operandStarts[slot];
             int operandCount = instruction.operandCount();
             int constantMask = protect && config.bindConstantsToOperands
@@ -124,7 +127,8 @@ public class ProtectedVMMethod
                         operandIndex,
                         virtualPcByOriginalPc,
                         constantLayout.indexByOriginal,
-                        config);
+                        config,
+                        virtualizeInstructionAddresses);
                 if (protect && config.bindConstantsToOperands && operand.constantReference)
                 {
                     value ^= constantMix(methodKey, virtualPc, instruction.mutatedOpcode, operandIndex);
@@ -142,7 +146,7 @@ public class ProtectedVMMethod
                 operandStream,
                 layoutStream,
                 constantLayout.constants,
-                protectExceptionHandlers(method, constantLayout.indexByOriginal, virtualPcByOriginalPc, methodKey, protect),
+                protectExceptionHandlers(method, constantLayout.indexByOriginal, virtualPcByOriginalPc, methodKey, protect, virtualizeInstructionAddresses),
                 opcodeLayout.encodedOpcodeMap,
                 methodKey);
     }
@@ -217,7 +221,8 @@ public class ProtectedVMMethod
             Map<Integer, Integer> constantIndexByOriginal,
             Map<Integer, Integer> virtualPcByOriginalPc,
             int methodKey,
-            boolean protect)
+            boolean protect,
+            boolean virtualizeInstructionAddresses)
     {
         int[] handlers = new int[method.exceptionHandlers.length];
         for (int index = 0; index < method.exceptionHandlers.length; index += HANDLER_SIZE)
@@ -225,7 +230,11 @@ public class ProtectedVMMethod
             int handlerSlot = index / HANDLER_SIZE;
             int startPc = method.exceptionHandlers[index];
             int endPc = method.exceptionHandlers[index + 1];
-            int handlerPc = virtualPcByOriginalPc.get(method.exceptionHandlers[index + 2]);
+            int handlerPc = remapProgramCounter(
+                    method.exceptionHandlers[index + 2],
+                    method,
+                    virtualPcByOriginalPc,
+                    virtualizeInstructionAddresses);
             int typeIndex = method.exceptionHandlers[index + 3] < 0
                     ? -1
                     : constantIndexByOriginal.get(method.exceptionHandlers[index + 3]);
@@ -239,11 +248,10 @@ public class ProtectedVMMethod
 
     private static Map<Integer, Integer> createVirtualPcMap(
             List<VMInstruction> instructions,
-            BytecodeVMConfig config)
+            boolean virtualize)
     {
         Map<Integer, Integer> virtualByOriginal = new LinkedHashMap<>();
         Set<Integer> used = new HashSet<>();
-        boolean virtualize = config.protectCodePool && config.virtualizeInstructionAddresses;
         for (VMInstruction instruction : instructions)
         {
             int virtualPc = virtualize ? nonZeroRandom() : instruction.programCounter;
@@ -362,11 +370,16 @@ public class ProtectedVMMethod
             int operandIndex,
             Map<Integer, Integer> virtualPcByOriginalPc,
             Map<Integer, Integer> constantIndexByOriginal,
-            BytecodeVMConfig config)
+            BytecodeVMConfig config,
+            boolean virtualizeInstructionAddresses)
     {
         int value = operand.rawValue;
         if (isJumpTargetOperand(instruction.opcode, operandIndex))
         {
+            if (!virtualizeInstructionAddresses)
+            {
+                return value;
+            }
             Integer virtualTarget = virtualPcByOriginalPc.get(value);
             if (virtualTarget == null)
             {
@@ -384,6 +397,28 @@ public class ProtectedVMMethod
             return remapped;
         }
         return value;
+    }
+
+    private static int remapProgramCounter(
+            int pc,
+            VMMethod method,
+            Map<Integer, Integer> virtualPcByOriginalPc,
+            boolean virtualizeInstructionAddresses)
+    {
+        if (pc >= method.methodEndPc)
+        {
+            return -1;
+        }
+        if (!virtualizeInstructionAddresses)
+        {
+            return pc;
+        }
+        Integer virtualPc = virtualPcByOriginalPc.get(pc);
+        if (virtualPc == null)
+        {
+            throw new IllegalStateException("Program counter has no virtual pc: " + pc);
+        }
+        return virtualPc;
     }
 
     private static boolean isJumpTargetOperand(Opcs opcode, int operandIndex)

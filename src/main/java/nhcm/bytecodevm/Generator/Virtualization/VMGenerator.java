@@ -181,6 +181,7 @@ public class VMGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.monitors.name(), vmLayout.monitors.descriptor(), "Ljava/util/Map<Ljava/lang/Object;Ljava/util/concurrent/locks/ReentrantLock;>;"));
         cn.methods.add(genClInitMethod(codePoolGenerators));
         cn.methods.add(genExecuteMethod());
+        cn.methods.add(genExecuteSegmentedMethod());
         cn.methods.add(genInterpretMethod());
         cn.methods.add(genInstructionIndexMethod());
         cn.methods.add(genDecodeOpcodeMethod());
@@ -200,6 +201,8 @@ public class VMGenerator extends ClassObj
         cn.methods.add(genSetFieldMethod());
         cn.methods.add(genFieldHandleMethod());
         cn.methods.add(genAdaptFieldHandleMethod());
+        cn.methods.add(genUnsafeMethod());
+        cn.methods.add(genUnsafeSetStaticFieldMethod());
         cn.methods.add(genFindFieldMethod());
         cn.methods.add(genFindMethodMethod());
         cn.methods.add(genInvokeMethod());
@@ -273,6 +276,9 @@ public class VMGenerator extends ClassObj
                 "I",
                 context.program(),
                 context.instructionPc()));
+        ib.ifCondition(
+                AdvInsnBuilder.equal(context.instructionIndex(), AdvInsnBuilder.constant(-1)),
+                b -> b.gotoLabel(loopEnd));
         ib.set(context.operandIndex(), AdvInsnBuilder.constant(0));
         ib.set(context.opcode(), AdvInsnBuilder.callStatic(
                 vmLayout.owner,
@@ -368,9 +374,7 @@ public class VMGenerator extends ClassObj
                                 layoutValue(program, index, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_ORIGINAL_PC)),
                                 pc),
                         found -> found.returnValue(index)));
-        ib.throwValue(AdvInsnBuilder.newObject(
-                "java/lang/IllegalStateException",
-                stringConcat(AdvInsnBuilder.constant("Unknown VM pc "), pc)));
+        ib.returnValue(AdvInsnBuilder.constant(-1));
         return method;
     }
 
@@ -773,6 +777,107 @@ public class VMGenerator extends ClassObj
                 "V",
                 program,
                 frame));
+        ib.ifCondition(
+                AdvInsnBuilder.isFalse(AdvInsnBuilder.field(frame, frameLayout.returned)),
+                b -> b.throwValue(AdvInsnBuilder.newObject(
+                        "java/lang/IllegalStateException",
+                        stringConcat(
+                                AdvInsnBuilder.constant("Unknown VM pc "),
+                                AdvInsnBuilder.field(frame, frameLayout.programCounter)))));
+
+        ib.returnValue(AdvInsnBuilder.field(frame, frameLayout.returnValue));
+        return methodNode;
+    }
+
+    private MethodNode genExecuteSegmentedMethod()
+    {
+        MethodNode methodNode = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PUBLIC, Acc.STATIC, Acc.VARARGS},
+                "execute",
+                "([ILjava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;",
+                "<T:Ljava/lang/Object;>([ILjava/lang/Object;[Ljava/lang/Object;)TT;",
+                null);
+        AdvInsnBuilder ib = new AdvInsnBuilder(methodNode);
+        Local codeIds = ib.getLocal("codeIds", "[I", 0);
+        Local receiver = ib.getLocal("receiver", "java/lang/Object", 1);
+        Local arguments = ib.getLocal("arguments", "[Ljava/lang/Object;", 2);
+        Local firstProgram = ib.getLocal("firstProgram", programLayout.owner, 3);
+        Local program = ib.getLocal("program", programLayout.owner, 4);
+        Local frame = ib.getLocal("frame", frameLayout.owner, 5);
+        Local argumentOffset = ib.getLocal("argumentOffset", "I", 6);
+        Local index = ib.getLocal("segmentIndex", "I", 7);
+        Local candidate = ib.getLocal("candidateProgram", programLayout.owner, 8);
+
+        ib.set(firstProgram, AdvInsnBuilder.callStatic(
+                vmLayout.owner,
+                vmLayout.resolve.name(),
+                programLayout.owner,
+                AdvInsnBuilder.arrayAt(codeIds, AdvInsnBuilder.constant(0))));
+        ib.set(frame, AdvInsnBuilder.newObject(
+                frameLayout.owner,
+                AdvInsnBuilder.callVirtual(firstProgram, programLayout.owner, programLayout.maxLocals.name(), "I"),
+                AdvInsnBuilder.callVirtual(firstProgram, programLayout.owner, programLayout.maxStack.name(), "I")));
+
+        ib.ifElse(
+                AdvInsnBuilder.notNull(receiver),
+                b -> {
+                    b.setArray(AdvInsnBuilder.field(frame, frameLayout.locals), AdvInsnBuilder.constant(0), receiver);
+                    b.set(argumentOffset, AdvInsnBuilder.constant(1));
+                },
+                b -> b.set(argumentOffset, AdvInsnBuilder.constant(0)));
+
+        ib.directCall(AdvInsnBuilder.callStatic(
+                "java/lang/System",
+                "arraycopy",
+                "V",
+                AdvInsnBuilder.cast(arguments, "java/lang/Object"),
+                AdvInsnBuilder.constant(0),
+                AdvInsnBuilder.cast(AdvInsnBuilder.field(frame, frameLayout.locals), "java/lang/Object"),
+                argumentOffset,
+                AdvInsnBuilder.arrayLength(arguments)));
+
+        ib.whileLoop(
+                AdvInsnBuilder.isFalse(AdvInsnBuilder.field(frame, frameLayout.returned)),
+                loop -> {
+                    loop.set(candidate, AdvInsnBuilder.nullValue(programLayout.owner));
+                    loop.forLoop(
+                            b -> b.set(index, AdvInsnBuilder.constant(0)),
+                            AdvInsnBuilder.lessThan(index, AdvInsnBuilder.arrayLength(codeIds)),
+                            b -> b.increment(index, 1),
+                            b -> {
+                                b.set(program, AdvInsnBuilder.callStatic(
+                                        vmLayout.owner,
+                                        vmLayout.resolve.name(),
+                                        programLayout.owner,
+                                        AdvInsnBuilder.arrayAt(codeIds, index)));
+                                b.ifCondition(
+                                        AdvInsnBuilder.notEqual(
+                                                AdvInsnBuilder.callStatic(
+                                                        vmLayout.owner,
+                                                        vmLayout.instructionIndex.name(),
+                                                        "I",
+                                                        program,
+                                                        AdvInsnBuilder.field(frame, frameLayout.programCounter)),
+                                                AdvInsnBuilder.constant(-1)),
+                                        found -> {
+                                            found.set(candidate, program);
+                                            found.breakLoop();
+                                        });
+                            });
+                    loop.ifCondition(
+                            AdvInsnBuilder.isNull(candidate),
+                            b -> b.throwValue(AdvInsnBuilder.newObject(
+                                    "java/lang/IllegalStateException",
+                                    stringConcat(
+                                            AdvInsnBuilder.constant("Unknown VM pc "),
+                                            AdvInsnBuilder.field(frame, frameLayout.programCounter)))));
+                    loop.directCall(AdvInsnBuilder.callStatic(
+                            vmLayout.owner,
+                            vmLayout.interpret.name(),
+                            "V",
+                            candidate,
+                            frame));
+                });
 
         ib.returnValue(AdvInsnBuilder.field(frame, frameLayout.returnValue));
         return methodNode;
@@ -1075,6 +1180,8 @@ public class VMGenerator extends ClassObj
         Local isStatic = ib.getLocal("isStatic", "Z", 3);
         Local receiver = ib.getLocal("receiver", "java/lang/Object", 4);
         Local value = ib.getLocal("value", "java/lang/Object", 5);
+        Local ownerClass = ib.getLocal("ownerClass", "java/lang/Class", 6);
+        Local field = ib.getLocal("field", "java/lang/reflect/Field", 7);
         ib.tryCatch(
                 b -> {
                     b.set(value, AdvInsnBuilder.callStatic(
@@ -1083,6 +1190,28 @@ public class VMGenerator extends ClassObj
                             "java/lang/Object",
                             value,
                             AdvInsnBuilder.callStatic(vmLayout.owner, vmLayout.loadOwner.name(), "java/lang/Class", descriptor)));
+                    b.ifCondition(
+                            AdvInsnBuilder.isTrue(isStatic),
+                            staticWrite -> {
+                                staticWrite.set(ownerClass, AdvInsnBuilder.callStatic(vmLayout.owner, vmLayout.loadOwner.name(), "java/lang/Class", owner));
+                                staticWrite.set(field, AdvInsnBuilder.callStatic(vmLayout.owner, vmLayout.findField.name(), "java/lang/reflect/Field", ownerClass, name));
+                                staticWrite.ifCondition(
+                                        AdvInsnBuilder.isTrue(AdvInsnBuilder.callStatic(
+                                                "java/lang/reflect/Modifier",
+                                                "isFinal",
+                                                "Z",
+                                                AdvInsnBuilder.callVirtual(field, "java/lang/reflect/Field", "getModifiers", "I"))),
+                                        finalWrite -> {
+                                            finalWrite.directCall(AdvInsnBuilder.callVirtual(field, "java/lang/reflect/Field", "setAccessible", "V", AdvInsnBuilder.constant(true)));
+                                            finalWrite.directCall(AdvInsnBuilder.callStatic(
+                                                    vmLayout.owner,
+                                                    vmLayout.unsafeSetStaticField.name(),
+                                                    "V",
+                                                    field,
+                                                    value));
+                                            finalWrite.returnVoid();
+                                        });
+                            });
                     b.directCall(AdvInsnBuilder.callVirtual(
                             fieldHandle(owner, name, descriptor, isStatic, AdvInsnBuilder.constant(true)),
                             "java/lang/invoke/MethodHandle",
@@ -1204,6 +1333,89 @@ public class VMGenerator extends ClassObj
                             "java/lang/invoke/MethodHandle",
                             methodType(voidClass(), objectClass(), classArray(b, "setterParameters", objectClass()))));
                 });
+        return method;
+    }
+
+    private MethodNode genUnsafeMethod()
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.unsafe.name(),
+                vmLayout.unsafe.descriptor());
+        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        Local field = ib.getLocal("field", "java/lang/reflect/Field", 0);
+
+        ib.tryCatch(
+                b -> {
+                    b.set(field, AdvInsnBuilder.callVirtual(
+                            AdvInsnBuilder.constant(org.objectweb.asm.Type.getObjectType("sun/misc/Unsafe")),
+                            "java/lang/Class",
+                            "getDeclaredField",
+                            "java/lang/reflect/Field",
+                            AdvInsnBuilder.constant("theUnsafe")));
+                    b.directCall(AdvInsnBuilder.callVirtual(field, "java/lang/reflect/Field", "setAccessible", "V", AdvInsnBuilder.constant(true)));
+                    b.returnValue(AdvInsnBuilder.cast(
+                            AdvInsnBuilder.callVirtual(field, "java/lang/reflect/Field", "get", "java/lang/Object", AdvInsnBuilder.constant(null)),
+                            "sun/misc/Unsafe"));
+                },
+                "java/lang/ReflectiveOperationException",
+                "exception",
+                b -> b.throwValue(illegalStateException(b.getLocal("exception"))));
+        return method;
+    }
+
+    private MethodNode genUnsafeSetStaticFieldMethod()
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.unsafeSetStaticField.name(),
+                vmLayout.unsafeSetStaticField.descriptor());
+        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        Local field = ib.getLocal("field", "java/lang/reflect/Field", 0);
+        Local value = ib.getLocal("value", "java/lang/Object", 1);
+        Local unsafe = ib.getLocal("unsafe", "sun/misc/Unsafe", 2);
+        Local base = ib.getLocal("base", "java/lang/Object", 3);
+        Local offset = ib.getLocal("offset", "J", 4);
+        Local type = ib.getLocal("type", "java/lang/Class", 6);
+
+        ib.set(unsafe, AdvInsnBuilder.callStatic(vmLayout.owner, vmLayout.unsafe.name(), "sun/misc/Unsafe"));
+        ib.set(base, AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "staticFieldBase", "java/lang/Object", field));
+        ib.set(offset, AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "staticFieldOffset", "J", field));
+        ib.set(type, AdvInsnBuilder.callVirtual(field, "java/lang/reflect/Field", "getType", "java/lang/Class"));
+        ib.ifCondition(AdvInsnBuilder.equal(type, primitiveType("java/lang/Boolean")), b -> {
+            b.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putBoolean", "V", base, offset, AdvInsnBuilder.unbox(value, "Z")));
+            b.returnVoid();
+        });
+        ib.ifCondition(AdvInsnBuilder.equal(type, primitiveType("java/lang/Character")), b -> {
+            b.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putChar", "V", base, offset, AdvInsnBuilder.unbox(value, "C")));
+            b.returnVoid();
+        });
+        ib.ifCondition(AdvInsnBuilder.equal(type, primitiveType("java/lang/Byte")), b -> {
+            b.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putByte", "V", base, offset, AdvInsnBuilder.unbox(value, "B")));
+            b.returnVoid();
+        });
+        ib.ifCondition(AdvInsnBuilder.equal(type, primitiveType("java/lang/Short")), b -> {
+            b.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putShort", "V", base, offset, AdvInsnBuilder.unbox(value, "S")));
+            b.returnVoid();
+        });
+        ib.ifCondition(AdvInsnBuilder.equal(type, primitiveType("java/lang/Integer")), b -> {
+            b.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putInt", "V", base, offset, AdvInsnBuilder.unbox(value, "I")));
+            b.returnVoid();
+        });
+        ib.ifCondition(AdvInsnBuilder.equal(type, primitiveType("java/lang/Long")), b -> {
+            b.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putLong", "V", base, offset, AdvInsnBuilder.unbox(value, "J")));
+            b.returnVoid();
+        });
+        ib.ifCondition(AdvInsnBuilder.equal(type, primitiveType("java/lang/Float")), b -> {
+            b.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putFloat", "V", base, offset, AdvInsnBuilder.unbox(value, "F")));
+            b.returnVoid();
+        });
+        ib.ifCondition(AdvInsnBuilder.equal(type, primitiveType("java/lang/Double")), b -> {
+            b.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putDouble", "V", base, offset, AdvInsnBuilder.unbox(value, "D")));
+            b.returnVoid();
+        });
+        ib.directCall(AdvInsnBuilder.callVirtual(unsafe, "sun/misc/Unsafe", "putObject", "V", base, offset, value));
+        ib.returnVoid();
         return method;
     }
 
