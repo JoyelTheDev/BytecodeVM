@@ -1,9 +1,9 @@
-import nhcm.bytecodevm.AdvInsn.Local;
-import nhcm.bytecodevm.Data.VMInsn.VMInstruction;
-import nhcm.bytecodevm.Data.VMInsn.VMMethod;
-import nhcm.bytecodevm.Tools.OpcMutator;
-import nhcm.bytecodevm.Tools.VMMethodCompiler;
-import nhcm.bytecodevm.AdvInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.Local;
+import nhcm.bytecodevm.data.vminsn.VMInstruction;
+import nhcm.bytecodevm.data.vminsn.VMMethod;
+import nhcm.bytecodevm.tools.OpcMutator;
+import nhcm.bytecodevm.tools.VMMethodCompiler;
+import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;

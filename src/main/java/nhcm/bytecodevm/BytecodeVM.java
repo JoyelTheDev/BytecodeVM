@@ -1,8 +1,8 @@
 package nhcm.bytecodevm;
 
-import nhcm.bytecodevm.Config.BytecodeVMConfig;
-import nhcm.bytecodevm.Generator.Obfuscator;
-import nhcm.bytecodevm.Utils.LogColors;
+import nhcm.bytecodevm.config.BytecodeVMConfig;
+import nhcm.bytecodevm.generator.Obfuscator;
+import nhcm.bytecodevm.utils.LogColors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
