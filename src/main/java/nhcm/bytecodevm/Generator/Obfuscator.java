@@ -12,8 +12,8 @@ import nhcm.bytecodevm.Utils.ClassUtils;
 import nhcm.bytecodevm.Utils.LogColors;
 import nhcm.bytecodevm.Utils.MethodUtils;
 import nhcm.bytecodevm.Utils.RandomUtils;
-import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
@@ -99,7 +99,11 @@ public class Obfuscator
                     "Virtualizing VM: " +
                             LogColors.strong(generator.vmClassName) +
                             " (" + generator.methodCount() + " method(s))"));
-            VirtualizationResult result = generator.compile();
+            VirtualizationResult result;
+            try (CliProgress progress = new CliProgress(generator.vmClassName))
+            {
+                result = generator.compile(progress::update);
+            }
             context.classes.putAll(result.transformedTarget);
             context.addClass(result.vmClass);
             for(ClassNode codePoolClass : result.codePoolClass)
@@ -413,5 +417,95 @@ public class Obfuscator
             }
         }
         return false;
+    }
+
+    private static class CliProgress implements AutoCloseable
+    {
+        private static final String CLEAR_LINE = "\u001B[2K";
+        private static final int BAR_WIDTH = 22;
+        private static final int MAX_TITLE_LENGTH = 28;
+        private static final int MAX_STATUS_LENGTH = 18;
+
+        private final String title;
+        private final boolean enabled;
+        private long lastRenderNanos;
+        private boolean closed;
+
+        private CliProgress(String title)
+        {
+            this.title = title;
+            this.enabled = System.console() != null;
+        }
+
+        private void update(int completed, int total, String status)
+        {
+            if (!enabled || closed)
+            {
+                return;
+            }
+
+            int safeTotal = Math.max(total, 1);
+            int safeCompleted = Math.max(0, Math.min(completed, safeTotal));
+            long now = System.nanoTime();
+            boolean edgeUpdate = safeCompleted == 0 || safeCompleted == safeTotal;
+            if (!edgeUpdate && now - lastRenderNanos < 50_000_000L)
+            {
+                return;
+            }
+
+            int filled = (int) ((safeCompleted * (long) BAR_WIDTH) / safeTotal);
+            int percent = (int) ((safeCompleted * 100L) / safeTotal);
+
+            StringBuilder bar = new StringBuilder(BAR_WIDTH);
+            for (int i = 0; i < BAR_WIDTH; i++)
+            {
+                bar.append(i < filled ? '=' : ' ');
+            }
+
+            String line = String.format(
+                    Locale.ROOT,
+                    "Virtualizing VM %s [%s] %3d%% %d/%d %s",
+                    truncate(title, MAX_TITLE_LENGTH),
+                    bar,
+                    percent,
+                    safeCompleted,
+                    safeTotal,
+                    truncate(status, MAX_STATUS_LENGTH));
+
+            System.out.print("\r" + CLEAR_LINE + line);
+            System.out.flush();
+            lastRenderNanos = now;
+        }
+
+        @Override
+        public void close()
+        {
+            if (!closed)
+            {
+                if (enabled)
+                {
+                    System.out.print("\r" + CLEAR_LINE + "\r");
+                    System.out.flush();
+                }
+                closed = true;
+            }
+        }
+
+        private static String truncate(String value, int maxLength)
+        {
+            if (value == null)
+            {
+                return "";
+            }
+            if (value.length() <= maxLength)
+            {
+                return value;
+            }
+            if (maxLength <= 3)
+            {
+                return value.substring(0, maxLength);
+            }
+            return value.substring(0, maxLength - 3) + "...";
+        }
     }
 }

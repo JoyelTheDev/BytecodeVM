@@ -6,14 +6,18 @@ import nhcm.bytecodevm.Utils.LogColors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class BytecodeVM
 {
     private static final Logger logger = LoggerFactory.getLogger(BytecodeVM.class);
+    private static final AtomicBoolean terminating = new AtomicBoolean(false);
 
-    private static final String version = "1.1.0";
+    private static final String version = "1.2.0";
 
     private static final String defaultConfig = """
             {
@@ -63,6 +67,7 @@ public class BytecodeVM
 
     public static void main(String[] args) throws InterruptedException
     {
+        installTerminationHandlers();
         System.out.println(asciiArt);
         Thread.sleep(1000);
         int exitCode = run(args);
@@ -104,5 +109,64 @@ public class BytecodeVM
             logger.error(LogColors.error("Program failed"), e);
             return 1;
         }
+    }
+
+    private static void installTerminationHandlers()
+    {
+        registerSignalHandler("INT", 130, "Ctrl+C");
+        registerSignalHandler("TERM", 143, "termination signal");
+    }
+
+    private static void registerSignalHandler(String signalName, int exitCode, String reason)
+    {
+        try
+        {
+            Class<?> signalClass = Class.forName("sun.misc.Signal");
+            Class<?> signalHandlerClass = Class.forName("sun.misc.SignalHandler");
+            Object signal = signalClass.getConstructor(String.class).newInstance(signalName);
+            InvocationHandler handler = (proxy, method, args) ->
+            {
+                if ("handle".equals(method.getName()))
+                {
+                    terminate(exitCode, reason);
+                    return null;
+                }
+                if ("toString".equals(method.getName()))
+                {
+                    return "BytecodeVM " + signalName + " handler";
+                }
+                if ("hashCode".equals(method.getName()))
+                {
+                    return System.identityHashCode(proxy);
+                }
+                if ("equals".equals(method.getName()))
+                {
+                    return proxy == args[0];
+                }
+                return null;
+            };
+            Object signalHandler = Proxy.newProxyInstance(
+                    BytecodeVM.class.getClassLoader(),
+                    new Class<?>[]{signalHandlerClass},
+                    handler);
+            signalClass
+                    .getMethod("handle", signalClass, signalHandlerClass)
+                    .invoke(null, signal, signalHandler);
+        }
+        catch (ReflectiveOperationException | LinkageError | SecurityException ignored)
+        {
+            // If sun.misc.Signal is unavailable, the JVM default signal behavior still exits.
+        }
+    }
+
+    private static void terminate(int exitCode, String reason)
+    {
+        if (terminating.compareAndSet(false, true))
+        {
+            System.err.print("\r\u001B[2K\r");
+            System.err.println("BytecodeVM interrupted by " + reason + ", exiting.");
+            System.err.flush();
+        }
+        Runtime.getRuntime().halt(exitCode);
     }
 }

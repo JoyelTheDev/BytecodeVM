@@ -1,16 +1,9 @@
 package nhcm.bytecodevm.Data.VMInsn;
 
-import nhcm.bytecodevm.Tools.OpcMutator;
 import nhcm.bytecodevm.Enums.Opcs;
+import nhcm.bytecodevm.Tools.OpcMutator;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Objects;
+import java.util.*;
 
 public class VMMethod implements Iterable<VMInstruction>
 {

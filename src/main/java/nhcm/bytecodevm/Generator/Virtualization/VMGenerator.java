@@ -1,31 +1,30 @@
 package nhcm.bytecodevm.Generator.Virtualization;
 
 import lombok.Getter;
-import nhcm.bytecodevm.Config.BytecodeVMConfig;
-import nhcm.bytecodevm.Enums.Acc;
-import nhcm.bytecodevm.Enums.Opcs;
 import nhcm.bytecodevm.AdvInsn.AdvInsnBuilder;
 import nhcm.bytecodevm.AdvInsn.Expr;
 import nhcm.bytecodevm.AdvInsn.Local;
 import nhcm.bytecodevm.AdvInsn.SwitchCase;
+import nhcm.bytecodevm.Config.BytecodeVMConfig;
+import nhcm.bytecodevm.Enums.Acc;
+import nhcm.bytecodevm.Enums.Opcs;
 import nhcm.bytecodevm.Generator.Abstract.ClassObj;
-import nhcm.bytecodevm.Generator.GlobalClass.MethodFrameGenerator;
-import nhcm.bytecodevm.Generator.GlobalClass.MethodFrameLayout;
-import nhcm.bytecodevm.Generator.GlobalClass.VMCodePoolGenerator;
-import nhcm.bytecodevm.Generator.GlobalClass.VMProgramGenerator;
-import nhcm.bytecodevm.Generator.GlobalClass.VMProgramLayout;
+import nhcm.bytecodevm.Generator.GlobalClass.*;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Array.ArrayLengthBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Array.LoadArrayBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Array.NewArrayBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Array.StoreArrayBranch;
+import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Constant.*;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Control.*;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Conversion.CompareBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Conversion.ConvertBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Field.ReadFieldBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Field.WriteFieldBranch;
-import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Invoke.InvokeDynamicBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Invoke.InvokeNormalBranch;
+import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Local.IncrementBranch;
+import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Local.LoadLocalBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Local.StoreLocalBranch;
+import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Math.*;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Object.CastBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Object.NewObjectBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Stack.DuplicateBranch;
@@ -34,10 +33,6 @@ import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Stack.SwapBranc
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.lock.MonitorBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.InterpretBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.InterpretContext;
-import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Constant.*;
-import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Math.*;
-import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Local.IncrementBranch;
-import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Local.LoadLocalBranch;
 import nhcm.bytecodevm.Tools.OpcMutator;
 import nhcm.bytecodevm.Utils.ClassUtils;
 import nhcm.bytecodevm.Utils.FieldUtils;
@@ -1160,7 +1155,7 @@ public class VMGenerator extends ClassObj
                 },
                 "java/lang/ReflectiveOperationException",
                 "exception",
-                b -> b.throwValue(AdvInsnBuilder.newObject("java/lang/IllegalStateException", b.getLocal("exception"))));
+                b -> b.throwValue(illegalStateException(b.getLocal("exception"))));
         return method;
     }
 
@@ -1414,7 +1409,7 @@ public class VMGenerator extends ClassObj
                                                 isStatic));
                                         direct.directCall(mapPut(AdvInsnBuilder.staticField(vmLayout.methodHandles), key, target));
                                     },
-                                    failure -> failure.throwValue(AdvInsnBuilder.newObject("java/lang/IllegalStateException", exception))));
+                                    failure -> failure.throwValue(illegalStateException(exception))));
                 });
 
         coerceArguments(ib, arguments, methodType);
@@ -1686,6 +1681,7 @@ public class VMGenerator extends ClassObj
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local owner = ib.getLocal("owner", "java/lang/String", 0);
         Local loader = ib.getLocal("loader", "java/lang/ClassLoader", 1);
+        Local normalized = ib.getLocal("normalized", "java/lang/String", 2);
 
         ib.ifCondition(
                 AdvInsnBuilder.equal(AdvInsnBuilder.callVirtual(owner, "java/lang/String", "length", "I"), AdvInsnBuilder.constant(1)),
@@ -1716,17 +1712,28 @@ public class VMGenerator extends ClassObj
                                 AdvInsnBuilder.callVirtual(owner, "java/lang/String", "length", "I"),
                                 AdvInsnBuilder.constant(1)))));
 
+        ib.set(normalized, AdvInsnBuilder.callVirtual(
+                owner,
+                "java/lang/String",
+                "replace",
+                "java/lang/String",
+                AdvInsnBuilder.constant('/'),
+                AdvInsnBuilder.constant('.')));
         ib.tryCatch(
-                b -> b.returnValue(AdvInsnBuilder.callStatic(
-                        "java/lang/Class",
-                        "forName",
-                        "java/lang/Class",
-                        AdvInsnBuilder.callVirtual(owner, "java/lang/String", "replace", "java/lang/String", AdvInsnBuilder.constant('/'), AdvInsnBuilder.constant('.')),
-                        AdvInsnBuilder.constant(false),
-                        loader)),
+                b -> b.returnValue(classForName(normalized, loader)),
                 "java/lang/ClassNotFoundException",
                 "exception",
-                b -> b.throwValue(AdvInsnBuilder.newObject("java/lang/IllegalStateException", b.getLocal("exception"))));
+                b -> b.tryCatch(
+                        fallback -> fallback.returnValue(classForName(
+                                normalized,
+                                AdvInsnBuilder.callVirtual(
+                                        AdvInsnBuilder.constant(org.objectweb.asm.Type.getObjectType(className())),
+                                        "java/lang/Class",
+                                        "getClassLoader",
+                                        "java/lang/ClassLoader"))),
+                        "java/lang/ClassNotFoundException",
+                        "fallbackException",
+                        fallback -> fallback.throwValue(illegalStateException(b.getLocal("exception")))));
         return method;
     }
 
@@ -2014,6 +2021,24 @@ public class VMGenerator extends ClassObj
         ib.throwValue(AdvInsnBuilder.newObject(
                 exceptionType,
                 stringConcat(AdvInsnBuilder.constant(prefix), value)));
+    }
+
+    private static Expr illegalStateException(Expr cause)
+    {
+        return AdvInsnBuilder.newObject(
+                "java/lang/IllegalStateException",
+                AdvInsnBuilder.cast(cause, "java/lang/Throwable"));
+    }
+
+    private static Expr classForName(Expr name, Expr loader)
+    {
+        return AdvInsnBuilder.callStatic(
+                "java/lang/Class",
+                "forName",
+                "java/lang/Class",
+                name,
+                AdvInsnBuilder.constant(false),
+                loader);
     }
 
     private void cacheAdaptedMethodHandle(

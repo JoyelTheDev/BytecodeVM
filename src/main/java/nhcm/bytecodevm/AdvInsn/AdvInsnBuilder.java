@@ -1,7 +1,7 @@
 package nhcm.bytecodevm.AdvInsn;
 
-import nhcm.bytecodevm.Utils.Builder.InsnBuilder;
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
+import nhcm.bytecodevm.Utils.Builder.InsnBuilder;
 import nhcm.bytecodevm.Utils.MethodUtils;
 import nhcm.bytecodevm.Utils.TypeUtils;
 import org.objectweb.asm.Type;
@@ -10,13 +10,7 @@ import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Consumer;
 
 /**

@@ -1,15 +1,18 @@
 package nhcm.bytecodevm.Tools;
 
+import nhcm.bytecodevm.Utils.LogColors;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.ClassNode;
-import nhcm.bytecodevm.Utils.LogColors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.*;
-import java.util.jar.*;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
 
 public class JarTransformer
 {
@@ -148,9 +151,10 @@ public class JarTransformer
 
                 jos.putNextEntry(new JarEntry(entryName));
 
-                ClassWriter cw = new ClassWriter(
+                ClassWriter cw = new ContextClassWriter(
                         ClassWriter.COMPUTE_FRAMES |
-                        ClassWriter.COMPUTE_MAXS
+                        ClassWriter.COMPUTE_MAXS,
+                        context
                 );
 
                 cn.accept(cw);
@@ -198,5 +202,230 @@ public class JarTransformer
         }
 
         return baos.toByteArray();
+    }
+
+    private static class ContextClassWriter extends ClassWriter
+    {
+        private static final String OBJECT = "java/lang/Object";
+        private static final String CLONEABLE = "java/lang/Cloneable";
+        private static final String SERIALIZABLE = "java/io/Serializable";
+
+        private final JarContext context;
+        private final Map<String, ClassInfo> infoCache = new HashMap<>();
+
+        private ContextClassWriter(int flags, JarContext context)
+        {
+            super(flags);
+            this.context = context;
+        }
+
+        @Override
+        protected String getCommonSuperClass(String type1, String type2)
+        {
+            if (type1.equals(type2))
+            {
+                return type1;
+            }
+            if (isArray(type1) || isArray(type2))
+            {
+                return getCommonArraySuperClass(type1, type2);
+            }
+            if (isAssignableFrom(type1, type2))
+            {
+                return type1;
+            }
+            if (isAssignableFrom(type2, type1))
+            {
+                return type2;
+            }
+            ClassInfo info1 = getClassInfo(type1);
+            ClassInfo info2 = getClassInfo(type2);
+            if (info1 == null || info2 == null || info1.isInterface || info2.isInterface)
+            {
+                return OBJECT;
+            }
+
+            String superName = info1.superName;
+            while (superName != null)
+            {
+                if (isAssignableFrom(superName, type2))
+                {
+                    return superName;
+                }
+                ClassInfo superInfo = getClassInfo(superName);
+                if (superInfo == null)
+                {
+                    return OBJECT;
+                }
+                superName = superInfo.superName;
+            }
+            return OBJECT;
+        }
+
+        private String getCommonArraySuperClass(String type1, String type2)
+        {
+            if (!isArray(type1) || !isArray(type2))
+            {
+                return OBJECT;
+            }
+            ArrayType array1 = parseArray(type1);
+            ArrayType array2 = parseArray(type2);
+            if (!array1.isObjectElement || !array2.isObjectElement)
+            {
+                return OBJECT;
+            }
+            if (array1.dimensions != array2.dimensions)
+            {
+                return OBJECT;
+            }
+
+            String elementSuper = getCommonSuperClass(array1.elementType, array2.elementType);
+            return "[".repeat(array1.dimensions) + "L" + elementSuper + ";";
+        }
+
+        private boolean isAssignableFrom(String target, String source)
+        {
+            if (target.equals(source) || OBJECT.equals(target))
+            {
+                return true;
+            }
+            if (isArray(target) || isArray(source))
+            {
+                return isArrayAssignableFrom(target, source);
+            }
+
+            ClassInfo sourceInfo = getClassInfo(source);
+            if (sourceInfo == null)
+            {
+                return false;
+            }
+            if (sourceInfo.interfaces.contains(target))
+            {
+                return true;
+            }
+            for (String interfaceName : sourceInfo.interfaces)
+            {
+                if (isAssignableFrom(target, interfaceName))
+                {
+                    return true;
+                }
+            }
+            String superName = sourceInfo.superName;
+            while (superName != null)
+            {
+                if (target.equals(superName))
+                {
+                    return true;
+                }
+                ClassInfo superInfo = getClassInfo(superName);
+                if (superInfo == null)
+                {
+                    return false;
+                }
+                if (superInfo.interfaces.contains(target))
+                {
+                    return true;
+                }
+                for (String interfaceName : superInfo.interfaces)
+                {
+                    if (isAssignableFrom(target, interfaceName))
+                    {
+                        return true;
+                    }
+                }
+                superName = superInfo.superName;
+            }
+            return false;
+        }
+
+        private boolean isArrayAssignableFrom(String target, String source)
+        {
+            if (!isArray(source))
+            {
+                return false;
+            }
+            if (OBJECT.equals(target) || CLONEABLE.equals(target) || SERIALIZABLE.equals(target))
+            {
+                return true;
+            }
+            if (!isArray(target))
+            {
+                return false;
+            }
+
+            ArrayType targetArray = parseArray(target);
+            ArrayType sourceArray = parseArray(source);
+            return targetArray.dimensions == sourceArray.dimensions &&
+                   targetArray.isObjectElement &&
+                   sourceArray.isObjectElement &&
+                   isAssignableFrom(targetArray.elementType, sourceArray.elementType);
+        }
+
+        private ClassInfo getClassInfo(String name)
+        {
+            return infoCache.computeIfAbsent(name, this::loadClassInfo);
+        }
+
+        private ClassInfo loadClassInfo(String name)
+        {
+            ClassNode classNode = context.getClass(name);
+            if (classNode != null)
+            {
+                return new ClassInfo(
+                        classNode.name,
+                        classNode.superName,
+                        classNode.interfaces,
+                        (classNode.access & Opcodes.ACC_INTERFACE) != 0
+                );
+            }
+
+            try
+            {
+                Class<?> clazz = Class.forName(name.replace('/', '.'), false, getClass().getClassLoader());
+                Class<?> superClass = clazz.getSuperclass();
+                List<String> interfaces = new ArrayList<>();
+                for (Class<?> iface : clazz.getInterfaces())
+                {
+                    interfaces.add(iface.getName().replace('.', '/'));
+                }
+                return new ClassInfo(
+                        name,
+                        superClass == null ? null : superClass.getName().replace('.', '/'),
+                        interfaces,
+                        clazz.isInterface()
+                );
+            }
+            catch (ClassNotFoundException | LinkageError ignored)
+            {
+                return null;
+            }
+        }
+
+        private static boolean isArray(String name)
+        {
+            return name.startsWith("[");
+        }
+
+        private static ArrayType parseArray(String name)
+        {
+            int dimensions = 0;
+            while (dimensions < name.length() && name.charAt(dimensions) == '[')
+            {
+                dimensions++;
+            }
+            boolean isObjectElement = dimensions < name.length() && name.charAt(dimensions) == 'L';
+            String elementType = isObjectElement
+                    ? name.substring(dimensions + 1, name.length() - 1)
+                    : name.substring(dimensions);
+            return new ArrayType(dimensions, elementType, isObjectElement);
+        }
+    }
+
+    private record ClassInfo(String name, String superName, List<String> interfaces, boolean isInterface)
+    {
+    }
+
+    private record ArrayType(int dimensions, String elementType, boolean isObjectElement)
+    {
     }
 }

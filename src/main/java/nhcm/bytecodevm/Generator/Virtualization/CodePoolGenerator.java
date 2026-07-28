@@ -1,22 +1,22 @@
 package nhcm.bytecodevm.Generator.Virtualization;
 
 import lombok.Getter;
+import nhcm.bytecodevm.AdvInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.AdvInsn.Expr;
+import nhcm.bytecodevm.AdvInsn.Local;
+import nhcm.bytecodevm.AdvInsn.SwitchCase;
 import nhcm.bytecodevm.Config.BytecodeVMConfig;
 import nhcm.bytecodevm.Data.CompiledMethod;
 import nhcm.bytecodevm.Data.VMInsn.VMInstruction;
 import nhcm.bytecodevm.Data.VMInsn.VMMethod;
 import nhcm.bytecodevm.Enums.Acc;
 import nhcm.bytecodevm.Enums.Opcs;
-import nhcm.bytecodevm.AdvInsn.AdvInsnBuilder;
-import nhcm.bytecodevm.AdvInsn.Expr;
-import nhcm.bytecodevm.AdvInsn.Local;
-import nhcm.bytecodevm.AdvInsn.SwitchCase;
 import nhcm.bytecodevm.Generator.Abstract.ClassObj;
 import nhcm.bytecodevm.Generator.GlobalClass.VMCodePoolGenerator;
 import nhcm.bytecodevm.Generator.GlobalClass.VMProgramGenerator;
-import nhcm.bytecodevm.Utils.*;
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
 import nhcm.bytecodevm.Utils.Builder.InsnBuilder;
+import nhcm.bytecodevm.Utils.*;
 import org.objectweb.asm.ConstantDynamic;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.Type;

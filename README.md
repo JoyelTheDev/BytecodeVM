@@ -9,15 +9,6 @@ This obfuscator is used for demo only, not for production use.
 It can make your program hundreds of times slower. 
 Its purpose is to demonstrate the concept of bytecode virtualization.
 
-## Features
-
-- Pure Java bytecode virtualization powered by ASM.
-- Configurable VM layout: one VM for all targets, per class, per method, or per package.
-- Opcode mutation support for generated VM programs.
-- Method include/exclusion rules for precise targeting.
-- Generated VM support classes and code pools are injected into the output jar.
-- Colored SLF4J + Logback console output in a Minecraft-style format.
-
 ## Requirements
 
 - JDK 21
@@ -32,7 +23,7 @@ Its purpose is to demonstrate the concept of bytecode virtualization.
 The runnable fat jar is generated at:
 
 ```text
-build/libs/BytecodeVM-Indev-full.jar
+build/libs/BytecodeVM.jar
 ```
 
 ## Usage
@@ -40,19 +31,19 @@ build/libs/BytecodeVM-Indev-full.jar
 Create a default config:
 
 ```powershell
-java -jar build\libs\BytecodeVM-Indev-full.jar --defaultconfig
+java -jar build\libs\BytecodeVM.jar --defaultconfig
 ```
 
 Run obfuscation:
 
 ```powershell
-java -jar build\libs\BytecodeVM-Indev-full.jar --config defaultconfig.json
+java -jar build\libs\BytecodeVM.jar --config defaultconfig.json
 ```
 
 Set log level when debugging:
 
 ```powershell
-java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM-Indev-full.jar --config defaultconfig.json
+java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defaultconfig.json
 ```
 
 ## Config
@@ -61,29 +52,51 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM-Indev-full.jar --
 {
   "input": "./input.jar",
   "output": "./output.jar",
-  "createMode": "PER_CLASS",
-  "location": "SAME_PACKAGE_AS_TARGET",
-  "mutateMode": "ALL_RANDOM_INT",
-  "renameMode": "DISABLE",
-  "interpretMode": "SAVE_ONLY_REQUIRED_INSTRUCTION",
-  "includes": ["* *(*)*"],
+  "createMode": "PER_CLASS", // ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
+  "location": "SAME_PACKAGE_AS_TARGET", // SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
+  "mutateMode": "ALL_RANDOM_INT", // ALL_RANDOM_INT, ALL_RESORT, ALL_AUTO_CHOOSE, NO_CHANGE
+  "renameMode": "DISABLE", // ENABLE, DISABLE
+  "interpretMode": "SAVE_ONLY_REQUIRED_INSTRUCTION", // SAVE_ALL_INSTRUCTION, SAVE_ONLY_REQUIRED_INSTRUCTION
+  "protectCodePool": true,
+  "virtualizeInstructionAddresses": true,
+  "encryptOperands": true,
+  "perMethodOpcodeMap": true,
+  "shuffleConstants": true,
+  "bindConstantsToOperands": true,
+  "splitCodeStreams": true,
+  "shuffleInstructionBlocks": true,
+  "obfuscateDispatch": true,
+  "dynamicCodePoolBuild": true,
+  "includes": ["*", "* *(*)*"],
   "exclusions": ["* <init>(*)V", "* <clinit>()V"]
 }
 ```
 
 ### Options
 
-| Field | Values | Description |
-|---|---|---|
-| `input` | Path | Input jar to transform. |
-| `output` | Path | Output jar path. |
-| `createMode` | `ONE_FOR_ALL`, `PER_METHOD`, `PER_CLASS`, `PER_PACKAGE` | Controls how VM classes are grouped. |
-| `location` | `SAME_PACKAGE_AS_TARGET`, `NEW_PACKAGE`, `ONE_PACKAGE` | Controls where generated VM classes are placed. |
-| `mutateMode` | `ALL_RANDOM_INT`, `ALL_RESORT`, `ALL_AUTO_CHOOSE`, `NO_CHANGE` | Controls opcode mutation strategy. |
-| `renameMode` | `ENABLE`, `DISABLE` | Controls renaming behavior. |
-| `interpretMode` | `SAVE_ALL_INSTRUCTION`, `SAVE_ONLY_REQUIRED_INSTRUCTION` | Controls how many interpreter branches are emitted. |
-| `includes` | Match expressions | Methods/classes to virtualize. |
-| `exclusions` | Match expressions | Methods/classes to skip. Exclusions win over includes. |
+`input`, `output`, `createMode`, `location`, `mutateMode`, `renameMode`, `interpretMode`, `includes`, and `exclusions` are required. The boolean protection fields are optional and default to `true` when omitted.
+
+| Field | Values | Default | Description |
+|---|---|---|---|
+| `input` | Path | Required | Input jar to transform. |
+| `output` | Path | Required | Output jar path. |
+| `createMode` | `ONE_FOR_ALL`, `PER_METHOD`, `PER_CLASS`, `PER_PACKAGE` | Required | Controls how VM classes are grouped. |
+| `location` | `SAME_PACKAGE_AS_TARGET`, `NEW_PACKAGE`, `ONE_PACKAGE` | Required | Controls where generated VM classes are placed. |
+| `mutateMode` | `ALL_RANDOM_INT`, `ALL_RESORT`, `ALL_AUTO_CHOOSE`, `NO_CHANGE` | Required | Controls opcode mutation strategy. |
+| `renameMode` | `ENABLE`, `DISABLE` | Required | Controls renaming behavior. |
+| `interpretMode` | `SAVE_ALL_INSTRUCTION`, `SAVE_ONLY_REQUIRED_INSTRUCTION` | Required | Controls how many interpreter branches are emitted. |
+| `protectCodePool` | `true`, `false` | `true` | Enables code-pool protection. When disabled, most protection sub-options below have no effect. |
+| `virtualizeInstructionAddresses` | `true`, `false` | `true` | Encodes virtual instruction addresses instead of using direct layout addresses. |
+| `encryptOperands` | `true`, `false` | `true` | Encrypts virtual instruction operands. |
+| `perMethodOpcodeMap` | `true`, `false` | `true` | Uses method-specific opcode mapping and decoding. |
+| `shuffleConstants` | `true`, `false` | `true` | Shuffles constants stored in generated VM programs. |
+| `bindConstantsToOperands` | `true`, `false` | `true` | Binds constant references to operand data so constant indexes are not stored plainly. |
+| `splitCodeStreams` | `true`, `false` | `true` | Splits VM program data into separate code/layout/operand streams. |
+| `shuffleInstructionBlocks` | `true`, `false` | `true` | Shuffles virtual instruction blocks before writing code-pool data. |
+| `obfuscateDispatch` | `true`, `false` | `true` | Obfuscates interpreter dispatch selection. |
+| `dynamicCodePoolBuild` | `true`, `false` | `true` | Builds code-pool program data dynamically in generated bytecode instead of storing everything plainly. |
+| `includes` | Match expressions | Required | Methods/classes to virtualize. |
+| `exclusions` | Match expressions | Required | Methods/classes to skip. Exclusions win over includes. |
 
 ## Include / Exclude Match Expressions
 
@@ -139,16 +152,6 @@ Annotation matching checks both runtime-visible and runtime-invisible annotation
   ]
 }
 ```
-
-## Logging
-
-Console logs use a compact bracketed format:
-
-```text
-[20:30:33] [main/INFO ] [Obfuscator]: Scanning input file for methods to obfuscate
-```
-
-Different operation types use different message colors, such as scanning, jar reads/writes, virtualization, completion, and errors. Logs are console-only by default and are not written to `./logs`.
 
 ## Notes
 

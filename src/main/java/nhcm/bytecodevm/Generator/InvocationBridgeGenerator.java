@@ -4,11 +4,7 @@ import nhcm.bytecodevm.Utils.Builder.InsnBuilder;
 import nhcm.bytecodevm.Utils.TypeUtils;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.tree.AbstractInsnNode;
-import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.InvokeDynamicInsnNode;
-import org.objectweb.asm.tree.MethodInsnNode;
-import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.*;
 
 import java.util.IdentityHashMap;
 import java.util.Map;

@@ -23,6 +23,11 @@ public class VMSetGenerator
 {
     private static final int CODE_POOL_METHOD_SIZE_LIMIT = 55_000;
 
+    public interface ProgressListener
+    {
+        void update(int completed, int total, String status);
+    }
+
     private final Map<MethodNode, ClassNode> methodsToObfuscate = new LinkedHashMap<>();
     private final Set<Integer> uniqueCodeIds = new LinkedHashSet<>();
 
@@ -86,8 +91,18 @@ public class VMSetGenerator
 
     public VirtualizationResult compile()
     {
+        return compile(null);
+    }
+
+    public VirtualizationResult compile(ProgressListener progress)
+    {
         compiledMethods.clear();
         codePoolGenerators.clear();
+        int methodCount = methodsToObfuscate.size();
+        int totalSteps = methodCount * 2 + 3;
+        int completedSteps = 0;
+        reportProgress(progress, completedSteps, totalSteps, "Compiling methods");
+
         for (Map.Entry<MethodNode, ClassNode> entry : methodsToObfuscate.entrySet())
         {
             ClassNode owner = entry.getValue();
@@ -98,26 +113,51 @@ public class VMSetGenerator
 
             int codeId = generateUniqueCodeId();
             compiledMethods.add(new CompiledMethod(owner, method, vmMethod, codeId, method.desc, MethodUtils.isStatic(method)));
+            completedSteps++;
+            reportProgress(progress, completedSteps, totalSteps, "Compiling methods");
         }
 
-        createCodePools();
+        reportProgress(progress, completedSteps, totalSteps, "Planning pools");
+        createCodePools(progress, completedSteps, totalSteps, methodCount);
+        completedSteps += methodCount + 1;
+        reportProgress(progress, completedSteps, totalSteps, "Built code pools");
 
+        reportProgress(progress, completedSteps, totalSteps, "Generating VM");
         ClassNode vmClass = new VMGenerator(vmClassName, codePoolGenerators, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config).getClassNode();
+        completedSteps++;
+        reportProgress(progress, completedSteps, totalSteps, "Generated VM");
+
         List<ClassNode> codePoolClasses = new ArrayList<>();
         for (CodePoolGenerator codePoolGenerator : codePoolGenerators)
         {
             codePoolClasses.add(codePoolGenerator.getClassNode());
         }
 
+        reportProgress(progress, completedSteps, totalSteps, "Replacing methods");
         Map<String, ClassNode> transformedTargets = new MethodsReplacer(compiledMethods, vmClassName).transform();
+        completedSteps++;
+        reportProgress(progress, completedSteps, totalSteps, "Replaced methods");
         return new VirtualizationResult(transformedTargets, vmClass, codePoolClasses);
     }
 
-    private void createCodePools()
+    private static void reportProgress(ProgressListener progress, int completed, int total, String status)
     {
-        List<List<CompiledMethod>> partitions = partitionCompiledMethods();
+        if (progress != null)
+        {
+            progress.update(completed, total, status);
+        }
+    }
+
+    private void createCodePools(ProgressListener progress, int completedSteps, int totalSteps, int methodCount)
+    {
+        List<List<CompiledMethod>> partitions = partitionCompiledMethods(progress, completedSteps, totalSteps);
         for (int index = 0; index < partitions.size(); index++)
         {
+            reportProgress(
+                    progress,
+                    completedSteps + methodCount,
+                    totalSteps,
+                    "Building pool " + (index + 1) + "/" + partitions.size());
             String poolClassName = partitions.size() == 1
                     ? codePoolClassName
                     : codePoolClassName + '$' + index;
@@ -131,13 +171,19 @@ public class VMSetGenerator
         }
     }
 
-    private List<List<CompiledMethod>> partitionCompiledMethods()
+    private List<List<CompiledMethod>> partitionCompiledMethods(ProgressListener progress, int completedSteps, int totalSteps)
     {
         List<List<CompiledMethod>> partitions = new ArrayList<>();
         List<CompiledMethod> current = new ArrayList<>();
 
-        for (CompiledMethod method : compiledMethods)
+        for (int index = 0; index < compiledMethods.size(); index++)
         {
+            CompiledMethod method = compiledMethods.get(index);
+            reportProgress(
+                    progress,
+                    completedSteps + index + 1,
+                    totalSteps,
+                    "Planning " + (index + 1) + "/" + compiledMethods.size());
             current.add(method);
             if (fitsInCodePool(current))
             {

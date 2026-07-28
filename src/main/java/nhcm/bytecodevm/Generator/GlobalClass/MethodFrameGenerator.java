@@ -1,18 +1,20 @@
 package nhcm.bytecodevm.Generator.GlobalClass;
 
 import lombok.Getter;
-import nhcm.bytecodevm.Enums.Acc;
+import nhcm.bytecodevm.AdvInsn.AdvInsnBuilder;
 import nhcm.bytecodevm.AdvInsn.Expr;
 import nhcm.bytecodevm.AdvInsn.FieldAccess;
 import nhcm.bytecodevm.AdvInsn.Local;
+import nhcm.bytecodevm.Enums.Acc;
 import nhcm.bytecodevm.Generator.Abstract.ClassObj;
-import nhcm.bytecodevm.AdvInsn.AdvInsnBuilder;
-import nhcm.bytecodevm.Utils.ClassUtils;
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
+import nhcm.bytecodevm.Utils.ClassUtils;
 import nhcm.bytecodevm.Utils.FieldUtils;
 import nhcm.bytecodevm.Utils.MethodUtils;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.tree.*;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.MethodNode;
 
 import java.util.List;
 

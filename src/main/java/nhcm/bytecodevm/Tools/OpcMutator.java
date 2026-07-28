@@ -4,7 +4,8 @@ import nhcm.bytecodevm.Enums.Opcs;
 import nhcm.bytecodevm.Utils.Collection.BiMap;
 import nhcm.bytecodevm.Utils.RandomUtils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class OpcMutator
 {
