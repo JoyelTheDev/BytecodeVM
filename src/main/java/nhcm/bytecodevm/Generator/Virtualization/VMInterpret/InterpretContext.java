@@ -5,6 +5,7 @@ import nhcm.bytecodevm.AdvInsn.Expr;
 import nhcm.bytecodevm.AdvInsn.FieldAccess;
 import nhcm.bytecodevm.AdvInsn.Local;
 import nhcm.bytecodevm.Generator.GlobalClass.MethodFrameLayout;
+import nhcm.bytecodevm.Generator.GlobalClass.VMProgramLayout;
 import nhcm.bytecodevm.Generator.Virtualization.VMRuntimeLayout;
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
 import org.objectweb.asm.tree.LabelNode;
@@ -77,14 +78,29 @@ public final class InterpretContext
 
     public InterpretContext(String vmClassName, String frameClassName, String programClassName, LabelNode loopStart)
     {
-        this.vmClassName = vmClassName;
-        this.frameClassName = frameClassName;
-        this.programClassName = programClassName;
-        this.frame = new MethodFrameLayout(frameClassName);
-        this.vm = new VMRuntimeLayout(
+        this(
                 vmClassName,
-                "L" + frameClassName + ";",
-                programClassName == null ? null : "L" + programClassName + ";");
+                new MethodFrameLayout(frameClassName),
+                programClassName == null ? null : new VMProgramLayout(programClassName),
+                new VMRuntimeLayout(
+                        vmClassName,
+                        "L" + frameClassName + ";",
+                        programClassName == null ? null : "L" + programClassName + ";"),
+                loopStart);
+    }
+
+    public InterpretContext(
+            String vmClassName,
+            MethodFrameLayout frame,
+            VMProgramLayout program,
+            VMRuntimeLayout vm,
+            LabelNode loopStart)
+    {
+        this.vmClassName = vmClassName;
+        this.frameClassName = frame.owner;
+        this.programClassName = program == null ? null : program.owner;
+        this.frame = frame;
+        this.vm = vm;
         this.loopStart = loopStart;
     }
 

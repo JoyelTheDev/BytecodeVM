@@ -49,6 +49,7 @@ public class VMSetGenerator
     @Getter
     private final List<CodePoolGenerator> codePoolGenerators = new ArrayList<>();
     private final BytecodeVMConfig config;
+    private final GeneratedMemberNamer namer;
 
     public VMSetGenerator(
             String name, String location,
@@ -58,37 +59,39 @@ public class VMSetGenerator
             VMCodePoolGenerator vmCodePoolGenerator,
             BytecodeVMConfig config)
     {
-        this.vmClassName = qualifyClassName(location, name);
-        this.codePoolClassName = vmClassName + "$CodePool";
+        this(name, location, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config, GeneratedMemberNamer.DISABLED);
+    }
+
+    public VMSetGenerator(
+            String name, String location,
+            OpcMutator opcMutator,
+            MethodFrameGenerator methodFrameGenerator,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            GeneratedMemberNamer namer)
+    {
+        this.vmClassName = namer.className(location, name);
+        this.codePoolClassName = namer.className(classPackage(vmClassName), classSimpleName(vmClassName) + "$CodePool");
         this.opcMutator = opcMutator;
         this.methodFrameGenerator = methodFrameGenerator;
         this.vmProgramGenerator = vmProgramGenerator;
         this.vmCodePoolGenerator = vmCodePoolGenerator;
         this.config = config;
+        this.namer = namer;
         this.compiler = new VMMethodCompiler(opcMutator);
     }
 
-    private static String qualifyClassName(String location, String name)
+    private static String classPackage(String className)
     {
-        Objects.requireNonNull(location, "location");
-        Objects.requireNonNull(name, "name");
-        String normalizedLocation = location.replace('.', '/');
-        while (normalizedLocation.startsWith("/"))
-        {
-            normalizedLocation = normalizedLocation.substring(1);
-        }
-        while (normalizedLocation.endsWith("/"))
-        {
-            normalizedLocation = normalizedLocation.substring(0, normalizedLocation.length() - 1);
-        }
-        String normalizedName = name.replace('.', '/');
-        while (normalizedName.startsWith("/"))
-        {
-            normalizedName = normalizedName.substring(1);
-        }
-        return normalizedLocation.isEmpty()
-                ? normalizedName
-                : normalizedLocation + '/' + normalizedName;
+        int slash = className.lastIndexOf('/');
+        return slash < 0 ? "" : className.substring(0, slash);
+    }
+
+    private static String classSimpleName(String className)
+    {
+        int slash = className.lastIndexOf('/');
+        return slash < 0 ? className : className.substring(slash + 1);
     }
 
     public VirtualizationResult compile()
@@ -144,7 +147,7 @@ public class VMSetGenerator
         reportProgress(progress, completedSteps, totalSteps, "Built code pools");
 
         reportProgress(progress, completedSteps, totalSteps, "Generating VM");
-        ClassNode vmClass = new VMGenerator(vmClassName, codePoolGenerators, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config).getClassNode();
+        ClassNode vmClass = new VMGenerator(vmClassName, codePoolGenerators, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config, namer).getClassNode();
         completedSteps++;
         reportProgress(progress, completedSteps, totalSteps, "Generated VM");
 
@@ -180,18 +183,26 @@ public class VMSetGenerator
                     completedSteps + plannedSteps,
                     totalSteps,
                     "Building pool " + (index + 1) + "/" + partitions.size());
-            String poolClassName = partitions.size() == 1
-                    ? codePoolClassName
-                    : codePoolClassName + '$' + index;
+            String poolClassName = poolClassName(index, partitions.size());
             codePoolGenerators.add(new CodePoolGenerator(
                     poolClassName,
                     partitions.get(index),
                     vmProgramGenerator,
                     vmCodePoolGenerator,
                     config,
-                    true));
+                    true,
+                    namer));
         }
         return plannedSteps + 1;
+    }
+
+    private String poolClassName(int index, int partitionCount)
+    {
+        if (partitionCount == 1 || !namer.enabled())
+        {
+            return partitionCount == 1 ? codePoolClassName : codePoolClassName + '$' + index;
+        }
+        return namer.className(classPackage(vmClassName), classSimpleName(codePoolClassName) + '$' + index);
     }
 
     private List<List<CompiledMethod>> partitionCompiledMethods(ProgressListener progress, int completedSteps, int totalSteps)

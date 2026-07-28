@@ -9,6 +9,7 @@ import nhcm.bytecodevm.Config.BytecodeVMConfig;
 import nhcm.bytecodevm.Enums.Acc;
 import nhcm.bytecodevm.Enums.Opcs;
 import nhcm.bytecodevm.Generator.Abstract.ClassObj;
+import nhcm.bytecodevm.Generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.Generator.GlobalClass.*;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Array.ArrayLengthBranch;
 import nhcm.bytecodevm.Generator.Virtualization.VMInterpret.Impl.Array.LoadArrayBranch;
@@ -148,6 +149,8 @@ public class VMGenerator extends ClassObj
     private final VMProgramLayout programLayout;
     private final VMRuntimeLayout vmLayout;
     private final BytecodeVMConfig config;
+    private final GeneratedMemberNamer namer;
+    private final Map<Integer, String> interpretChunkNames = new HashMap<>();
     private final int dispatchSalt;
 
     public VMGenerator(
@@ -159,6 +162,19 @@ public class VMGenerator extends ClassObj
             VMCodePoolGenerator vmCodePoolGenerator,
             BytecodeVMConfig config)
     {
+        this(className, codePoolGenerators, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config, GeneratedMemberNamer.DISABLED);
+    }
+
+    public VMGenerator(
+            String className,
+            List<CodePoolGenerator> codePoolGenerators,
+            OpcMutator opcMutator,
+            MethodFrameGenerator methodFrameGenerator,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            GeneratedMemberNamer namer)
+    {
         super(className);
         this.codePoolGenerators = List.copyOf(codePoolGenerators);
         this.opcMutator = opcMutator;
@@ -167,14 +183,15 @@ public class VMGenerator extends ClassObj
         this.vmCodePoolGenerator = vmCodePoolGenerator;
         this.frameLayout = methodFrameGenerator.getLayout();
         this.programLayout = vmProgramGenerator.getLayout();
-        this.vmLayout = new VMRuntimeLayout(className, methodFrameGenerator.descriptor(), vmProgramGenerator.descriptor());
+        this.vmLayout = new VMRuntimeLayout(className, methodFrameGenerator.descriptor(), vmProgramGenerator.descriptor(), namer);
         this.config = config;
+        this.namer = namer;
         this.dispatchSalt = nhcm.bytecodevm.Utils.RandomUtils.randomInt();
         ClassNode cn = ClassUtils.newClassNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, className);
         InsnUtils.addPrivateInit(cn);
         this.classNode = cn;
         String vmCodePoolSign = vmCodePoolGenerator.descriptor();
-        cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, "CODE_POOLS", "Ljava/util/List;", "Ljava/util/List<" + vmCodePoolSign + ">;"));
+        cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.codePools.name(), vmLayout.codePools.descriptor(), "Ljava/util/List<" + vmCodePoolSign + ">;"));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.fieldHandles.name(), vmLayout.fieldHandles.descriptor(), "Ljava/util/Map<Ljava/lang/String;Ljava/lang/invoke/MethodHandle;>;"));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.methodHandles.name(), vmLayout.methodHandles.descriptor(), "Ljava/util/Map<Ljava/lang/String;Ljava/lang/invoke/MethodHandle;>;"));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.methodTypes.name(), vmLayout.methodTypes.descriptor(), "Ljava/util/Map<Ljava/lang/String;Ljava/lang/invoke/MethodType;>;"));
@@ -238,8 +255,9 @@ public class VMGenerator extends ClassObj
         AdvInsnBuilder ib = new AdvInsnBuilder(methodNode);
         InterpretContext context = new InterpretContext(
                 className(),
-                frameLayout.owner,
-                programLayout.owner,
+                frameLayout,
+                programLayout,
+                vmLayout,
                 loopStart);
 
         // int[] code = program.opcodeStream();
@@ -494,7 +512,7 @@ public class VMGenerator extends ClassObj
 
     private MethodNode genLayoutValueMethod()
     {
-        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, "layoutValue", "(" + vmProgramGenerator.descriptor() + "II)I");
+        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, vmLayout.layoutValue.name(), vmLayout.layoutValue.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local program = ib.getLocal("program", programLayout.owner, 0);
         Local instructionIndex = ib.getLocal("instructionIndex", "I", 1);
@@ -515,7 +533,7 @@ public class VMGenerator extends ClassObj
 
     private MethodNode genMixMethod()
     {
-        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, "mix", "(IIII)I");
+        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, vmLayout.mix.name(), vmLayout.mix.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local key = ib.getLocal("key", "I", 0);
         Local a = ib.getLocal("a", "I", 1);
@@ -537,7 +555,7 @@ public class VMGenerator extends ClassObj
 
     private MethodNode genDispatchKeyMethod()
     {
-        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, "dispatchKey", "(I)I");
+        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, vmLayout.dispatchKey.name(), vmLayout.dispatchKey.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local opcode = ib.getLocal("opcode", "I", 0);
         ib.returnValue(dispatchKeyExpr(opcode));
@@ -546,7 +564,7 @@ public class VMGenerator extends ClassObj
 
     private MethodNode genDecodeMaybeStringMethod()
     {
-        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, "decodeMaybeString", "(Ljava/lang/Object;)Ljava/lang/String;");
+        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, vmLayout.decodeMaybeString.name(), vmLayout.decodeMaybeString.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local value = ib.getLocal("value", "java/lang/Object", 0);
         Local encoded = ib.getLocal("encoded", "[Ljava/lang/Object;", 1);
@@ -616,8 +634,9 @@ public class VMGenerator extends ClassObj
 
         InterpretContext context = new InterpretContext(
                 className(),
-                frameLayout.owner,
-                programLayout.owner,
+                frameLayout,
+                programLayout,
+                vmLayout,
                 loopStart);
         SwitchCase[] cases = new SwitchCase[opcodes.size()];
         for (int i = 0; i < opcodes.size(); i++)
@@ -644,7 +663,7 @@ public class VMGenerator extends ClassObj
             });
         }
         Expr selector = config.obfuscateDispatch
-                ? AdvInsnBuilder.callStatic(className(), "dispatchKey", "I", context.opcode())
+                ? AdvInsnBuilder.callStatic(className(), vmLayout.dispatchKey.name(), "I", context.opcode())
                 : context.opcode();
         ib.switchLookup(selector, b -> b.gotoLabel(unknownOpcode), cases);
     }
@@ -660,8 +679,9 @@ public class VMGenerator extends ClassObj
         Local passedInstructionIndex = ib.getLocal("passedInstructionIndex", "I", 6);
         InterpretContext context = new InterpretContext(
                 className(),
-                frameLayout.owner,
-                programLayout.owner,
+                frameLayout,
+                programLayout,
+                vmLayout,
                 null);
         ib.set(context.instructionIndex(), passedInstructionIndex);
         ib.set(context.operandIndex(), AdvInsnBuilder.constant(0));
@@ -689,7 +709,9 @@ public class VMGenerator extends ClassObj
 
     private String interpretChunkName(int chunkIndex)
     {
-        return "interpretChunk$" + chunkIndex;
+        return interpretChunkNames.computeIfAbsent(
+                chunkIndex,
+                index -> namer.method(className(), "interpretChunk$" + index, interpretChunkDescriptor()));
     }
 
     private String interpretHandlerDescriptor()
@@ -919,7 +941,7 @@ public class VMGenerator extends ClassObj
                     b.set(candidate, AdvInsnBuilder.callInterface(
                             pool,
                             vmCodePoolGenerator.className(),
-                            "find",
+                            vmCodePoolGenerator.find.name(),
                             programLayout.owner,
                             codeId));
                     b.ifCondition(
@@ -1529,8 +1551,8 @@ public class VMGenerator extends ClassObj
     {
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
-                "invoke",
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/invoke/MethodType;ZLjava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
+                vmLayout.invoke.name(),
+                vmLayout.invoke.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local owner = ib.getLocal("owner", "java/lang/String", 0);
         Local name = ib.getLocal("name", "java/lang/String", 1);
@@ -1832,8 +1854,8 @@ public class VMGenerator extends ClassObj
     {
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
-                "cloneArray",
-                "(Ljava/lang/Object;)Ljava/lang/Object;");
+                vmLayout.cloneArray.name(),
+                vmLayout.cloneArray.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local array = ib.getLocal("array", "java/lang/Object", 0);
         Local length = ib.getLocal("length", "I", 1);
@@ -1867,8 +1889,8 @@ public class VMGenerator extends ClassObj
     {
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
-                "loadOwner",
-                "(Ljava/lang/String;)Ljava/lang/Class;");
+                vmLayout.loadOwner.name(),
+                vmLayout.loadOwner.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local owner = ib.getLocal("owner", "java/lang/String", 0);
         ib.returnValue(AdvInsnBuilder.callStatic(
@@ -1888,8 +1910,8 @@ public class VMGenerator extends ClassObj
     {
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
-                "loadOwner",
-                "(Ljava/lang/String;Ljava/lang/ClassLoader;)Ljava/lang/Class;");
+                vmLayout.loadOwnerWithLoader.name(),
+                vmLayout.loadOwnerWithLoader.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local owner = ib.getLocal("owner", "java/lang/String", 0);
         Local loader = ib.getLocal("loader", "java/lang/ClassLoader", 1);
@@ -1953,8 +1975,8 @@ public class VMGenerator extends ClassObj
     {
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
-                "rethrow",
-                "(Ljava/lang/Throwable;)Ljava/lang/RuntimeException;");
+                vmLayout.rethrow.name(),
+                vmLayout.rethrow.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         ib.throwValue(ib.getLocal("throwable", "java/lang/Throwable", 0));
         return method;
@@ -1964,8 +1986,8 @@ public class VMGenerator extends ClassObj
     {
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.SYNCHRONIZED},
-                "monitorFor",
-                "(Ljava/lang/Object;)Ljava/util/concurrent/locks/ReentrantLock;");
+                vmLayout.monitorFor.name(),
+                vmLayout.monitorFor.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local monitor = ib.getLocal("monitor", "java/lang/Object", 0);
         Local lock = ib.getLocal("lock", "java/util/concurrent/locks/ReentrantLock", 1);
@@ -2099,7 +2121,7 @@ public class VMGenerator extends ClassObj
     {
         return AdvInsnBuilder.callStatic(
                 className(),
-                "layoutValue",
+                vmLayout.layoutValue.name(),
                 "I",
                 program,
                 instructionIndex,
@@ -2108,7 +2130,7 @@ public class VMGenerator extends ClassObj
 
     private Expr mixCall(Expr key, Expr a, Expr b, Expr c)
     {
-        return AdvInsnBuilder.callStatic(className(), "mix", "I", key, a, b, c);
+        return AdvInsnBuilder.callStatic(className(), vmLayout.mix.name(), "I", key, a, b, c);
     }
 
     private Expr handlerMixCall(Expr methodKey, Expr handlerSlot, int field)
@@ -2136,7 +2158,7 @@ public class VMGenerator extends ClassObj
 
     private Expr decodeMaybeString(Expr value)
     {
-        return AdvInsnBuilder.callStatic(className(), "decodeMaybeString", "java/lang/String", value);
+        return AdvInsnBuilder.callStatic(className(), vmLayout.decodeMaybeString.name(), "java/lang/String", value);
     }
 
     private static void mixRound(AdvInsnBuilder ib, Local x, Expr value, int salt)

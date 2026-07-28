@@ -2,10 +2,12 @@ package nhcm.bytecodevm.Generator.Virtualization;
 
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
 import nhcm.bytecodevm.Utils.Builder.MethodRef;
+import nhcm.bytecodevm.Generator.GeneratedMemberNamer;
 
 public class VMRuntimeLayout
 {
     public final String owner;
+    private final GeneratedMemberNamer namer;
 
     public final FieldRef codePools;
     public final FieldRef fieldHandles;
@@ -21,6 +23,10 @@ public class VMRuntimeLayout
     public final MethodRef decodeNextPc;
     public final MethodRef decodeOriginalPc;
     public final MethodRef decodeOperand;
+    public final MethodRef layoutValue;
+    public final MethodRef mix;
+    public final MethodRef dispatchKey;
+    public final MethodRef decodeMaybeString;
     public final MethodRef methodType;
     public final MethodRef resolveConstant;
     public final MethodRef loadOwner;
@@ -48,12 +54,18 @@ public class VMRuntimeLayout
 
     public VMRuntimeLayout(String owner, String frameDescriptor)
     {
-        this(owner, frameDescriptor, null);
+        this(owner, frameDescriptor, null, GeneratedMemberNamer.DISABLED);
     }
 
     public VMRuntimeLayout(String owner, String frameDescriptor, String programDescriptor)
     {
+        this(owner, frameDescriptor, programDescriptor, GeneratedMemberNamer.DISABLED);
+    }
+
+    public VMRuntimeLayout(String owner, String frameDescriptor, String programDescriptor, GeneratedMemberNamer namer)
+    {
         this.owner = owner;
+        this.namer = namer;
 
         this.codePools = field("CODE_POOLS", "Ljava/util/List;");
         this.fieldHandles = field("FIELD_HANDLES", "Ljava/util/Map;");
@@ -69,6 +81,10 @@ public class VMRuntimeLayout
         this.decodeNextPc = programDescriptor == null ? null : method("decodeNextPc", "(" + programDescriptor + "I)I");
         this.decodeOriginalPc = programDescriptor == null ? null : method("decodeOriginalPc", "(" + programDescriptor + "I)I");
         this.decodeOperand = programDescriptor == null ? null : method("decodeOperand", "(" + programDescriptor + "III)I");
+        this.layoutValue = programDescriptor == null ? null : method("layoutValue", "(" + programDescriptor + "II)I");
+        this.mix = method("mix", "(IIII)I");
+        this.dispatchKey = method("dispatchKey", "(I)I");
+        this.decodeMaybeString = method("decodeMaybeString", "(Ljava/lang/Object;)Ljava/lang/String;");
         this.methodType = method("methodType", "(Ljava/lang/String;)Ljava/lang/invoke/MethodType;");
         this.resolveConstant = method("resolveConstant", "(Ljava/lang/Object;" + frameDescriptor + ")Ljava/lang/Object;");
         this.loadOwner = method("loadOwner", "(Ljava/lang/String;)Ljava/lang/Class;");
@@ -130,11 +146,11 @@ public class VMRuntimeLayout
 
     private FieldRef field(String name, String descriptor)
     {
-        return new FieldRef(owner, name, descriptor);
+        return new FieldRef(owner, namer.field(owner, name), descriptor);
     }
 
     private MethodRef method(String name, String descriptor)
     {
-        return new MethodRef(owner, name, descriptor);
+        return new MethodRef(owner, namer.method(owner, name, descriptor), descriptor);
     }
 }

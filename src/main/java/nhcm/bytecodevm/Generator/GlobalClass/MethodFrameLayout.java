@@ -2,10 +2,12 @@ package nhcm.bytecodevm.Generator.GlobalClass;
 
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
 import nhcm.bytecodevm.Utils.Builder.MethodRef;
+import nhcm.bytecodevm.Generator.GeneratedMemberNamer;
 
 public class MethodFrameLayout
 {
     public final String owner;
+    private final GeneratedMemberNamer namer;
 
     public final FieldRef locals;
     public final FieldRef stack;
@@ -34,7 +36,13 @@ public class MethodFrameLayout
 
     public MethodFrameLayout(String owner)
     {
+        this(owner, GeneratedMemberNamer.DISABLED);
+    }
+
+    public MethodFrameLayout(String owner, GeneratedMemberNamer namer)
+    {
         this.owner = owner;
+        this.namer = namer;
 
         this.locals = field("locals", "[Ljava/lang/Object;");
         this.stack = field("stack", "[Ljava/lang/Object;");
@@ -64,11 +72,11 @@ public class MethodFrameLayout
 
     private FieldRef field(String name, String descriptor)
     {
-        return new FieldRef(owner, name, descriptor);
+        return new FieldRef(owner, namer.field(owner, name), descriptor);
     }
 
     private MethodRef method(String name, String descriptor)
     {
-        return new MethodRef(owner, name, descriptor);
+        return new MethodRef(owner, namer.method(owner, name, descriptor), descriptor);
     }
 }

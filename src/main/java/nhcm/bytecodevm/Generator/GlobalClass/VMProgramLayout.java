@@ -2,10 +2,12 @@ package nhcm.bytecodevm.Generator.GlobalClass;
 
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
 import nhcm.bytecodevm.Utils.Builder.MethodRef;
+import nhcm.bytecodevm.Generator.GeneratedMemberNamer;
 
 public class VMProgramLayout
 {
     public final String owner;
+    private final GeneratedMemberNamer namer;
 
     public final FieldRef opcodeStreamField;
     public final FieldRef operandStreamField;
@@ -30,7 +32,13 @@ public class VMProgramLayout
 
     public VMProgramLayout(String owner)
     {
+        this(owner, GeneratedMemberNamer.DISABLED);
+    }
+
+    public VMProgramLayout(String owner, GeneratedMemberNamer namer)
+    {
         this.owner = owner;
+        this.namer = namer;
 
         this.opcodeStreamField = field("opcodeStream", "[I");
         this.operandStreamField = field("operandStream", "[I");
@@ -56,11 +64,11 @@ public class VMProgramLayout
 
     private FieldRef field(String name, String descriptor)
     {
-        return new FieldRef(owner, name, descriptor);
+        return new FieldRef(owner, namer.field(owner, name), descriptor);
     }
 
     private MethodRef method(String name, String descriptor)
     {
-        return new MethodRef(owner, name, descriptor);
+        return new MethodRef(owner, namer.method(owner, name, descriptor), descriptor);
     }
 }

@@ -2,12 +2,14 @@ package nhcm.bytecodevm.Generator.Virtualization;
 
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
 import nhcm.bytecodevm.Utils.Builder.MethodRef;
+import nhcm.bytecodevm.Generator.GeneratedMemberNamer;
 
 public class CodePoolLayout
 {
     public final String owner;
     public final String programDescriptor;
     public final String codePoolDescriptor;
+    private final GeneratedMemberNamer namer;
 
     public final FieldRef instance;
     public final FieldRef opcodeStreams;
@@ -28,9 +30,20 @@ public class CodePoolLayout
 
     public CodePoolLayout(String owner, String codePoolDescriptor, String programDescriptor)
     {
+        this(owner, codePoolDescriptor, programDescriptor, GeneratedMemberNamer.DISABLED, null);
+    }
+
+    public CodePoolLayout(
+            String owner,
+            String codePoolDescriptor,
+            String programDescriptor,
+            GeneratedMemberNamer namer,
+            String findName)
+    {
         this.owner = owner;
         this.codePoolDescriptor = codePoolDescriptor;
         this.programDescriptor = programDescriptor;
+        this.namer = namer;
 
         this.instance = field("INSTANCE", codePoolDescriptor);
         this.opcodeStreams = field("OPCODE_STREAMS", "[[I");
@@ -44,7 +57,9 @@ public class CodePoolLayout
         this.maxStack = field("MAX_STACK", "[I");
 
         this.init = method("<init>", "()V");
-        this.find = method("find", "(I)" + programDescriptor);
+        this.find = findName == null
+                ? method("find", "(I)" + programDescriptor)
+                : methodWithName(findName, "(I)" + programDescriptor);
         this.mix = method("mix", "(IIII)I");
         this.arrayMix = method("arrayMix", "(II)I");
         this.unpackInts = method("unpackInts", "([JII)[I");
@@ -52,11 +67,16 @@ public class CodePoolLayout
 
     private FieldRef field(String name, String descriptor)
     {
-        return new FieldRef(owner, name, descriptor);
+        return new FieldRef(owner, namer.field(owner, name), descriptor);
     }
 
     private MethodRef method(String name, String descriptor)
     {
-        return new MethodRef(owner, name, descriptor);
+        return new MethodRef(owner, namer.method(owner, name, descriptor), descriptor);
+    }
+
+    private MethodRef methodWithName(String name, String descriptor)
+    {
+        return new MethodRef(owner, namer.reserveMethodName(owner, name, descriptor), descriptor);
     }
 }

@@ -5,6 +5,7 @@ import nhcm.bytecodevm.AdvInsn.AdvInsnBuilder;
 import nhcm.bytecodevm.AdvInsn.Local;
 import nhcm.bytecodevm.Enums.Acc;
 import nhcm.bytecodevm.Generator.Abstract.ClassObj;
+import nhcm.bytecodevm.Generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.Utils.ClassUtils;
 import nhcm.bytecodevm.Utils.FieldUtils;
 import nhcm.bytecodevm.Utils.MethodUtils;
@@ -20,8 +21,13 @@ public class VMProgramGenerator extends ClassObj
 
     public VMProgramGenerator(String className)
     {
+        this(className, GeneratedMemberNamer.DISABLED);
+    }
+
+    public VMProgramGenerator(String className, GeneratedMemberNamer namer)
+    {
         super(className);
-        this.layout = new VMProgramLayout(className);
+        this.layout = new VMProgramLayout(className, namer);
         ClassNode cn = ClassUtils.newClassNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, className);
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.opcodeStreamField.name(), layout.opcodeStreamField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.operandStreamField.name(), layout.operandStreamField.descriptor()));
@@ -33,15 +39,15 @@ public class VMProgramGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.maxLocalsField.name(), layout.maxLocalsField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.maxStackField.name(), layout.maxStackField.descriptor()));
         cn.methods.add(genConstructor());
-        cn.methods.add(genObjectGetter("opcodeStream", "[I"));
-        cn.methods.add(genObjectGetter("operandStream", "[I"));
-        cn.methods.add(genObjectGetter("layoutStream", "[I"));
-        cn.methods.add(genObjectGetter("constants", "[Ljava/lang/Object;"));
-        cn.methods.add(genObjectGetter("exceptionHandlers", "[I"));
-        cn.methods.add(genObjectGetter("opcodeMap", "[I"));
-        cn.methods.add(genIntGetter("methodKey"));
-        cn.methods.add(genIntGetter("maxLocals"));
-        cn.methods.add(genIntGetter("maxStack"));
+        cn.methods.add(genObjectGetter(layout.opcodeStream, layout.opcodeStreamField));
+        cn.methods.add(genObjectGetter(layout.operandStream, layout.operandStreamField));
+        cn.methods.add(genObjectGetter(layout.layoutStream, layout.layoutStreamField));
+        cn.methods.add(genObjectGetter(layout.constants, layout.constantsField));
+        cn.methods.add(genObjectGetter(layout.exceptionHandlers, layout.exceptionHandlersField));
+        cn.methods.add(genObjectGetter(layout.opcodeMap, layout.opcodeMapField));
+        cn.methods.add(genIntGetter(layout.methodKey, layout.methodKeyField));
+        cn.methods.add(genIntGetter(layout.maxLocals, layout.maxLocalsField));
+        cn.methods.add(genIntGetter(layout.maxStack, layout.maxStackField));
         this.classNode = cn;
     }
 
@@ -79,25 +85,25 @@ public class VMProgramGenerator extends ClassObj
         return method;
     }
 
-    private MethodNode genObjectGetter(String fieldName, String descriptor)
+    private MethodNode genObjectGetter(nhcm.bytecodevm.Utils.Builder.MethodRef getter, nhcm.bytecodevm.Utils.Builder.FieldRef field)
     {
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PUBLIC},
-                fieldName,
-                "()" + descriptor);
+                getter.name(),
+                getter.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
-        ib.returnValue(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.owner, fieldName, descriptor));
+        ib.returnValue(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), field));
         return method;
     }
 
-    private MethodNode genIntGetter(String fieldName)
+    private MethodNode genIntGetter(nhcm.bytecodevm.Utils.Builder.MethodRef getter, nhcm.bytecodevm.Utils.Builder.FieldRef field)
     {
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PUBLIC},
-                fieldName,
-                "()I");
+                getter.name(),
+                getter.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
-        ib.returnValue(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.owner, fieldName, "I"));
+        ib.returnValue(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), field));
         return method;
     }
 }

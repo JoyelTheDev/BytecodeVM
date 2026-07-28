@@ -7,6 +7,7 @@ import nhcm.bytecodevm.AdvInsn.FieldAccess;
 import nhcm.bytecodevm.AdvInsn.Local;
 import nhcm.bytecodevm.Enums.Acc;
 import nhcm.bytecodevm.Generator.Abstract.ClassObj;
+import nhcm.bytecodevm.Generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
 import nhcm.bytecodevm.Utils.ClassUtils;
 import nhcm.bytecodevm.Utils.FieldUtils;
@@ -25,9 +26,14 @@ public class MethodFrameGenerator extends ClassObj
     @Getter
     public final MethodFrameLayout layout;
 
-    public MethodFrameGenerator(String className) {
+    public MethodFrameGenerator(String className)
+    {
+        this(className, GeneratedMemberNamer.DISABLED);
+    }
+
+    public MethodFrameGenerator(String className, GeneratedMemberNamer namer) {
         super(className);
-        this.layout = new MethodFrameLayout(className);
+        this.layout = new MethodFrameLayout(className, namer);
         ClassNode cn = ClassUtils.newClassNode(new Acc[]{Acc.PUBLIC}, className);
         List<FieldNode> fields = cn.fields;
         fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.locals.name(), layout.locals.descriptor()));
@@ -425,7 +431,10 @@ public class MethodFrameGenerator extends ClassObj
 
     private MethodNode genPeekWidthMethod()
     {
-        MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PUBLIC}, "peekWidth", "()I");
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PUBLIC},
+                layout.peekWidth.name(),
+                layout.peekWidth.descriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         ib.returnValue(AdvInsnBuilder.arrayAt(stackWidths(), AdvInsnBuilder.minus(stackPointer(), AdvInsnBuilder.constant(1))));
         return method;

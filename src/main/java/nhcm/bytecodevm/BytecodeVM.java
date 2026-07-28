@@ -17,7 +17,7 @@ public class BytecodeVM
     private static final Logger logger = LoggerFactory.getLogger(BytecodeVM.class);
     private static final AtomicBoolean terminating = new AtomicBoolean(false);
 
-    private static final String version = "1.2.0";
+    private static final String version = "1.3.0";
 
     private static final String defaultConfig = """
             {
@@ -39,7 +39,7 @@ public class BytecodeVM
               "obfuscateDispatch": true,
               "dynamicCodePoolBuild": true,
               "includes": ["*", "* *(*)*"],
-              "exclusions": ["* <init>(*)V", "* <clinit>()V"]
+              "exclusions": []
             }
             """;
 

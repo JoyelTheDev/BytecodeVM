@@ -32,6 +32,7 @@ public class Obfuscator
     private final TargetMatcher targetExclude;
 
     private final List<VMSetGenerator> VMSetGenerators = new ArrayList<>();
+    private final GeneratedMemberNamer namer;
 
     private final MethodFrameGenerator methodFrameGenerator;
     private final ClassNode methodFrameClassNode;
@@ -43,6 +44,7 @@ public class Obfuscator
     public Obfuscator(BytecodeVMConfig config)
     {
         this.config = config;
+        this.namer = new GeneratedMemberNamer(config);
         this.targetExclude = new TargetMatcher();
         for(String exclusion : config.exclusions)
         {
@@ -53,13 +55,14 @@ public class Obfuscator
         {
             targetInclude.add(include);
         }
-        this.methodFrameGenerator = new MethodFrameGenerator("BytecodeVM/MethodFrame");
+        this.methodFrameGenerator = new MethodFrameGenerator(namer.className("BytecodeVM", "MethodFrame"), namer);
         this.methodFrameClassNode = methodFrameGenerator.getClassNode();
-        this.vmProgramGenerator = new VMProgramGenerator("BytecodeVM/VMProgram");
+        this.vmProgramGenerator = new VMProgramGenerator(namer.className("BytecodeVM", "VMProgram"), namer);
         this.vmProgramClassNode = vmProgramGenerator.getClassNode();
         this.vmCodePoolGenerator = new VMCodePoolGenerator(
-                "BytecodeVM/VMCodePool",
-                vmProgramGenerator);
+                namer.className("BytecodeVM", "VMCodePool"),
+                vmProgramGenerator,
+                namer);
         this.vmCodePoolClassNode = vmCodePoolGenerator.getClassNode();
     }
 
@@ -86,6 +89,7 @@ public class Obfuscator
 
     private void obfuscateProcess(JarTransformer.JarContext context)
     {
+        namer.reserveClassNames(context.classes.keySet());
         processJar(context);
         logger.info("{}", LogColors.lifecycle("Adding required VM support classes"));
         context.addClass(methodFrameClassNode);
@@ -261,7 +265,8 @@ public class Obfuscator
                 methodFrameGenerator,
                 vmProgramGenerator,
                 vmCodePoolGenerator,
-                config);
+                config,
+                namer);
     }
 
     private String getVMLocation(String globalLocation, String classPackage, ClassNode classNode)

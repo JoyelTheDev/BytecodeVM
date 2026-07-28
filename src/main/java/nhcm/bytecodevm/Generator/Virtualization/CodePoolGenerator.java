@@ -12,6 +12,7 @@ import nhcm.bytecodevm.Data.VMInsn.VMMethod;
 import nhcm.bytecodevm.Enums.Acc;
 import nhcm.bytecodevm.Enums.Opcs;
 import nhcm.bytecodevm.Generator.Abstract.ClassObj;
+import nhcm.bytecodevm.Generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.Generator.GlobalClass.VMCodePoolGenerator;
 import nhcm.bytecodevm.Generator.GlobalClass.VMProgramGenerator;
 import nhcm.bytecodevm.Utils.Builder.FieldRef;
@@ -65,10 +66,27 @@ public class CodePoolGenerator extends ClassObj
             BytecodeVMConfig config,
             boolean shuffleMethods)
     {
+        this(className, compiledMethods, vmProgramGenerator, vmCodePoolGenerator, config, shuffleMethods, GeneratedMemberNamer.DISABLED);
+    }
+
+    public CodePoolGenerator(
+            String className,
+            List<CompiledMethod> compiledMethods,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            boolean shuffleMethods,
+            GeneratedMemberNamer namer)
+    {
         super(className);
         this.config = Objects.requireNonNull(config, "config");
         this.vmProgramGenerator = vmProgramGenerator;
-        this.layout = new CodePoolLayout(className, vmCodePoolGenerator.descriptor(), vmProgramGenerator.descriptor());
+        this.layout = new CodePoolLayout(
+                className,
+                vmCodePoolGenerator.descriptor(),
+                vmProgramGenerator.descriptor(),
+                namer,
+                vmCodePoolGenerator.find.name());
         if (vmCodePoolGenerator.vmProgramGenerator != vmProgramGenerator)
         {
             throw new IllegalArgumentException("VMCodePoolGenerator uses a different VMProgramGenerator");
@@ -209,7 +227,7 @@ public class CodePoolGenerator extends ClassObj
         Local index = ib.getLocal("index", "I", 1);
         ib.returnValue(AdvInsnBuilder.callStatic(
                 layout.owner,
-                "mix",
+                layout.mix.name(),
                 "I",
                 key,
                 index,
@@ -244,9 +262,9 @@ public class CodePoolGenerator extends ClassObj
                     b.setArray(
                             result,
                             outIndex,
-                            AdvInsnBuilder.bitXor(
-                                    AdvInsnBuilder.cast(AdvInsnBuilder.unsignedShiftRight(word, AdvInsnBuilder.constant(32)), "I"),
-                                    AdvInsnBuilder.callStatic(layout.owner, "arrayMix", "I", key, outIndex)));
+                                    AdvInsnBuilder.bitXor(
+                                            AdvInsnBuilder.cast(AdvInsnBuilder.unsignedShiftRight(word, AdvInsnBuilder.constant(32)), "I"),
+                                    AdvInsnBuilder.callStatic(layout.owner, layout.arrayMix.name(), "I", key, outIndex)));
                     b.ifCondition(
                             AdvInsnBuilder.lessThan(AdvInsnBuilder.plus(outIndex, AdvInsnBuilder.constant(1)), length),
                             odd -> odd.setArray(
@@ -256,7 +274,7 @@ public class CodePoolGenerator extends ClassObj
                                             AdvInsnBuilder.cast(word, "I"),
                                             AdvInsnBuilder.callStatic(
                                                     layout.owner,
-                                                    "arrayMix",
+                                                    layout.arrayMix.name(),
                                                     "I",
                                                     key,
                                                     AdvInsnBuilder.plus(outIndex, AdvInsnBuilder.constant(1))))));
@@ -360,7 +378,7 @@ public class CodePoolGenerator extends ClassObj
             Local result = ib.var(name, "[I");
             ib.set(result, AdvInsnBuilder.callStatic(
                     layout.owner,
-                    "unpackInts",
+                    layout.unpackInts.name(),
                     "[I",
                     packed,
                     AdvInsnBuilder.constant(values.length),
