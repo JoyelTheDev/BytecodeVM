@@ -2,6 +2,7 @@ package nhcm.bytecodevm.generator.virtualization;
 
 import lombok.Getter;
 import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.Condition;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.advInsn.SwitchCase;
@@ -1587,6 +1588,34 @@ public class VMGenerator extends ClassObj
                                                 "Z"))))),
                 b -> b.returnValue(AdvInsnBuilder.callStatic(vmLayout.owner, vmLayout.cloneArray.name(), "java/lang/Object", receiver)));
 
+        ib.ifCondition(
+                isMethodHandleInvoke(owner, name, isStatic),
+                b -> {
+                    coerceArguments(b, arguments, methodType);
+                    b.tryCatch(
+                            invokeMethodHandle -> invokeMethodHandle.returnValue(AdvInsnBuilder.callVirtual(
+                                    asArrayInvokerHandle(
+                                            AdvInsnBuilder.callVirtual(
+                                                    AdvInsnBuilder.callVirtual(
+                                                            AdvInsnBuilder.cast(receiver, "java/lang/invoke/MethodHandle"),
+                                                            "java/lang/invoke/MethodHandle",
+                                                            "asType",
+                                                            "java/lang/invoke/MethodHandle",
+                                                            methodType),
+                                                    "java/lang/invoke/MethodHandle",
+                                                    "asSpreader",
+                                                    "java/lang/invoke/MethodHandle",
+                                                    objectArrayClass(),
+                                                    AdvInsnBuilder.callVirtual(methodType, "java/lang/invoke/MethodType", "parameterCount", "I"))),
+                                    "java/lang/invoke/MethodHandle",
+                                    "invokeExact",
+                                    "java/lang/Object",
+                                    arguments)),
+                            "java/lang/Throwable",
+                            "throwable",
+                            caught -> caught.throwValue(rethrow(caught.getLocal("throwable"))));
+                });
+
         ib.set(key, methodHandleKey(owner, name, methodType, isStatic));
         ib.set(target, AdvInsnBuilder.cast(mapGet(AdvInsnBuilder.staticField(vmLayout.methodHandles), key), "java/lang/invoke/MethodHandle"));
 
@@ -1659,6 +1688,32 @@ public class VMGenerator extends ClassObj
                 "throwable",
                 b -> b.throwValue(rethrow(b.getLocal("throwable"))));
         return method;
+    }
+
+    private static Condition isMethodHandleInvoke(Local owner, Local name, Local isStatic)
+    {
+        return AdvInsnBuilder.and(
+                AdvInsnBuilder.isFalse(isStatic),
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.isTrue(AdvInsnBuilder.callVirtual(
+                                owner,
+                                "java/lang/String",
+                                "equals",
+                                "Z",
+                                AdvInsnBuilder.cast(AdvInsnBuilder.constant("java/lang/invoke/MethodHandle"), "java/lang/Object"))),
+                        AdvInsnBuilder.or(
+                                AdvInsnBuilder.isTrue(AdvInsnBuilder.callVirtual(
+                                        name,
+                                        "java/lang/String",
+                                        "equals",
+                                        "Z",
+                                        AdvInsnBuilder.cast(AdvInsnBuilder.constant("invoke"), "java/lang/Object"))),
+                                AdvInsnBuilder.isTrue(AdvInsnBuilder.callVirtual(
+                                        name,
+                                        "java/lang/String",
+                                        "equals",
+                                        "Z",
+                                        AdvInsnBuilder.cast(AdvInsnBuilder.constant("invokeExact"), "java/lang/Object"))))));
     }
 
     private MethodNode genConstructMethod()
@@ -2340,6 +2395,21 @@ public class VMGenerator extends ClassObj
                 "asType",
                 "java/lang/invoke/MethodHandle",
                 methodType(objectClass(), objectClass(), parameterTypes));
+    }
+
+    private static Expr asArrayInvokerHandle(Expr handle)
+    {
+        return AdvInsnBuilder.callVirtual(
+                handle,
+                "java/lang/invoke/MethodHandle",
+                "asType",
+                "java/lang/invoke/MethodHandle",
+                AdvInsnBuilder.callStatic(
+                        "java/lang/invoke/MethodType",
+                        "methodType",
+                        "java/lang/invoke/MethodType",
+                        objectClass(),
+                        objectArrayClass()));
     }
 
     private void coerceArguments(AdvInsnBuilder ib, Local arguments, Local methodType)

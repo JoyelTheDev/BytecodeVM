@@ -190,7 +190,7 @@ public class MethodFrameGenerator extends ClassObj
         Local value = ib.getLocal("value", "I", 1);
         FieldAccess slot = stackPointer();
         ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
-        ib.setArray(stack(), slot, value);
+        ib.setArray(stackWords(), slot, value);
         ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(1));
         ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(1));
         ib.set(stackPointer(), AdvInsnBuilder.plus(stackPointer(), AdvInsnBuilder.constant(1)));

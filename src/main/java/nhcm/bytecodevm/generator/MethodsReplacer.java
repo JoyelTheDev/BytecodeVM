@@ -58,11 +58,18 @@ public class MethodsReplacer
 
         Type returnType = Type.getReturnType(method.desc);
         Local argArray = ib.var("args", "[Ljava/lang/Object;");
-        ib.set(argArray, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(parameters.length)));
+        int parameterSlots = 0;
+        for (Type parameter : parameters)
+        {
+            parameterSlots += parameter.getSize();
+        }
+        ib.set(argArray, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(parameterSlots)));
+        int parameterLocal = sourceLocal;
         for(int i = 0; i < parameters.length; i++)
         {
-            Local value = ib.getLocal("DOES_NOT_MATTER" + i, parameters[i], sourceLocal + i);
-            ib.setArray(argArray, AdvInsnBuilder.constant(i), value);
+            Local value = ib.getLocal("DOES_NOT_MATTER" + i, parameters[i], parameterLocal);
+            ib.setArray(argArray, AdvInsnBuilder.constant(parameterLocal - sourceLocal), value);
+            parameterLocal += parameters[i].getSize();
         }
         Expr receiver = isStatic
                 ? AdvInsnBuilder.constant(null)
