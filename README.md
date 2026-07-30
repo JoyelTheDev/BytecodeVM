@@ -51,8 +51,8 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
 {
   "input": "./input.jar",
   "output": "./output.jar",
-  "createMode": "PER_CLASS", // ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
-  "location": "SAME_PACKAGE_AS_TARGET", // SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
+  "createMode": "ONE_FOR_ALL", // ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
+  "location": "ONE_PACKAGE", // SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
   "mutateMode": "ALL_RANDOM_INT", // ALL_RANDOM_INT, ALL_RESORT, ALL_AUTO_CHOOSE, NO_CHANGE
   "renameMode": "DISABLE", // ENABLE, DISABLE
   "interpretMode": "SAVE_ONLY_REQUIRED_INSTRUCTION", // SAVE_ALL_INSTRUCTION, SAVE_ONLY_REQUIRED_INSTRUCTION
@@ -69,6 +69,8 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
   "dynamicStateKey": true,
   "virtualControlFlowGraph": true,
   "constantFix": false,
+  "includeMethodsCalledWithin": false,
+  "excludeMethodsCalledWithin": false,
   "superInstruction": true,
   "superInstructionCombineRange": [2, 5],
   "superInstructionMode": "HYBRID",
@@ -116,6 +118,8 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
 | `dynamicStateKey` | `true`, `false` | `true`   | Adds per-instruction runtime state keys used by opcode, layout, and operand decoding. |
 | `virtualControlFlowGraph` | `true`, `false` | `true`   | Stores methods as shuffled virtual basic blocks and resolves instruction indexes through block-local lookup. |
 | `constantFix` | `true`, `false` | `false`  | Moves `ConstantValue` data from static final fields into `<clinit>` assignments and clears the field value attribute. |
+| `includeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively includes target-jar methods called from explicitly included methods. |
+| `excludeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively excludes target-jar methods called from explicitly included methods. |
 | `superInstruction` | `true`, `false` | `false`  | Fuses safe VM instruction sequences into synthetic super instructions with generated handlers. |
 | `superInstructionCombineRange` | `[min, max]` | `[2, 5]` | Minimum and maximum VM instruction count to fuse into one super instruction. |
 | `superInstructionMode` | `RANDOM`, `PATTERN`, `HYBRID` | `HYBRID` | Chooses random ranges, frequent opcode patterns, or both. |
@@ -155,6 +159,14 @@ putstatic Owner.VALUE : I
 ```
 
 Then the field value attribute is cleared. This currently applies only to `static final` fields whose constants are valid JVM `ConstantValue` types: primitive values and `String`. It can be controlled with `includes.constantFix` and `exclusions.constantFix`; class and field match rules are both supported.
+
+## Called Method Expansion
+
+`includeMethodsCalledWithin` and `excludeMethodsCalledWithin` expand method selection through calls found inside explicitly included methods. A root method is one that matches `includes.all`, matches a method rule, is not excluded by `exclusions.all`, and is otherwise eligible for virtualization.
+
+When `includeMethodsCalledWithin` is enabled, the scanner recursively follows `INVOKE*` instructions from those root methods. If the called method exists in the input jar and is eligible for virtualization, it is added even if it did not match the original include method pattern.
+
+When `excludeMethodsCalledWithin` is enabled, the same discovered called methods are removed from virtualization. If both include and exclude call expansion affect a method, exclusion wins. Explicit exclusions still win over call expansion.
 
 ## Include / Exclude Match Expressions
 

@@ -23,8 +23,8 @@ public class BytecodeVM
             {
               "input": "./input.jar",
               "output": "./output.jar",
-              "createMode": "PER_CLASS", // ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
-              "location": "SAME_PACKAGE_AS_TARGET", // SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
+              "createMode": "ONE_FOR_ALL", // ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
+              "location": "ONE_PACKAGE", // SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
               "mutateMode": "ALL_RANDOM_INT", // ALL_RANDOM_INT, ALL_RESORT, ALL_AUTO_CHOOSE, NO_CHANGE
               "renameMode": "DISABLE", // ENABLE, DISABLE
               "interpretMode": "SAVE_ONLY_REQUIRED_INSTRUCTION", // SAVE_ALL_INSTRUCTION, SAVE_ONLY_REQUIRED_INSTRUCTION
@@ -41,6 +41,8 @@ public class BytecodeVM
               "dynamicStateKey": true,
               "virtualControlFlowGraph": true,
               "constantFix": false,
+              "includeMethodsCalledWithin": false,
+              "excludeMethodsCalledWithin": false,
               "superInstruction": false,
               "superInstructionCombineRange": [2, 5],
               "superInstructionMode": "HYBRID", // RANDOM, PATTERN, HYBRID
@@ -58,8 +60,9 @@ public class BytecodeVM
 
     private static final String usage = """
             Usage:
-            java -jar BytecodeVM.jar --config <config>
+            java -jar BytecodeVM.jar --config <config file>
             java -jar BytecodeVM.jar --defaultconfig
+            java -jar BytecodeVM.jar --defaultrun <input jar>
             """;
 
     private static final String asciiArt = """
@@ -95,28 +98,52 @@ public class BytecodeVM
     {
         try
         {
-            if(args.length == 1 && args[0].equals("--defaultconfig"))
+            if(args.length == 1)
             {
-                Files.writeString(Path.of("defaultconfig.json"), defaultConfig);
-                logger.info("{}", LogColors.success("Default config saved to ./defaultconfig.json"));
-                return 0;
-            }
-            if(args.length != 2 || !args[0].equals("--config"))
+                if(args[0].equals("--defaultconfig"))
+                {
+                    Files.writeString(Path.of("defaultconfig.json"), defaultConfig);
+                    logger.info("{}", LogColors.success("Default config saved to ./defaultconfig.json"));
+                    return 0;
+                } else
+                {
+                    logger.info("{}", usage);
+                    return 1;
+                }
+            } else if(args.length == 2)
+            {
+                if(args[0].equals("--config"))
+                {
+                    Path configFile = Path.of(args[1]);
+                    if(!Files.exists(configFile))
+                    {
+                        logger.error("{}", LogColors.error("Config file does not exist: " + LogColors.path(configFile.toAbsolutePath())));
+                        return 1;
+                    }
+                    logger.info("{}", LogColors.lifecycle("Starting BytecodeVM with config " + LogColors.path(configFile.toAbsolutePath())));
+                    Obfuscator obfuscator = new Obfuscator(BytecodeVMConfig.parse(configFile));
+                    obfuscator.obfuscate();
+                    logger.info("{}", LogColors.success("Program exiting"));
+                    return 0;
+                } else if(args[0].equals("--defaultrun"))
+                {
+                    logger.info("{}", LogColors.lifecycle("Starting BytecodeVM with default config"));
+                    String inputFile = args[1];
+                    String outputFile = inputFile.replaceAll("\\.jar$", "") + "-bytecodevm.jar";
+                    Obfuscator obfuscator = new Obfuscator(BytecodeVMConfig.parse(defaultConfig, inputFile, outputFile));
+                    obfuscator.obfuscate();
+                    logger.info("{}", LogColors.success("Program exiting"));
+                    return 0;
+                } else
+                {
+                    logger.info("{}", usage);
+                    return 1;
+                }
+            } else
             {
                 logger.info("{}", usage);
                 return 1;
             }
-            Path configFile = Path.of(args[1]);
-            if(!Files.exists(configFile))
-            {
-                logger.error("{}", LogColors.error("Config file does not exist: " + LogColors.path(configFile.toAbsolutePath())));
-                return 1;
-            }
-            logger.info("{}", LogColors.lifecycle("Starting BytecodeVM with config " + LogColors.path(configFile.toAbsolutePath())));
-            Obfuscator obfuscator = new Obfuscator(BytecodeVMConfig.parse(configFile));
-            obfuscator.obfuscate();
-            logger.info("{}", LogColors.success("Program exiting"));
-            return 0;
         }
         catch (Exception e)
         {

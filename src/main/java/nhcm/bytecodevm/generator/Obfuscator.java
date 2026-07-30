@@ -138,16 +138,18 @@ public class Obfuscator
         Map<String, Integer> packageMethodCounts = new HashMap<>();
 
         Set<String> securityManagerClasses = securityManagerClasses(context.classes.values());
+        List<MethodCandidate> candidates = collectMethodCandidates(context.classes.values(), securityManagerClasses);
+        Map<MethodId, MethodCandidate> candidateById = indexCandidates(candidates);
+        Map<MethodId, Set<MethodId>> callsByMethod = collectInternalCalls(candidates, candidateById);
+        Set<MethodId> rootMethods = rootMethods(candidates);
+        Set<MethodId> calledWithin = collectCalledWithin(rootMethods, callsByMethod, candidateById);
 
         int matchedMethods = 0;
+        int calledMethodsIncluded = 0;
+        int calledMethodsExcluded = 0;
 
         for(ClassNode classNode : context.classes.values())
         {
-            if(!targetInclude.isClassMatched(classNode) || targetExclude.isClassMatched(classNode))
-            {
-                continue;
-            }
-
             String classPackage = ClassUtils.getPackageName(classNode);
             String vmLocation = getVMLocation(globalLocation, classPackage, classNode);
 
@@ -162,17 +164,27 @@ public class Obfuscator
             }
             int perClassMethodCount = 0;
 
-            Set<String> stackTraceSensitiveMethods = stackTraceSensitiveMethods(classNode);
-
             for(MethodNode methodNode : classNode.methods)
             {
-                if(shouldSkipMethod(
-                        classNode,
-                        methodNode,
-                        securityManagerClasses,
-                        stackTraceSensitiveMethods))
+                MethodCandidate candidate = candidateById.get(MethodId.of(classNode, methodNode));
+                if(candidate == null)
                 {
                     continue;
+                }
+                boolean called = calledWithin.contains(candidate.id);
+                boolean includedByCall = config.includeMethodsCalledWithin && called && !candidate.explicitIncluded;
+                boolean excludedByCall = config.excludeMethodsCalledWithin && called && !rootMethods.contains(candidate.id);
+                if(!selected(candidate, includedByCall, excludedByCall))
+                {
+                    if (excludedByCall && candidate.eligible && !candidate.explicitExcluded)
+                    {
+                        calledMethodsExcluded++;
+                    }
+                    continue;
+                }
+                if (includedByCall)
+                {
+                    calledMethodsIncluded++;
                 }
 
                 matchedMethods++;
@@ -238,6 +250,15 @@ public class Obfuscator
                 LogColors.strong(VMSetGenerators.size()) +
                 " VM set(s)"
         ));
+        if (config.includeMethodsCalledWithin || config.excludeMethodsCalledWithin)
+        {
+            logger.info("{}", LogColors.scan(
+                    "Call expansion included " +
+                    LogColors.strong(calledMethodsIncluded) +
+                    " and excluded " +
+                    LogColors.strong(calledMethodsExcluded) +
+                    " target method(s)"));
+        }
     }
 
     private OpcMutator chooseMutator()
@@ -308,6 +329,119 @@ public class Obfuscator
                 target.add(generator);
             }
         }
+    }
+
+    private List<MethodCandidate> collectMethodCandidates(
+            Collection<ClassNode> classes,
+            Set<String> securityManagerClasses)
+    {
+        List<MethodCandidate> candidates = new ArrayList<>();
+        for (ClassNode classNode : classes)
+        {
+            Set<String> stackTraceSensitiveMethods = stackTraceSensitiveMethods(classNode);
+            boolean classIncluded = targetInclude.isClassMatched(classNode);
+            boolean classExcluded = targetExclude.isClassMatched(classNode);
+            boolean securityManagerClass = securityManagerClasses.contains(classNode.name);
+            for (MethodNode methodNode : classNode.methods)
+            {
+                boolean ignored = securityManagerClass ||
+                                  shouldIgnoreMethod(methodNode) ||
+                                  stackTraceSensitiveMethods.contains(methodKey(methodNode));
+                boolean explicitIncluded = classIncluded && targetInclude.isMethodMatched(classNode, methodNode);
+                boolean explicitExcluded = classExcluded || targetExclude.isMethodMatched(classNode, methodNode);
+                candidates.add(new MethodCandidate(
+                        classNode,
+                        methodNode,
+                        MethodId.of(classNode, methodNode),
+                        !ignored,
+                        explicitIncluded,
+                        explicitExcluded));
+            }
+        }
+        return candidates;
+    }
+
+    private static Map<MethodId, MethodCandidate> indexCandidates(List<MethodCandidate> candidates)
+    {
+        Map<MethodId, MethodCandidate> byId = new LinkedHashMap<>();
+        for (MethodCandidate candidate : candidates)
+        {
+            byId.put(candidate.id, candidate);
+        }
+        return byId;
+    }
+
+    private static Set<MethodId> rootMethods(List<MethodCandidate> candidates)
+    {
+        Set<MethodId> roots = new LinkedHashSet<>();
+        for (MethodCandidate candidate : candidates)
+        {
+            if (candidate.eligible && candidate.explicitIncluded && !candidate.explicitExcluded)
+            {
+                roots.add(candidate.id);
+            }
+        }
+        return roots;
+    }
+
+    private static Map<MethodId, Set<MethodId>> collectInternalCalls(
+            List<MethodCandidate> candidates,
+            Map<MethodId, MethodCandidate> candidateById)
+    {
+        Map<MethodId, Set<MethodId>> calls = new LinkedHashMap<>();
+        for (MethodCandidate candidate : candidates)
+        {
+            Set<MethodId> targets = new LinkedHashSet<>();
+            for (AbstractInsnNode instruction : candidate.method.instructions)
+            {
+                if (!(instruction instanceof MethodInsnNode methodInsn))
+                {
+                    continue;
+                }
+                MethodId target = new MethodId(methodInsn.owner, methodInsn.name, methodInsn.desc);
+                MethodCandidate targetCandidate = candidateById.get(target);
+                if (targetCandidate != null && targetCandidate.eligible)
+                {
+                    targets.add(target);
+                }
+            }
+            calls.put(candidate.id, Set.copyOf(targets));
+        }
+        return Map.copyOf(calls);
+    }
+
+    private static Set<MethodId> collectCalledWithin(
+            Set<MethodId> roots,
+            Map<MethodId, Set<MethodId>> callsByMethod,
+            Map<MethodId, MethodCandidate> candidateById)
+    {
+        Set<MethodId> called = new LinkedHashSet<>();
+        Deque<MethodId> work = new ArrayDeque<>(roots);
+        while (!work.isEmpty())
+        {
+            MethodId current = work.removeFirst();
+            for (MethodId target : callsByMethod.getOrDefault(current, Set.of()))
+            {
+                if (roots.contains(target) || !called.add(target))
+                {
+                    continue;
+                }
+                MethodCandidate candidate = candidateById.get(target);
+                if (candidate != null && candidate.eligible && !candidate.explicitExcluded)
+                {
+                    work.addLast(target);
+                }
+            }
+        }
+        return Set.copyOf(called);
+    }
+
+    private boolean selected(MethodCandidate candidate, boolean includedByCall, boolean excludedByCall)
+    {
+        return candidate.eligible &&
+               (candidate.explicitIncluded || includedByCall) &&
+               !candidate.explicitExcluded &&
+               !excludedByCall;
     }
 
     private String getVMLocation(String globalLocation, String classPackage, ClassNode classNode)
@@ -464,6 +598,24 @@ public class Obfuscator
             }
         }
         return false;
+    }
+
+    private record MethodId(String owner, String name, String desc)
+    {
+        private static MethodId of(ClassNode owner, MethodNode method)
+        {
+            return new MethodId(owner.name, method.name, method.desc);
+        }
+    }
+
+    private record MethodCandidate(
+            ClassNode owner,
+            MethodNode method,
+            MethodId id,
+            boolean eligible,
+            boolean explicitIncluded,
+            boolean explicitExcluded)
+    {
     }
 
     private static class CliProgress implements AutoCloseable

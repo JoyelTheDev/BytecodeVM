@@ -37,6 +37,8 @@ public class BytecodeVMConfig
     public final boolean dynamicStateKey;
     public final boolean virtualControlFlowGraph;
     public final boolean constantFix;
+    public final boolean includeMethodsCalledWithin;
+    public final boolean excludeMethodsCalledWithin;
     public final boolean superInstruction;
     public final int superInstructionCombineMin;
     public final int superInstructionCombineMax;
@@ -92,7 +94,19 @@ public class BytecodeVMConfig
 
     public static BytecodeVMConfig parse(Path file) throws IOException
     {
-        JsonObject json = new Gson().fromJson(Files.newBufferedReader(file), JsonObject.class);
+        String fileStr = Files.readString(file);
+        return parse(fileStr);
+    }
+
+    public static BytecodeVMConfig parse(String config)
+    {
+        JsonObject json = new Gson().fromJson(config, JsonObject.class);
+        return parse(config, requiredString(json, "input"), requiredString(json, "output"));
+    }
+
+    public static BytecodeVMConfig parse(String config, String input, String output)
+    {
+        JsonObject json = new Gson().fromJson(config, JsonObject.class);
         MatchRules matchRules = MatchRules.parse(json);
         String[] includes = matchRules.includes("all");
         String[] exclusions = matchRules.exclusions("all");
@@ -106,8 +120,8 @@ public class BytecodeVMConfig
                 32);
         return BytecodeVMConfig
                 .builder()
-                .inputFile(Path.of(requiredString(json, "input")))
-                .outputFile(Path.of(requiredString(json, "output")))
+                .inputFile(Path.of(input))
+                .outputFile(Path.of(output))
                 .createMode(VMCreateMode.valueOf(requiredString(json, "createMode")))
                 .location(VMLocation.valueOf(requiredString(json, "location")))
                 .mutateMode(MutateMode.valueOf(requiredString(json, "mutateMode")))
@@ -126,6 +140,8 @@ public class BytecodeVMConfig
                 .dynamicStateKey(optionalBoolean(json, "dynamicStateKey", true))
                 .virtualControlFlowGraph(optionalBoolean(json, "virtualControlFlowGraph", true))
                 .constantFix(optionalBoolean(json, "constantFix", false, "fixConstants"))
+                .includeMethodsCalledWithin(optionalBoolean(json, "includeMethodsCalledWithin", false))
+                .excludeMethodsCalledWithin(optionalBoolean(json, "excludeMethodsCalledWithin", false))
                 .superInstruction(optionalBoolean(json, "superInstruction", false, "superinstrcution"))
                 .superInstructionCombineMin(superInstructionRange[0])
                 .superInstructionCombineMax(superInstructionRange[1])
@@ -163,6 +179,8 @@ public class BytecodeVMConfig
                 .dynamicStateKey(statementEnabled("dynamicStateKey", dynamicStateKey, owner, method))
                 .virtualControlFlowGraph(statementEnabled("virtualControlFlowGraph", virtualControlFlowGraph, owner, method))
                 .constantFix(constantFix)
+                .includeMethodsCalledWithin(includeMethodsCalledWithin)
+                .excludeMethodsCalledWithin(excludeMethodsCalledWithin)
                 .superInstruction(statementEnabled("superInstruction", superInstruction, owner, method))
                 .superInstructionCombineMin(superInstructionCombineMin)
                 .superInstructionCombineMax(superInstructionCombineMax)
