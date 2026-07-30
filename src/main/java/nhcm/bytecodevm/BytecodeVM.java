@@ -40,6 +40,7 @@ public class BytecodeVM
               "dynamicCodePoolBuild": true,
               "dynamicStateKey": true,
               "virtualControlFlowGraph": true,
+              "constantFix": false,
               "superInstruction": false,
               "superInstructionCombineRange": [2, 5],
               "superInstructionMode": "HYBRID", // RANDOM, PATTERN, HYBRID

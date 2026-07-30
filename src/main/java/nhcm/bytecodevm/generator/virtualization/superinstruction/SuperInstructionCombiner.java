@@ -1,4 +1,4 @@
-package nhcm.bytecodevm.generator.virtualization;
+package nhcm.bytecodevm.generator.virtualization.superinstruction;
 
 import nhcm.bytecodevm.config.BytecodeVMConfig;
 import nhcm.bytecodevm.data.CompiledMethod;
@@ -6,6 +6,7 @@ import nhcm.bytecodevm.data.vminsn.SuperVMInstruction;
 import nhcm.bytecodevm.data.vminsn.VMInstruction;
 import nhcm.bytecodevm.data.vminsn.VMMethod;
 import nhcm.bytecodevm.enums.Opcs;
+import nhcm.bytecodevm.generator.virtualization.ProtectedVMMethod;
 import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.utils.RandomUtils;
 

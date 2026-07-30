@@ -15,6 +15,8 @@ import nhcm.bytecodevm.generator.abstracts.ClassObj;
 import nhcm.bytecodevm.generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
+import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionCombiner;
+import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionRegistry;
 import nhcm.bytecodevm.utils.builder.FieldRef;
 import nhcm.bytecodevm.utils.builder.InsnBuilder;
 import nhcm.bytecodevm.utils.*;

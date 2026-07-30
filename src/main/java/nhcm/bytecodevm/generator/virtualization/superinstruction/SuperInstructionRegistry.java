@@ -1,4 +1,4 @@
-package nhcm.bytecodevm.generator.virtualization;
+package nhcm.bytecodevm.generator.virtualization.superinstruction;
 
 import nhcm.bytecodevm.enums.Opcs;
 

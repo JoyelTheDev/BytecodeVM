@@ -36,6 +36,7 @@ public class BytecodeVMConfig
     public final boolean dynamicCodePoolBuild;
     public final boolean dynamicStateKey;
     public final boolean virtualControlFlowGraph;
+    public final boolean constantFix;
     public final boolean superInstruction;
     public final int superInstructionCombineMin;
     public final int superInstructionCombineMax;
@@ -124,6 +125,7 @@ public class BytecodeVMConfig
                 .dynamicCodePoolBuild(optionalBoolean(json, "dynamicCodePoolBuild", true))
                 .dynamicStateKey(optionalBoolean(json, "dynamicStateKey", true))
                 .virtualControlFlowGraph(optionalBoolean(json, "virtualControlFlowGraph", true))
+                .constantFix(optionalBoolean(json, "constantFix", false, "fixConstants"))
                 .superInstruction(optionalBoolean(json, "superInstruction", false, "superinstrcution"))
                 .superInstructionCombineMin(superInstructionRange[0])
                 .superInstructionCombineMax(superInstructionRange[1])
@@ -160,6 +162,7 @@ public class BytecodeVMConfig
                 .dynamicCodePoolBuild(statementEnabled("dynamicCodePoolBuild", dynamicCodePoolBuild, owner, method))
                 .dynamicStateKey(statementEnabled("dynamicStateKey", dynamicStateKey, owner, method))
                 .virtualControlFlowGraph(statementEnabled("virtualControlFlowGraph", virtualControlFlowGraph, owner, method))
+                .constantFix(constantFix)
                 .superInstruction(statementEnabled("superInstruction", superInstruction, owner, method))
                 .superInstructionCombineMin(superInstructionCombineMin)
                 .superInstructionCombineMax(superInstructionCombineMax)

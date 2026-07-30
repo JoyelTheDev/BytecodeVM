@@ -3,6 +3,7 @@ package nhcm.bytecodevm.generator;
 import nhcm.bytecodevm.config.BytecodeVMConfig;
 import nhcm.bytecodevm.config.TargetMatcher;
 import nhcm.bytecodevm.data.VirtualizationResult;
+import nhcm.bytecodevm.generator.transformer.ConstantFixTransformer;
 import nhcm.bytecodevm.generator.globalclass.MethodFrameGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
@@ -122,6 +123,11 @@ public class Obfuscator
     private void processJar(JarTransformer.JarContext context)
     {
         logger.info("{}", LogColors.scan("Scanning input file for methods to obfuscate"));
+        if (config.constantFix)
+        {
+            int fixedConstants = new ConstantFixTransformer(config).transform(context.classes.values());
+            logger.info("{}", LogColors.scan("Moved " + LogColors.strong(fixedConstants) + " static final constant(s) into <clinit>"));
+        }
 
         String globalLocation = "BytecodeVM";
 

@@ -6,6 +6,8 @@ import nhcm.bytecodevm.data.vminsn.VMInstruction;
 import nhcm.bytecodevm.data.vminsn.VMMethod;
 import nhcm.bytecodevm.data.vminsn.VMOperand;
 import nhcm.bytecodevm.enums.Opcs;
+import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionCombiner;
+import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionRegistry;
 import nhcm.bytecodevm.utils.RandomUtils;
 
 import java.util.*;

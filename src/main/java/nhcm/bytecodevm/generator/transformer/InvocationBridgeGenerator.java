@@ -1,4 +1,4 @@
-package nhcm.bytecodevm.generator;
+package nhcm.bytecodevm.generator.transformer;
 
 import nhcm.bytecodevm.utils.builder.InsnBuilder;
 import nhcm.bytecodevm.utils.TypeUtils;
@@ -9,11 +9,11 @@ import org.objectweb.asm.tree.*;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
-class InvocationBridgeGenerator
+public class InvocationBridgeGenerator
 {
     private final Map<ClassNode, Integer> nextIds = new IdentityHashMap<>();
 
-    void rewrite(ClassNode owner, MethodNode method)
+    public void rewrite(ClassNode owner, MethodNode method)
     {
         for (AbstractInsnNode instruction : method.instructions.toArray())
         {

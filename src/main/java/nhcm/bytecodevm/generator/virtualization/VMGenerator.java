@@ -12,6 +12,7 @@ import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.generator.abstracts.ClassObj;
 import nhcm.bytecodevm.generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.generator.globalclass.*;
+import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionRegistry;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array.ArrayLengthBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array.LoadArrayBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array.NewArrayBranch;
