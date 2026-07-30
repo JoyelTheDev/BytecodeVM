@@ -32,6 +32,7 @@ public class VMProgramGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.opcodeStreamField.name(), layout.opcodeStreamField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.operandStreamField.name(), layout.operandStreamField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.layoutStreamField.name(), layout.layoutStreamField.descriptor()));
+        cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.blockStreamField.name(), layout.blockStreamField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.constantsField.name(), layout.constantsField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.exceptionHandlersField.name(), layout.exceptionHandlersField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.opcodeMapField.name(), layout.opcodeMapField.descriptor()));
@@ -42,6 +43,7 @@ public class VMProgramGenerator extends ClassObj
         cn.methods.add(genObjectGetter(layout.opcodeStream, layout.opcodeStreamField));
         cn.methods.add(genObjectGetter(layout.operandStream, layout.operandStreamField));
         cn.methods.add(genObjectGetter(layout.layoutStream, layout.layoutStreamField));
+        cn.methods.add(genObjectGetter(layout.blockStream, layout.blockStreamField));
         cn.methods.add(genObjectGetter(layout.constants, layout.constantsField));
         cn.methods.add(genObjectGetter(layout.exceptionHandlers, layout.exceptionHandlersField));
         cn.methods.add(genObjectGetter(layout.opcodeMap, layout.opcodeMapField));
@@ -64,17 +66,19 @@ public class VMProgramGenerator extends ClassObj
         Local opcodeStream = ib.getLocal("opcodeStream", "[I", 1);
         Local operandStream = ib.getLocal("operandStream", "[I", 2);
         Local layoutStream = ib.getLocal("layoutStream", "[I", 3);
-        Local constants = ib.getLocal("constants", "[Ljava/lang/Object;", 4);
-        Local exceptionHandlers = ib.getLocal("exceptionHandlers", "[I", 5);
-        Local opcodeMap = ib.getLocal("opcodeMap", "[I", 6);
-        Local methodKey = ib.getLocal("methodKey", "I", 7);
-        Local maxLocals = ib.getLocal("maxLocals", "I", 8);
-        Local maxStack = ib.getLocal("maxStack", "I", 9);
+        Local blockStream = ib.getLocal("blockStream", "[I", 4);
+        Local constants = ib.getLocal("constants", "[Ljava/lang/Object;", 5);
+        Local exceptionHandlers = ib.getLocal("exceptionHandlers", "[I", 6);
+        Local opcodeMap = ib.getLocal("opcodeMap", "[I", 7);
+        Local methodKey = ib.getLocal("methodKey", "I", 8);
+        Local maxLocals = ib.getLocal("maxLocals", "I", 9);
+        Local maxStack = ib.getLocal("maxStack", "I", 10);
 
         ib.callNoArgSuperConstructor("java/lang/Object");
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.opcodeStreamField), opcodeStream);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.operandStreamField), operandStream);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.layoutStreamField), layoutStream);
+        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.blockStreamField), blockStream);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.constantsField), constants);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.exceptionHandlersField), exceptionHandlers);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.opcodeMapField), opcodeMap);

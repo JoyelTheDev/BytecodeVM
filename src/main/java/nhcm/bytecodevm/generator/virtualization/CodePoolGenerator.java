@@ -39,6 +39,7 @@ public class CodePoolGenerator extends ClassObj
     private final List<CompiledMethod> methodsByCodeIndex;
     private final List<CompiledMethod> methodsByOperandIndex;
     private final List<CompiledMethod> methodsByLayoutIndex;
+    private final List<CompiledMethod> methodsByBlockIndex;
     private final List<CompiledMethod> methodsByConstantsIndex;
     private final List<CompiledMethod> methodsByExceptionHandlersIndex;
     private final List<CompiledMethod> methodsByOpcodeMapIndex;
@@ -48,6 +49,7 @@ public class CodePoolGenerator extends ClassObj
     private final Map<Integer, Integer> codeIndexById;
     private final Map<Integer, Integer> operandIndexById;
     private final Map<Integer, Integer> layoutIndexById;
+    private final Map<Integer, Integer> blockIndexById;
     private final Map<Integer, Integer> constantsIndexById;
     private final Map<Integer, Integer> exceptionHandlersIndexById;
     private final Map<Integer, Integer> opcodeMapIndexById;
@@ -57,6 +59,7 @@ public class CodePoolGenerator extends ClassObj
     private final Map<Integer, ProtectedVMMethod> protectedMethodById;
     private final VMProgramGenerator vmProgramGenerator;
     private final BytecodeVMConfig config;
+    private final VMObfProfile profile;
 
     public CodePoolGenerator(
             String className,
@@ -66,7 +69,7 @@ public class CodePoolGenerator extends ClassObj
             BytecodeVMConfig config,
             boolean shuffleMethods)
     {
-        this(className, compiledMethods, vmProgramGenerator, vmCodePoolGenerator, config, shuffleMethods, GeneratedMemberNamer.DISABLED);
+        this(className, compiledMethods, vmProgramGenerator, vmCodePoolGenerator, config, shuffleMethods, GeneratedMemberNamer.DISABLED, VMObfProfile.random());
     }
 
     public CodePoolGenerator(
@@ -78,8 +81,22 @@ public class CodePoolGenerator extends ClassObj
             boolean shuffleMethods,
             GeneratedMemberNamer namer)
     {
+        this(className, compiledMethods, vmProgramGenerator, vmCodePoolGenerator, config, shuffleMethods, namer, VMObfProfile.random());
+    }
+
+    public CodePoolGenerator(
+            String className,
+            List<CompiledMethod> compiledMethods,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            boolean shuffleMethods,
+            GeneratedMemberNamer namer,
+            VMObfProfile profile)
+    {
         super(className);
         this.config = Objects.requireNonNull(config, "config");
+        this.profile = Objects.requireNonNull(profile, "profile");
         this.vmProgramGenerator = vmProgramGenerator;
         this.layout = new CodePoolLayout(
                 className,
@@ -93,10 +110,11 @@ public class CodePoolGenerator extends ClassObj
         }
         validateUniqueCodeIds(compiledMethods);
         this.compiledMethods = List.copyOf(compiledMethods);
-        this.protectedMethodById = protectMethods(this.compiledMethods, this.config);
+        this.protectedMethodById = protectMethods(this.compiledMethods, this.config, this.profile);
         this.methodsByCodeIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByOperandIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByLayoutIndex = createLayout(compiledMethods, shuffleMethods);
+        this.methodsByBlockIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByConstantsIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByExceptionHandlersIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByOpcodeMapIndex = createLayout(compiledMethods, shuffleMethods);
@@ -106,6 +124,7 @@ public class CodePoolGenerator extends ClassObj
         this.codeIndexById = indexByCodeId(methodsByCodeIndex);
         this.operandIndexById = indexByCodeId(methodsByOperandIndex);
         this.layoutIndexById = indexByCodeId(methodsByLayoutIndex);
+        this.blockIndexById = indexByCodeId(methodsByBlockIndex);
         this.constantsIndexById = indexByCodeId(methodsByConstantsIndex);
         this.exceptionHandlersIndexById = indexByCodeId(methodsByExceptionHandlersIndex);
         this.opcodeMapIndexById = indexByCodeId(methodsByOpcodeMapIndex);
@@ -129,6 +148,7 @@ public class CodePoolGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.opcodeStreams.name(), layout.opcodeStreams.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.operandStreams.name(), layout.operandStreams.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.layoutStreams.name(), layout.layoutStreams.descriptor()));
+        cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.blockStreams.name(), layout.blockStreams.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.constants.name(), layout.constants.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.exceptionHandlers.name(), layout.exceptionHandlers.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.opcodeMaps.name(), layout.opcodeMaps.descriptor()));
@@ -140,6 +160,7 @@ public class CodePoolGenerator extends ClassObj
         clinit.instructions.add(initOPCODE_STREAMS());
         clinit.instructions.add(initOPERAND_STREAMS());
         clinit.instructions.add(initLAYOUT_STREAMS());
+        clinit.instructions.add(initBLOCK_STREAMS());
         clinit.instructions.add(initCONSTANTS());
         clinit.instructions.add(initEXCEPTION_HANDLERS());
         clinit.instructions.add(initOPCODE_MAPS());
@@ -202,14 +223,14 @@ public class CodePoolGenerator extends ClassObj
         Local c = ib.getLocal("c", "I", 3);
         Local x = ib.getLocal("x", "I", 4);
 
-        ib.set(x, AdvInsnBuilder.bitXor(key, AdvInsnBuilder.constant(0x9e3779b9)));
-        mixRound(ib, x, a, 0x7f4a7c15);
-        mixRound(ib, x, b, 0x94d049bb);
-        mixRound(ib, x, c, 0x2545f491);
+        ib.set(x, AdvInsnBuilder.bitXor(key, AdvInsnBuilder.constant(profile.mixSeed)));
+        mixRound(ib, x, a, profile.mixRoundA);
+        mixRound(ib, x, b, profile.mixRoundB);
+        mixRound(ib, x, c, profile.mixRoundC);
         ib.set(x, AdvInsnBuilder.bitXor(x, AdvInsnBuilder.unsignedShiftRight(x, AdvInsnBuilder.constant(16))));
-        ib.set(x, AdvInsnBuilder.multiply(x, AdvInsnBuilder.constant(0x7feb352d)));
+        ib.set(x, AdvInsnBuilder.multiply(x, AdvInsnBuilder.constant(profile.mixMulA)));
         ib.set(x, AdvInsnBuilder.bitXor(x, AdvInsnBuilder.unsignedShiftRight(x, AdvInsnBuilder.constant(15))));
-        ib.set(x, AdvInsnBuilder.multiply(x, AdvInsnBuilder.constant(0x846ca68b)));
+        ib.set(x, AdvInsnBuilder.multiply(x, AdvInsnBuilder.constant(profile.mixMulB)));
         ib.set(x, AdvInsnBuilder.bitXor(x, AdvInsnBuilder.unsignedShiftRight(x, AdvInsnBuilder.constant(16))));
         ib.returnValue(x);
         return method;
@@ -231,7 +252,7 @@ public class CodePoolGenerator extends ClassObj
                 "I",
                 key,
                 index,
-                AdvInsnBuilder.constant(ProtectedVMMethod.SALT_ARRAY),
+                AdvInsnBuilder.constant(profile.saltArray),
                 AdvInsnBuilder.constant(0)));
         return method;
     }
@@ -323,6 +344,15 @@ public class CodePoolGenerator extends ClassObj
                 method -> protectedMethodById.get(method.codeId).layoutStream);
     }
 
+    private InsnList initBLOCK_STREAMS()
+    {
+        return initIntRows(
+                "blockStreams",
+                layout.blockStreams,
+                methodsByBlockIndex,
+                method -> protectedMethodById.get(method.codeId).blockStream);
+    }
+
     private InsnList initOPCODE_MAPS()
     {
         return initIntRows(
@@ -368,7 +398,7 @@ public class CodePoolGenerator extends ClassObj
         if (config.dynamicCodePoolBuild)
         {
             int key = RandomUtils.randomInt();
-            long[] packedValues = packInts(values, key);
+            long[] packedValues = packInts(values, key, profile);
             Local packed = ib.var(name + "Packed", "[J");
             ib.set(packed, AdvInsnBuilder.newArray("long", AdvInsnBuilder.constant(packedValues.length)));
             for (int index = 0; index < packedValues.length; index++)
@@ -395,16 +425,16 @@ public class CodePoolGenerator extends ClassObj
         return result;
     }
 
-    private static long[] packInts(int[] values, int key)
+    private static long[] packInts(int[] values, int key, VMObfProfile profile)
     {
         long[] packed = new long[(values.length + 1) / 2];
         for (int pair = 0; pair < packed.length; pair++)
         {
             int leftIndex = pair * 2;
-            int left = values[leftIndex] ^ ProtectedVMMethod.arrayMix(key, leftIndex);
+            int left = values[leftIndex] ^ profile.arrayMix(key, leftIndex);
             int rightIndex = leftIndex + 1;
             int right = rightIndex < values.length
-                    ? values[rightIndex] ^ ProtectedVMMethod.arrayMix(key, rightIndex)
+                    ? values[rightIndex] ^ profile.arrayMix(key, rightIndex)
                     : RandomUtils.randomInt();
             packed[pair] = ((long) left << 32) | (right & 0xffffffffL);
         }
@@ -494,8 +524,8 @@ public class CodePoolGenerator extends ClassObj
     {
         Local encoded = ib.var("encodedType" + Math.abs(value.descriptor().hashCode()) + RandomUtils.randomInt(Integer.MAX_VALUE), "[Ljava/lang/Object;");
         ib.set(encoded, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(2)));
-        ib.setArray(encoded, AdvInsnBuilder.constant(0), encodedString(ib, ProtectedVMMethod.encodeString("__BytecodeVM_TYPE__")));
-        ib.setArray(encoded, AdvInsnBuilder.constant(1), encodedString(ib, ProtectedVMMethod.encodeString(value.descriptor())));
+        ib.setArray(encoded, AdvInsnBuilder.constant(0), encodedString(ib, ProtectedVMMethod.encodeString("__BytecodeVM_TYPE__", profile)));
+        ib.setArray(encoded, AdvInsnBuilder.constant(1), encodedString(ib, ProtectedVMMethod.encodeString(value.descriptor(), profile)));
         return encoded;
     }
 
@@ -572,6 +602,7 @@ public class CodePoolGenerator extends ClassObj
                 opcodeStreamRow(codeId),
                 operandStreamRow(codeId),
                 layoutStreamRow(codeId),
+                blockStreamRow(codeId),
                 constantRow(codeId),
                 exceptionHandlerRow(codeId),
                 opcodeMapRow(codeId),
@@ -599,6 +630,13 @@ public class CodePoolGenerator extends ClassObj
         return AdvInsnBuilder.arrayAt(
                 AdvInsnBuilder.staticField(layout.layoutStreams),
                 AdvInsnBuilder.constant(layoutIndexById.get(codeId)));
+    }
+
+    private Expr blockStreamRow(int codeId)
+    {
+        return AdvInsnBuilder.arrayAt(
+                AdvInsnBuilder.staticField(layout.blockStreams),
+                AdvInsnBuilder.constant(blockIndexById.get(codeId)));
     }
 
     private Expr constantRow(int codeId)
@@ -721,12 +759,13 @@ public class CodePoolGenerator extends ClassObj
 
     private static Map<Integer, ProtectedVMMethod> protectMethods(
             List<CompiledMethod> methods,
-            BytecodeVMConfig config)
+            BytecodeVMConfig config,
+            VMObfProfile profile)
     {
         Map<Integer, ProtectedVMMethod> protectedMethods = new HashMap<>();
         for (CompiledMethod method : methods)
         {
-            protectedMethods.put(method.codeId, ProtectedVMMethod.from(method, config));
+            protectedMethods.put(method.codeId, ProtectedVMMethod.from(method, config, profile));
         }
         return Map.copyOf(protectedMethods);
     }

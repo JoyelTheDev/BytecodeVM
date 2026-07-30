@@ -42,6 +42,8 @@ public class MethodFrameGenerator extends ClassObj
         fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stackTypes.name(), layout.stackTypes.descriptor()));
         fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stackWidths.name(), layout.stackWidths.descriptor()));
         fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.programCounter.name(), layout.programCounter.descriptor()));
+        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.stateKey.name(), layout.stateKey.descriptor()));
+        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.blockIndex.name(), layout.blockIndex.descriptor()));
         fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.stackPointer.name(), layout.stackPointer.descriptor()));
         fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.returnValue.name(), layout.returnValue.descriptor()));
         fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.returned.name(), layout.returned.descriptor()));
@@ -77,6 +79,8 @@ public class MethodFrameGenerator extends ClassObj
         ib.set(stackWords(), AdvInsnBuilder.newArray("long", maxStack));
         ib.set(stackTypes(), AdvInsnBuilder.newArray("int", maxStack));
         ib.set(stackWidths(), AdvInsnBuilder.newArray("int", maxStack));
+        ib.set(stateKey(), AdvInsnBuilder.constant(0));
+        ib.set(blockIndex(), AdvInsnBuilder.constant(-1));
         ib.returnVoid();
         return method;
     }
@@ -493,6 +497,16 @@ public class MethodFrameGenerator extends ClassObj
     private FieldAccess stackPointer()
     {
         return frameField(layout.stackPointer);
+    }
+
+    private FieldAccess stateKey()
+    {
+        return frameField(layout.stateKey);
+    }
+
+    private FieldAccess blockIndex()
+    {
+        return frameField(layout.blockIndex);
     }
 
     private FieldAccess locals()

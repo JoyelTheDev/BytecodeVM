@@ -12,7 +12,8 @@ import java.util.*;
 
 public class ProtectedVMMethod
 {
-    public static final int RECORD_SIZE = 6;
+    public static final int RECORD_SIZE = 8;
+    public static final int BLOCK_SIZE = 4;
     public static final int HANDLER_SIZE = 4;
 
     public static final int LAYOUT_PC = 0;
@@ -21,19 +22,18 @@ public class ProtectedVMMethod
     public static final int LAYOUT_OPERAND_START = 3;
     public static final int LAYOUT_OPERAND_COUNT = 4;
     public static final int LAYOUT_CONSTANT_MASK = 5;
+    public static final int LAYOUT_STATE_KEY = 6;
+    public static final int LAYOUT_BLOCK_INDEX = 7;
 
-    public static final int SALT_LAYOUT = 0x5a2d3f17;
-    public static final int SALT_OPCODE = 0x26a0c9d3;
-    public static final int SALT_OPCODE_MAP = 0x1c9e8b57;
-    public static final int SALT_OPERAND = 0x64f2a7b9;
-    public static final int SALT_CONSTANT = 0x35bca913;
-    public static final int SALT_HANDLER = 0x0f9186dd;
-    public static final int SALT_ARRAY = 0x4e67c6a7;
-    public static final int SALT_STRING = 0x6d4ac2f1;
+    public static final int BLOCK_START_PC = 0;
+    public static final int BLOCK_ORIGINAL_START_PC = 1;
+    public static final int BLOCK_START_SLOT = 2;
+    public static final int BLOCK_SLOT_COUNT = 3;
 
     public final int[] opcodeStream;
     public final int[] operandStream;
     public final int[] layoutStream;
+    public final int[] blockStream;
     public final Object[] constants;
     public final int[] exceptionHandlers;
     public final int[] opcodeMap;
@@ -43,6 +43,7 @@ public class ProtectedVMMethod
             int[] opcodeStream,
             int[] operandStream,
             int[] layoutStream,
+            int[] blockStream,
             Object[] constants,
             int[] exceptionHandlers,
             int[] opcodeMap,
@@ -51,6 +52,7 @@ public class ProtectedVMMethod
         this.opcodeStream = opcodeStream;
         this.operandStream = operandStream;
         this.layoutStream = layoutStream;
+        this.blockStream = blockStream;
         this.constants = constants;
         this.exceptionHandlers = exceptionHandlers;
         this.opcodeMap = opcodeMap;
@@ -59,27 +61,43 @@ public class ProtectedVMMethod
 
     public static ProtectedVMMethod from(CompiledMethod compiledMethod, BytecodeVMConfig config)
     {
+        return from(compiledMethod, config, VMObfProfile.random());
+    }
+
+    public static ProtectedVMMethod from(
+            CompiledMethod compiledMethod,
+            BytecodeVMConfig config,
+            VMObfProfile profile)
+    {
         VMMethod method = compiledMethod.vmMethod;
         List<VMInstruction> instructions = method.getInstructions();
         boolean protect = config.protectCodePool;
+        boolean dynamicStateKey = protect && config.dynamicStateKey;
         boolean virtualizeInstructionAddresses = protect &&
                                                 config.virtualizeInstructionAddresses &&
                                                 compiledMethod.virtualizeInstructionAddresses;
         int methodKey = protect ? nonZeroRandom() : 0;
 
         Map<Integer, Integer> virtualPcByOriginalPc = createVirtualPcMap(instructions, virtualizeInstructionAddresses);
-        ConstantLayout constantLayout = createConstantLayout(method.constants, config);
-        OpcodeLayout opcodeLayout = createOpcodeLayout(instructions, config, methodKey);
-        List<VMInstruction> records = new ArrayList<>(instructions);
-        if (protect && (config.shuffleInstructionBlocks || virtualizeInstructionAddresses))
-        {
-            RandomUtils.shuffle(records);
-        }
+        ConstantLayout constantLayout = createConstantLayout(method.constants, config, profile);
+        OpcodeLayout opcodeLayout = createOpcodeLayout(instructions, config, methodKey, profile);
+        List<BasicBlock> blocks = createBlocks(method, instructions, virtualPcByOriginalPc, virtualizeInstructionAddresses, config);
+        List<VMInstruction> records = createRecords(blocks, protect && config.shuffleInstructionBlocks);
 
         Map<VMInstruction, Integer> slotByInstruction = new IdentityHashMap<>();
+        Map<VMInstruction, Integer> blockByInstruction = new IdentityHashMap<>();
+        Map<VMInstruction, Integer> stateKeyByInstruction = new IdentityHashMap<>();
         for (int slot = 0; slot < records.size(); slot++)
         {
             slotByInstruction.put(records.get(slot), slot);
+        }
+        for (int blockIndex = 0; blockIndex < blocks.size(); blockIndex++)
+        {
+            for (VMInstruction instruction : blocks.get(blockIndex).instructions)
+            {
+                blockByInstruction.put(instruction, blockIndex);
+                stateKeyByInstruction.put(instruction, dynamicStateKey ? nonZeroRandom() : 0);
+            }
         }
 
         int[] operandStarts = createOperandStarts(records, protect && config.splitCodeStreams);
@@ -92,10 +110,13 @@ public class ProtectedVMMethod
         int[] opcodeStream = new int[records.size()];
         int[] operandStream = new int[totalOperands];
         int[] layoutStream = new int[records.size() * RECORD_SIZE];
+        int[] blockStream = createBlockStream(blocks, methodKey, protect, profile);
 
         for (VMInstruction instruction : records)
         {
             int slot = slotByInstruction.get(instruction);
+            int blockIndex = blockByInstruction.get(instruction);
+            int stateKey = stateKeyByInstruction.get(instruction);
             int virtualPc = virtualPcByOriginalPc.get(instruction.programCounter);
             int nextPc = instruction.nextProgramCounter >= method.methodEndPc
                     ? -1
@@ -108,15 +129,17 @@ public class ProtectedVMMethod
 
             int virtualOpcode = opcodeLayout.virtualByRealOpcode.get(instruction.mutatedOpcode);
             opcodeStream[slot] = protect && config.perMethodOpcodeMap
-                    ? virtualOpcode ^ opcodeMix(methodKey, virtualPc, slot)
+                    ? virtualOpcode ^ profile.opcodeMix(methodKey, stateKey, virtualPc, slot)
                     : virtualOpcode;
 
-            setLayout(layoutStream, slot, LAYOUT_PC, virtualPc, methodKey, protect);
-            setLayout(layoutStream, slot, LAYOUT_ORIGINAL_PC, instruction.programCounter, methodKey, protect);
-            setLayout(layoutStream, slot, LAYOUT_NEXT_PC, nextPc, methodKey, protect);
-            setLayout(layoutStream, slot, LAYOUT_OPERAND_START, operandStart, methodKey, protect);
-            setLayout(layoutStream, slot, LAYOUT_OPERAND_COUNT, operandCount, methodKey, protect);
-            setLayout(layoutStream, slot, LAYOUT_CONSTANT_MASK, constantMask, methodKey, protect);
+            setLayout(layoutStream, slot, LAYOUT_PC, virtualPc, methodKey, stateKey, protect, profile);
+            setLayout(layoutStream, slot, LAYOUT_ORIGINAL_PC, instruction.programCounter, methodKey, stateKey, protect, profile);
+            setLayout(layoutStream, slot, LAYOUT_NEXT_PC, nextPc, methodKey, stateKey, protect, profile);
+            setLayout(layoutStream, slot, LAYOUT_OPERAND_START, operandStart, methodKey, stateKey, protect, profile);
+            setLayout(layoutStream, slot, LAYOUT_OPERAND_COUNT, operandCount, methodKey, stateKey, protect, profile);
+            setLayout(layoutStream, slot, LAYOUT_CONSTANT_MASK, constantMask, methodKey, stateKey, protect, profile);
+            setLayoutStateKey(layoutStream, slot, stateKey, methodKey, protect, profile);
+            setLayout(layoutStream, slot, LAYOUT_BLOCK_INDEX, blockIndex, methodKey, stateKey, protect, profile);
 
             for (int operandIndex = 0; operandIndex < operandCount; operandIndex++)
             {
@@ -131,11 +154,11 @@ public class ProtectedVMMethod
                         virtualizeInstructionAddresses);
                 if (protect && config.bindConstantsToOperands && operand.constantReference)
                 {
-                    value ^= constantMix(methodKey, virtualPc, instruction.mutatedOpcode, operandIndex);
+                    value ^= profile.constantMix(methodKey, stateKey, instruction.mutatedOpcode, virtualPc, operandIndex);
                 }
                 if (protect && config.encryptOperands)
                 {
-                    value ^= operandMix(methodKey, virtualPc, instruction.mutatedOpcode, operandIndex, operandStart + operandIndex);
+                    value ^= profile.operandMix(methodKey, stateKey, instruction.mutatedOpcode, virtualPc, operandIndex, operandStart + operandIndex);
                 }
                 operandStream[operandStart + operandIndex] = value;
             }
@@ -145,73 +168,27 @@ public class ProtectedVMMethod
                 opcodeStream,
                 operandStream,
                 layoutStream,
+                blockStream,
                 constantLayout.constants,
-                protectExceptionHandlers(method, constantLayout.indexByOriginal, virtualPcByOriginalPc, methodKey, protect, virtualizeInstructionAddresses),
+                protectExceptionHandlers(
+                        method,
+                        constantLayout.indexByOriginal,
+                        virtualPcByOriginalPc,
+                        methodKey,
+                        protect,
+                        virtualizeInstructionAddresses,
+                        profile),
                 opcodeLayout.encodedOpcodeMap,
                 methodKey);
     }
 
-    public static int mix(int key, int a, int b, int c)
-    {
-        int x = key ^ 0x9e3779b9;
-        x ^= a + 0x7f4a7c15 + (x << 6) + (x >>> 2);
-        x ^= b + 0x94d049bb + (x << 6) + (x >>> 2);
-        x ^= c + 0x2545f491 + (x << 6) + (x >>> 2);
-        x ^= x >>> 16;
-        x *= 0x7feb352d;
-        x ^= x >>> 15;
-        x *= 0x846ca68b;
-        x ^= x >>> 16;
-        return x;
-    }
-
-    public static int layoutMix(int methodKey, int slot, int field)
-    {
-        return mix(methodKey, slot, field, SALT_LAYOUT);
-    }
-
-    public static int opcodeMix(int methodKey, int virtualPc, int slot)
-    {
-        return mix(methodKey, virtualPc, slot, SALT_OPCODE);
-    }
-
-    public static int opcodeMapMix(int methodKey, int virtualOpcode)
-    {
-        return mix(methodKey, virtualOpcode, SALT_OPCODE_MAP, 0);
-    }
-
-    public static int operandMix(int methodKey, int virtualPc, int opcode, int operandIndex, int operandPosition)
-    {
-        return mix(methodKey ^ opcode, virtualPc, operandIndex, SALT_OPERAND ^ operandPosition);
-    }
-
-    public static int constantMix(int methodKey, int virtualPc, int opcode, int operandIndex)
-    {
-        return mix(methodKey ^ opcode, virtualPc, operandIndex, SALT_CONSTANT);
-    }
-
-    public static int handlerMix(int methodKey, int handlerSlot, int field)
-    {
-        return mix(methodKey, handlerSlot, field, SALT_HANDLER);
-    }
-
-    public static int arrayMix(int key, int index)
-    {
-        return mix(key, index, SALT_ARRAY, 0);
-    }
-
-    public static int stringMix(int key, int index)
-    {
-        return mix(key, index, SALT_STRING, 0);
-    }
-
-    public static EncodedString encodeString(String value)
+    public static EncodedString encodeString(String value, VMObfProfile profile)
     {
         int key = nonZeroRandom();
         int[] chars = new int[value.length()];
         for (int i = 0; i < chars.length; i++)
         {
-            chars[i] = value.charAt(i) ^ stringMix(key, i);
+            chars[i] = value.charAt(i) ^ profile.stringMix(key, i);
         }
         return new EncodedString(chars, key);
     }
@@ -222,7 +199,8 @@ public class ProtectedVMMethod
             Map<Integer, Integer> virtualPcByOriginalPc,
             int methodKey,
             boolean protect,
-            boolean virtualizeInstructionAddresses)
+            boolean virtualizeInstructionAddresses,
+            VMObfProfile profile)
     {
         int[] handlers = new int[method.exceptionHandlers.length];
         for (int index = 0; index < method.exceptionHandlers.length; index += HANDLER_SIZE)
@@ -238,10 +216,10 @@ public class ProtectedVMMethod
             int typeIndex = method.exceptionHandlers[index + 3] < 0
                     ? -1
                     : constantIndexByOriginal.get(method.exceptionHandlers[index + 3]);
-            handlers[index] = protect ? startPc ^ handlerMix(methodKey, handlerSlot, 0) : startPc;
-            handlers[index + 1] = protect ? endPc ^ handlerMix(methodKey, handlerSlot, 1) : endPc;
-            handlers[index + 2] = protect ? handlerPc ^ handlerMix(methodKey, handlerSlot, 2) : handlerPc;
-            handlers[index + 3] = protect ? typeIndex ^ handlerMix(methodKey, handlerSlot, 3) : typeIndex;
+            handlers[index] = protect ? startPc ^ profile.handlerMix(methodKey, handlerSlot, 0) : startPc;
+            handlers[index + 1] = protect ? endPc ^ profile.handlerMix(methodKey, handlerSlot, 1) : endPc;
+            handlers[index + 2] = protect ? handlerPc ^ profile.handlerMix(methodKey, handlerSlot, 2) : handlerPc;
+            handlers[index + 3] = protect ? typeIndex ^ profile.handlerMix(methodKey, handlerSlot, 3) : typeIndex;
         }
         return handlers;
     }
@@ -264,7 +242,10 @@ public class ProtectedVMMethod
         return virtualByOriginal;
     }
 
-    private static ConstantLayout createConstantLayout(Object[] constants, BytecodeVMConfig config)
+    private static ConstantLayout createConstantLayout(
+            Object[] constants,
+            BytecodeVMConfig config,
+            VMObfProfile profile)
     {
         List<Integer> order = new ArrayList<>();
         for (int index = 0; index < constants.length; index++)
@@ -281,13 +262,13 @@ public class ProtectedVMMethod
         for (int newIndex = 0; newIndex < order.size(); newIndex++)
         {
             int originalIndex = order.get(newIndex);
-            shuffled[newIndex] = protectConstant(constants[originalIndex], config);
+            shuffled[newIndex] = protectConstant(constants[originalIndex], config, profile);
             indexByOriginal.put(originalIndex, newIndex);
         }
         return new ConstantLayout(shuffled, indexByOriginal);
     }
 
-    private static Object protectConstant(Object value, BytecodeVMConfig config)
+    private static Object protectConstant(Object value, BytecodeVMConfig config, VMObfProfile profile)
     {
         if (!config.protectCodePool)
         {
@@ -295,7 +276,7 @@ public class ProtectedVMMethod
         }
         if (value instanceof String string)
         {
-            return encodeString(string);
+            return encodeString(string, profile);
         }
         if (value instanceof org.objectweb.asm.Type type)
         {
@@ -307,7 +288,8 @@ public class ProtectedVMMethod
     private static OpcodeLayout createOpcodeLayout(
             List<VMInstruction> instructions,
             BytecodeVMConfig config,
-            int methodKey)
+            int methodKey,
+            VMObfProfile profile)
     {
         List<Integer> realOpcodes = new ArrayList<>();
         for (VMInstruction instruction : instructions)
@@ -336,10 +318,137 @@ public class ProtectedVMMethod
             int virtualOpcode = virtualOpcodes.get(index);
             virtualByReal.put(realOpcode, virtualOpcode);
             opcodeMap[virtualOpcode] = config.protectCodePool && config.perMethodOpcodeMap
-                    ? realOpcode ^ opcodeMapMix(methodKey, virtualOpcode)
+                    ? realOpcode ^ profile.opcodeMapMix(methodKey, 0, virtualOpcode)
                     : realOpcode;
         }
         return new OpcodeLayout(virtualByReal, opcodeMap);
+    }
+
+    private static List<BasicBlock> createBlocks(
+            VMMethod method,
+            List<VMInstruction> instructions,
+            Map<Integer, Integer> virtualPcByOriginalPc,
+            boolean virtualizeInstructionAddresses,
+            BytecodeVMConfig config)
+    {
+        if (instructions.isEmpty() || !config.protectCodePool || !config.virtualControlFlowGraph)
+        {
+            return List.of(new BasicBlock(
+                    instructions.isEmpty() ? 0 : instructions.getFirst().programCounter,
+                    instructions.isEmpty() ? 0 : virtualPcByOriginalPc.get(instructions.getFirst().programCounter),
+                    List.copyOf(instructions)));
+        }
+
+        Set<Integer> instructionPcs = new HashSet<>();
+        for (VMInstruction instruction : instructions)
+        {
+            instructionPcs.add(instruction.programCounter);
+        }
+
+        Set<Integer> leaders = new TreeSet<>();
+        leaders.add(instructions.getFirst().programCounter);
+        for (int index = 0; index < method.exceptionHandlers.length; index += HANDLER_SIZE)
+        {
+            addLeaderIfPresent(leaders, instructionPcs, method.exceptionHandlers[index]);
+            addLeaderIfPresent(leaders, instructionPcs, method.exceptionHandlers[index + 2]);
+        }
+
+        for (VMInstruction instruction : instructions)
+        {
+            for (int operandIndex = 0; operandIndex < instruction.operandCount(); operandIndex++)
+            {
+                if (isJumpTargetOperand(instruction.opcode, operandIndex))
+                {
+                    addLeaderIfPresent(leaders, instructionPcs, instruction.operand(operandIndex).rawValue);
+                }
+            }
+            if (endsBlock(instruction.opcode))
+            {
+                addLeaderIfPresent(leaders, instructionPcs, instruction.nextProgramCounter);
+            }
+        }
+
+        List<BasicBlock> blocks = new ArrayList<>();
+        List<VMInstruction> current = new ArrayList<>();
+        int currentStartPc = instructions.getFirst().programCounter;
+        for (VMInstruction instruction : instructions)
+        {
+            if (!current.isEmpty() && leaders.contains(instruction.programCounter))
+            {
+                blocks.add(new BasicBlock(
+                        currentStartPc,
+                        remapProgramCounter(currentStartPc, method, virtualPcByOriginalPc, virtualizeInstructionAddresses),
+                        List.copyOf(current)));
+                current.clear();
+                currentStartPc = instruction.programCounter;
+            }
+            current.add(instruction);
+        }
+        if (!current.isEmpty())
+        {
+            blocks.add(new BasicBlock(
+                    currentStartPc,
+                    remapProgramCounter(currentStartPc, method, virtualPcByOriginalPc, virtualizeInstructionAddresses),
+                    List.copyOf(current)));
+        }
+
+        RandomUtils.shuffle(blocks);
+        return List.copyOf(blocks);
+    }
+
+    private static List<VMInstruction> createRecords(List<BasicBlock> blocks, boolean shuffleWithinBlocks)
+    {
+        List<VMInstruction> records = new ArrayList<>();
+        for (BasicBlock block : blocks)
+        {
+            List<VMInstruction> blockInstructions = new ArrayList<>(block.instructions);
+            if (shuffleWithinBlocks)
+            {
+                RandomUtils.shuffle(blockInstructions);
+            }
+            records.addAll(blockInstructions);
+        }
+        return List.copyOf(records);
+    }
+
+    private static int[] createBlockStream(
+            List<BasicBlock> blocks,
+            int methodKey,
+            boolean protect,
+            VMObfProfile profile)
+    {
+        int[] stream = new int[blocks.size() * BLOCK_SIZE];
+        int firstSlot = 0;
+        for (int blockIndex = 0; blockIndex < blocks.size(); blockIndex++)
+        {
+            BasicBlock block = blocks.get(blockIndex);
+            setBlock(stream, blockIndex, BLOCK_START_PC, block.virtualStartPc, methodKey, protect, profile);
+            setBlock(stream, blockIndex, BLOCK_ORIGINAL_START_PC, block.originalStartPc, methodKey, protect, profile);
+            setBlock(stream, blockIndex, BLOCK_START_SLOT, firstSlot, methodKey, protect, profile);
+            setBlock(stream, blockIndex, BLOCK_SLOT_COUNT, block.instructions.size(), methodKey, protect, profile);
+            firstSlot += block.instructions.size();
+        }
+        return stream;
+    }
+
+    private static void addLeaderIfPresent(Set<Integer> leaders, Set<Integer> instructionPcs, int pc)
+    {
+        if (instructionPcs.contains(pc))
+        {
+            leaders.add(pc);
+        }
+    }
+
+    private static boolean endsBlock(Opcs opcode)
+    {
+        return switch (opcode)
+        {
+            case IFEQ, IFNE, IFLT, IFGE, IFGT, IFLE,
+                 IF_ICMPEQ, IF_ICMPNE, IF_ICMPLT, IF_ICMPGE, IF_ICMPGT, IF_ICMPLE,
+                 IF_ACMPEQ, IF_ACMPNE, IFNULL, IFNONNULL,
+                 GOTO, TABLESWITCH, LOOKUPSWITCH, IRETURN, LRETURN, FRETURN, DRETURN, ARETURN, RETURN, ATHROW -> true;
+            default -> false;
+        };
     }
 
     private static int[] createOperandStarts(List<VMInstruction> records, boolean shuffle)
@@ -453,9 +562,38 @@ public class ProtectedVMMethod
             int field,
             int value,
             int methodKey,
-            boolean protect)
+            int stateKey,
+            boolean protect,
+            VMObfProfile profile)
     {
-        layout[slot * RECORD_SIZE + field] = protect ? value ^ layoutMix(methodKey, slot, field) : value;
+        layout[slot * RECORD_SIZE + field] = protect ? value ^ profile.layoutMix(methodKey, stateKey, slot, field) : value;
+    }
+
+    private static void setLayoutStateKey(
+            int[] layout,
+            int slot,
+            int stateKey,
+            int methodKey,
+            boolean protect,
+            VMObfProfile profile)
+    {
+        layout[slot * RECORD_SIZE + LAYOUT_STATE_KEY] = protect
+                ? stateKey ^ profile.stateMix(methodKey, slot)
+                : stateKey;
+    }
+
+    private static void setBlock(
+            int[] blocks,
+            int blockIndex,
+            int field,
+            int value,
+            int methodKey,
+            boolean protect,
+            VMObfProfile profile)
+    {
+        blocks[blockIndex * BLOCK_SIZE + field] = protect
+                ? value ^ profile.blockMix(methodKey, blockIndex, field)
+                : value;
     }
 
     private static int nonZeroRandom()
@@ -473,6 +611,10 @@ public class ProtectedVMMethod
     }
 
     private record OpcodeLayout(Map<Integer, Integer> virtualByRealOpcode, int[] encodedOpcodeMap)
+    {
+    }
+
+    private record BasicBlock(int originalStartPc, int virtualStartPc, List<VMInstruction> instructions)
     {
     }
 

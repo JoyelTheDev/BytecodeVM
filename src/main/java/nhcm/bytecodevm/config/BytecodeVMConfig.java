@@ -30,6 +30,9 @@ public class BytecodeVMConfig
     public final boolean shuffleInstructionBlocks;
     public final boolean obfuscateDispatch;
     public final boolean dynamicCodePoolBuild;
+    public final boolean dynamicStateKey;
+    public final boolean virtualControlFlowGraph;
+    public final int vmCount;
     public final String[] includes;
     public final String[] exclusions;
 
@@ -102,6 +105,9 @@ public class BytecodeVMConfig
                 .shuffleInstructionBlocks(optionalBoolean(json, "shuffleInstructionBlocks", true))
                 .obfuscateDispatch(optionalBoolean(json, "obfuscateDispatch", true))
                 .dynamicCodePoolBuild(optionalBoolean(json, "dynamicCodePoolBuild", true))
+                .dynamicStateKey(optionalBoolean(json, "dynamicStateKey", true))
+                .virtualControlFlowGraph(optionalBoolean(json, "virtualControlFlowGraph", true))
+                .vmCount(optionalInt(json, "vmCount", 1, 1, 1024))
                 .includes(includes)
                 .exclusions(exclusions).build();
     }
@@ -114,6 +120,22 @@ public class BytecodeVMConfig
             return defaultValue;
         }
         return value.getAsBoolean();
+    }
+
+    private static int optionalInt(JsonObject json, String key, int defaultValue, int minValue, int maxValue)
+    {
+        JsonElement value = json.get(key);
+        if(value == null || value.isJsonNull())
+        {
+            return defaultValue;
+        }
+        int result = value.getAsInt();
+        if(result < minValue || result > maxValue)
+        {
+            throw new IllegalArgumentException(
+                    "Config value " + key + " must be between " + minValue + " and " + maxValue);
+        }
+        return result;
     }
 
     private static String requiredString(JsonObject json, String key)

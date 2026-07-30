@@ -38,6 +38,9 @@ public class BytecodeVM
               "shuffleInstructionBlocks": true,
               "obfuscateDispatch": true,
               "dynamicCodePoolBuild": true,
+              "dynamicStateKey": true,
+              "virtualControlFlowGraph": true,
+              "vmCount": 1,
               "includes": ["*", "* *(*)*"],
               "exclusions": []
             }

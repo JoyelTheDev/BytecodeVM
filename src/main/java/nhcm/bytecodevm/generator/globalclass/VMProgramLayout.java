@@ -12,6 +12,7 @@ public class VMProgramLayout
     public final FieldRef opcodeStreamField;
     public final FieldRef operandStreamField;
     public final FieldRef layoutStreamField;
+    public final FieldRef blockStreamField;
     public final FieldRef constantsField;
     public final FieldRef exceptionHandlersField;
     public final FieldRef opcodeMapField;
@@ -23,6 +24,7 @@ public class VMProgramLayout
     public final MethodRef opcodeStream;
     public final MethodRef operandStream;
     public final MethodRef layoutStream;
+    public final MethodRef blockStream;
     public final MethodRef constants;
     public final MethodRef exceptionHandlers;
     public final MethodRef opcodeMap;
@@ -43,6 +45,7 @@ public class VMProgramLayout
         this.opcodeStreamField = field("opcodeStream", "[I");
         this.operandStreamField = field("operandStream", "[I");
         this.layoutStreamField = field("layoutStream", "[I");
+        this.blockStreamField = field("blockStream", "[I");
         this.constantsField = field("constants", "[Ljava/lang/Object;");
         this.exceptionHandlersField = field("exceptionHandlers", "[I");
         this.opcodeMapField = field("opcodeMap", "[I");
@@ -50,10 +53,11 @@ public class VMProgramLayout
         this.maxLocalsField = field("maxLocals", "I");
         this.maxStackField = field("maxStack", "I");
 
-        this.init = method("<init>", "([I[I[I[Ljava/lang/Object;[I[IIII)V");
+        this.init = method("<init>", "([I[I[I[I[Ljava/lang/Object;[I[IIII)V");
         this.opcodeStream = method("opcodeStream", "()[I");
         this.operandStream = method("operandStream", "()[I");
         this.layoutStream = method("layoutStream", "()[I");
+        this.blockStream = method("blockStream", "()[I");
         this.constants = method("constants", "()[Ljava/lang/Object;");
         this.exceptionHandlers = method("exceptionHandlers", "()[I");
         this.opcodeMap = method("opcodeMap", "()[I");

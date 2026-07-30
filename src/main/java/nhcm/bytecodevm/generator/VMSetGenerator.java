@@ -11,6 +11,7 @@ import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
 import nhcm.bytecodevm.generator.virtualization.CodePoolGenerator;
 import nhcm.bytecodevm.generator.virtualization.VMGenerator;
+import nhcm.bytecodevm.generator.virtualization.VMObfProfile;
 import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.tools.VMMethodCompiler;
 import nhcm.bytecodevm.utils.MethodUtils;
@@ -50,6 +51,7 @@ public class VMSetGenerator
     private final List<CodePoolGenerator> codePoolGenerators = new ArrayList<>();
     private final BytecodeVMConfig config;
     private final GeneratedMemberNamer namer;
+    private final VMObfProfile protectionProfile;
 
     public VMSetGenerator(
             String name, String location,
@@ -79,6 +81,7 @@ public class VMSetGenerator
         this.vmCodePoolGenerator = vmCodePoolGenerator;
         this.config = config;
         this.namer = namer;
+        this.protectionProfile = VMObfProfile.random();
         this.compiler = new VMMethodCompiler(opcMutator);
     }
 
@@ -147,7 +150,7 @@ public class VMSetGenerator
         reportProgress(progress, completedSteps, totalSteps, "Built code pools");
 
         reportProgress(progress, completedSteps, totalSteps, "Generating VM");
-        ClassNode vmClass = new VMGenerator(vmClassName, codePoolGenerators, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config, namer).getClassNode();
+        ClassNode vmClass = new VMGenerator(vmClassName, codePoolGenerators, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config, namer, protectionProfile).getClassNode();
         completedSteps++;
         reportProgress(progress, completedSteps, totalSteps, "Generated VM");
 
@@ -191,7 +194,8 @@ public class VMSetGenerator
                     vmCodePoolGenerator,
                     config,
                     true,
-                    namer));
+                    namer,
+                    protectionProfile));
         }
         return plannedSteps + 1;
     }
@@ -253,7 +257,9 @@ public class VMSetGenerator
                 vmProgramGenerator,
                 vmCodePoolGenerator,
                 config,
-                false);
+                false,
+                GeneratedMemberNamer.DISABLED,
+                protectionProfile);
         return candidate.getMaxGeneratedMethodSize() <= CODE_POOL_METHOD_SIZE_LIMIT;
     }
 

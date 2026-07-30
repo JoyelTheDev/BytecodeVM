@@ -15,6 +15,7 @@ public class CodePoolLayout
     public final FieldRef opcodeStreams;
     public final FieldRef operandStreams;
     public final FieldRef layoutStreams;
+    public final FieldRef blockStreams;
     public final FieldRef constants;
     public final FieldRef exceptionHandlers;
     public final FieldRef opcodeMaps;
@@ -49,6 +50,7 @@ public class CodePoolLayout
         this.opcodeStreams = field("OPCODE_STREAMS", "[[I");
         this.operandStreams = field("OPERAND_STREAMS", "[[I");
         this.layoutStreams = field("LAYOUT_STREAMS", "[[I");
+        this.blockStreams = field("BLOCK_STREAMS", "[[I");
         this.constants = field("CONSTANTS", "[[Ljava/lang/Object;");
         this.exceptionHandlers = field("EXCEPTION_HANDLERS", "[[I");
         this.opcodeMaps = field("OPCODE_MAPS", "[[I");

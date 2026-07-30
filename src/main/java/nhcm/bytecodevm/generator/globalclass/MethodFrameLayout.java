@@ -15,6 +15,8 @@ public class MethodFrameLayout
     public final FieldRef stackTypes;
     public final FieldRef stackWidths;
     public final FieldRef programCounter;
+    public final FieldRef stateKey;
+    public final FieldRef blockIndex;
     public final FieldRef stackPointer;
     public final FieldRef returnValue;
     public final FieldRef returned;
@@ -50,6 +52,8 @@ public class MethodFrameLayout
         this.stackTypes = field("stackTypes", "[I");
         this.stackWidths = field("stackWidths", "[I");
         this.programCounter = field("programCounter", "I");
+        this.stateKey = field("stateKey", "I");
+        this.blockIndex = field("blockIndex", "I");
         this.stackPointer = field("stackPointer", "I");
         this.returnValue = field("returnValue", "Ljava/lang/Object;");
         this.returned = field("returned", "Z");

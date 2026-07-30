@@ -250,6 +250,16 @@ public final class InterpretContext
         return frameField(frame.programCounter);
     }
 
+    public FieldAccess frameStateKey()
+    {
+        return frameField(frame.stateKey);
+    }
+
+    public FieldAccess frameBlockIndex()
+    {
+        return frameField(frame.blockIndex);
+    }
+
     public FieldAccess frameReturned()
     {
         return frameField(frame.returned);
@@ -321,6 +331,7 @@ public final class InterpretContext
                 vm.decodeOperand.name(),
                 "I",
                 program(),
+                frame(),
                 instructionIndex(),
                 operandIndex(),
                 opcode()));

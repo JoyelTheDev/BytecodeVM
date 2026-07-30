@@ -125,10 +125,11 @@ public class Obfuscator
 
         String globalLocation = "BytecodeVM";
 
-        VMSetGenerator allInOneVm = newVMSetGenerator("BytecodeVM", "BytecodeVM");
+        List<VMSetGenerator> allInOneVms = newVMSetGenerators("BytecodeVM", "BytecodeVM");
         List<VMSetGenerator> perClasses = new ArrayList<>();
         List<VMSetGenerator> perMethods = new ArrayList<>();
-        Map<String, VMSetGenerator> perPackage = new LinkedHashMap<>();
+        Map<String, List<VMSetGenerator>> perPackage = new LinkedHashMap<>();
+        Map<String, Integer> packageMethodCounts = new HashMap<>();
 
         Set<String> securityManagerClasses = securityManagerClasses(context.classes.values());
 
@@ -144,15 +145,16 @@ public class Obfuscator
             String classPackage = ClassUtils.getPackageName(classNode);
             String vmLocation = getVMLocation(globalLocation, classPackage, classNode);
 
-            VMSetGenerator perClass = null;
+            List<VMSetGenerator> perClass = null;
 
             if(config.createMode == BytecodeVMConfig.VMCreateMode.PER_CLASS)
             {
-                perClass = newVMSetGenerator(
+                perClass = newVMSetGenerators(
                         ClassUtils.getSimpleName(classNode) + "$VM",
                         vmLocation
                 );
             }
+            int perClassMethodCount = 0;
 
             Set<String> stackTraceSensitiveMethods = stackTraceSensitiveMethods(classNode);
 
@@ -173,7 +175,7 @@ public class Obfuscator
                 {
                     case PER_CLASS ->
                     {
-                        perClass.addMethod(methodNode, classNode);
+                        pickGenerator(perClass, perClassMethodCount++).addMethod(methodNode, classNode);
                     }
 
                     case PER_METHOD ->
@@ -189,24 +191,26 @@ public class Obfuscator
 
                     case PER_PACKAGE ->
                     {
-                        VMSetGenerator generator = perPackage.computeIfAbsent(
+                        List<VMSetGenerator> generators = perPackage.computeIfAbsent(
                                 classPackage,
-                                ignored -> newVMSetGenerator(classPackage + "$VM", classPackage)
+                                ignored -> newVMSetGenerators(classPackage + "$VM", classPackage)
                         );
 
-                        generator.addMethod(methodNode, classNode);
+                        int packageMethodCount = packageMethodCounts.getOrDefault(classPackage, 0);
+                        pickGenerator(generators, packageMethodCount).addMethod(methodNode, classNode);
+                        packageMethodCounts.put(classPackage, packageMethodCount + 1);
                     }
 
                     case ONE_FOR_ALL ->
                     {
-                        allInOneVm.addMethod(methodNode, classNode);
+                        pickGenerator(allInOneVms, matchedMethods - 1).addMethod(methodNode, classNode);
                     }
                 }
             }
 
-            if(config.createMode == BytecodeVMConfig.VMCreateMode.PER_CLASS && perClass != null && perClass.hasMethods())
+            if(config.createMode == BytecodeVMConfig.VMCreateMode.PER_CLASS && perClass != null)
             {
-                perClasses.add(perClass);
+                addNonEmpty(perClasses, perClass);
             }
         }
 
@@ -214,13 +218,10 @@ public class Obfuscator
         {
             case PER_CLASS -> VMSetGenerators.addAll(perClasses);
             case PER_METHOD -> VMSetGenerators.addAll(perMethods);
-            case PER_PACKAGE -> VMSetGenerators.addAll(perPackage.values());
+            case PER_PACKAGE -> perPackage.values().forEach(generators -> addNonEmpty(VMSetGenerators, generators));
             case ONE_FOR_ALL ->
             {
-                if(allInOneVm.hasMethods())
-                {
-                    VMSetGenerators.add(allInOneVm);
-                }
+                addNonEmpty(VMSetGenerators, allInOneVms);
             }
         }
 
@@ -267,6 +268,40 @@ public class Obfuscator
                 vmCodePoolGenerator,
                 config,
                 namer);
+    }
+
+    private List<VMSetGenerator> newVMSetGenerators(String name, String location)
+    {
+        int count = config.createMode == BytecodeVMConfig.VMCreateMode.PER_METHOD
+                ? 1
+                : config.vmCount;
+        List<VMSetGenerator> generators = new ArrayList<>(count);
+        for (int index = 0; index < count; index++)
+        {
+            String vmName = count == 1 ? name : name + "$" + index;
+            generators.add(newVMSetGenerator(vmName, location));
+        }
+        return generators;
+    }
+
+    private static VMSetGenerator pickGenerator(List<VMSetGenerator> generators, int ordinal)
+    {
+        if (generators.isEmpty())
+        {
+            throw new IllegalArgumentException("No VM generator is available");
+        }
+        return generators.get(Math.floorMod(ordinal, generators.size()));
+    }
+
+    private static void addNonEmpty(List<VMSetGenerator> target, List<VMSetGenerator> candidates)
+    {
+        for (VMSetGenerator generator : candidates)
+        {
+            if (generator.hasMethods())
+            {
+                target.add(generator);
+            }
+        }
     }
 
     private String getVMLocation(String globalLocation, String classPackage, ClassNode classNode)
