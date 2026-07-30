@@ -181,20 +181,20 @@ public class CodePoolGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.maxStack.name(), layout.maxStack.descriptor()));
 
         MethodNode clinit = MethodUtils.newMethodNode(new Acc[]{Acc.STATIC}, "<clinit>", "()V");
-        clinit.instructions.add(initOPCODE_STREAMS());
-        clinit.instructions.add(initOPERAND_STREAMS());
-        clinit.instructions.add(initLAYOUT_STREAMS());
-        clinit.instructions.add(initBLOCK_STREAMS());
-        clinit.instructions.add(initCONSTANTS());
-        clinit.instructions.add(initEXCEPTION_HANDLERS());
-        clinit.instructions.add(initOPCODE_MAPS());
-        clinit.instructions.add(initMETHOD_KEYS());
-        clinit.instructions.add(initFEATURE_FLAGS());
-        clinit.instructions.add(initMAX_LOCALS_MAX_STACK());
-        AdvInsnBuilder ib = new AdvInsnBuilder(0);
-        ib.set(AdvInsnBuilder.staticField(layout.instance), AdvInsnBuilder.newObject(layout.owner));
-        ib.returnVoid();
-        clinit.instructions.add(ib.toInsnList());
+        AdvInsnBuilder clinitBuilder = new AdvInsnBuilder(0);
+        addClinitHelper(cn, clinitBuilder, 0, initOPCODE_STREAMS());
+        addClinitHelper(cn, clinitBuilder, 1, initOPERAND_STREAMS());
+        addClinitHelper(cn, clinitBuilder, 2, initLAYOUT_STREAMS());
+        addClinitHelper(cn, clinitBuilder, 3, initBLOCK_STREAMS());
+        addClinitHelper(cn, clinitBuilder, 4, initCONSTANTS());
+        addClinitHelper(cn, clinitBuilder, 5, initEXCEPTION_HANDLERS());
+        addClinitHelper(cn, clinitBuilder, 6, initOPCODE_MAPS());
+        addClinitHelper(cn, clinitBuilder, 7, initMETHOD_KEYS());
+        addClinitHelper(cn, clinitBuilder, 8, initFEATURE_FLAGS());
+        addClinitHelper(cn, clinitBuilder, 9, initMAX_LOCALS_MAX_STACK());
+        clinitBuilder.set(AdvInsnBuilder.staticField(layout.instance), AdvInsnBuilder.newObject(layout.owner));
+        clinitBuilder.returnVoid();
+        clinit.instructions.add(clinitBuilder.toInsnList());
         cn.methods.add(clinit);
 
         cn.methods.add(generateFind());
@@ -236,6 +236,18 @@ public class CodePoolGenerator extends ClassObj
             case Type.ARRAY, Type.OBJECT -> { }
             default -> throw new IllegalArgumentException("Unsupported constant descriptor: " + type.getDescriptor());
         }
+    }
+
+    private void addClinitHelper(ClassNode classNode, AdvInsnBuilder clinit, int index, InsnList body)
+    {
+        String name = "codePoolInit$" + index;
+        MethodNode helper = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, name, "()V");
+        helper.instructions.add(body);
+        AdvInsnBuilder helperEnd = new AdvInsnBuilder(0);
+        helperEnd.returnVoid();
+        helper.instructions.add(helperEnd.toInsnList());
+        classNode.methods.add(helper);
+        clinit.directCall(AdvInsnBuilder.callStatic(layout.owner, name, "V"));
     }
 
     private MethodNode genMixMethod()

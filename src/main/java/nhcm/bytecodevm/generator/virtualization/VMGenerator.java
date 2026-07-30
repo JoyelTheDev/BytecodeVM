@@ -38,6 +38,7 @@ import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretContext;
 import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.utils.ClassUtils;
+import nhcm.bytecodevm.utils.FileUtils;
 import nhcm.bytecodevm.utils.FieldUtils;
 import nhcm.bytecodevm.utils.InsnUtils;
 import nhcm.bytecodevm.utils.MethodUtils;
@@ -49,7 +50,10 @@ import java.util.*;
 
 public class VMGenerator extends ClassObj
 {
-    private static final int INTERPRET_CHUNK_SIZE = 12;
+    private static final int MAX_INTERPRET_CHUNK_OPCODES = 8;
+    private static final int INTERPRET_CHUNK_CODE_SIZE_LIMIT = 48_000;
+    private static final int MAX_SUPER_INSTRUCTION_CHUNK_RECIPES = 8;
+    private static final int SUPER_INSTRUCTION_CHUNK_CODE_SIZE_LIMIT = 48_000;
 
     private static final Map<Opcs, InterpretBranch> branches = new EnumMap<>(Opcs.class);
 
@@ -155,6 +159,8 @@ public class VMGenerator extends ClassObj
     private final VMObfProfile profile;
     private final SuperInstructionRegistry superInstructions;
     private final Map<Integer, String> interpretChunkNames = new HashMap<>();
+    private final Map<Integer, String> superInstructionChunkNames = new HashMap<>();
+    private List<SuperInstructionChunk> superInstructionChunks = List.of();
 
     public VMGenerator(
             String className,
@@ -875,6 +881,11 @@ public class VMGenerator extends ClassObj
         if (!superInstructions.recipes().isEmpty())
         {
             opcodeSet.add(Opcs.SUPER_INSTRUCTION);
+            superInstructionChunks = createSuperInstructionChunks(superInstructions.recipes());
+            for (SuperInstructionChunk chunk : superInstructionChunks)
+            {
+                classNode.methods.add(chunk.method);
+            }
         }
 
         List<Opcs> opcodes = new ArrayList<>(opcodeSet);
@@ -883,17 +894,15 @@ public class VMGenerator extends ClassObj
                 opcMutator.toMutated(right)
         ));
 
-        List<List<Opcs>> chunks = new ArrayList<>();
-        for (int start = 0; start < opcodes.size(); start += INTERPRET_CHUNK_SIZE)
+        List<InterpretChunk> chunks = createInterpretChunks(opcodes);
+        Map<Opcs, InterpretChunkSlot> slotByOpcode = new EnumMap<>(Opcs.class);
+        for (InterpretChunk chunk : chunks)
         {
-            chunks.add(new ArrayList<>(opcodes.subList(
-                    start,
-                    Math.min(start + INTERPRET_CHUNK_SIZE, opcodes.size()))));
-        }
-
-        for (int i = 0; i < chunks.size(); i++)
-        {
-            classNode.methods.add(genInterpretChunkMethod(i, chunks.get(i)));
+            classNode.methods.add(chunk.method);
+            for (int opcodeIndex = 0; opcodeIndex < chunk.opcodes.size(); opcodeIndex++)
+            {
+                slotByOpcode.put(chunk.opcodes.get(opcodeIndex), new InterpretChunkSlot(chunk.index, opcodeIndex));
+            }
         }
 
         InterpretContext context = new InterpretContext(
@@ -905,20 +914,24 @@ public class VMGenerator extends ClassObj
         List<SwitchCase> cases = new ArrayList<>();
         for (int i = 0; i < opcodes.size(); i++)
         {
-            int chunkIndex = i / INTERPRET_CHUNK_SIZE;
-            int opcodeIndex = i % INTERPRET_CHUNK_SIZE;
-            int mutatedOpcode = opcMutator.toMutated(opcodes.get(i));
+            Opcs opcode = opcodes.get(i);
+            InterpretChunkSlot slot = slotByOpcode.get(opcode);
+            if (slot == null)
+            {
+                throw new IllegalStateException("Opcode has no interpret chunk slot: " + opcode);
+            }
+            int mutatedOpcode = opcMutator.toMutated(opcode);
             java.util.function.Consumer<AdvInsnBuilder> dispatchBody = b -> {
                 b.directCall(AdvInsnBuilder.callStatic(
                         className(),
-                        interpretChunkName(chunkIndex),
+                        interpretChunkName(slot.chunkIndex),
                         "V",
                         context.program(),
                         context.frame(),
                         context.code(),
                         context.constants(),
                         context.opcode(),
-                        AdvInsnBuilder.constant(opcodeIndex),
+                        AdvInsnBuilder.constant(slot.opcodeIndex),
                         context.instructionIndex()));
                 b.gotoLabel(afterDispatch);
             };
@@ -935,6 +948,91 @@ public class VMGenerator extends ClassObj
                 featureEnabled(context.program(), ProtectedVMMethod.FEATURE_OBFUSCATE_DISPATCH),
                 b -> b.set(selector, AdvInsnBuilder.callStatic(className(), vmLayout.dispatchKey.name(), "I", context.opcode())));
         ib.switchLookup(selector, b -> b.gotoLabel(unknownOpcode), cases.toArray(SwitchCase[]::new));
+    }
+
+    private List<InterpretChunk> createInterpretChunks(List<Opcs> opcodes)
+    {
+        List<InterpretChunk> chunks = new ArrayList<>();
+        List<Opcs> current = new ArrayList<>();
+        int chunkIndex = 0;
+        for (Opcs opcode : opcodes)
+        {
+            current.add(opcode);
+            if (current.size() <= 1)
+            {
+                continue;
+            }
+            if (current.size() > MAX_INTERPRET_CHUNK_OPCODES || tooLargeInterpretChunk(chunkIndex, current))
+            {
+                current.remove(current.size() - 1);
+                chunks.add(newInterpretChunk(chunkIndex++, current));
+                current = new ArrayList<>();
+                current.add(opcode);
+            }
+        }
+        if (!current.isEmpty())
+        {
+            chunks.add(newInterpretChunk(chunkIndex, current));
+        }
+        return List.copyOf(chunks);
+    }
+
+    private boolean tooLargeInterpretChunk(int chunkIndex, List<Opcs> opcodes)
+    {
+        return FileUtils.estimateMaxSize(genInterpretChunkMethod(chunkIndex, opcodes)) > INTERPRET_CHUNK_CODE_SIZE_LIMIT;
+    }
+
+    private InterpretChunk newInterpretChunk(int chunkIndex, List<Opcs> opcodes)
+    {
+        List<Opcs> chunkOpcodes = List.copyOf(opcodes);
+        return new InterpretChunk(chunkIndex, chunkOpcodes, genInterpretChunkMethod(chunkIndex, chunkOpcodes));
+    }
+
+    private List<SuperInstructionChunk> createSuperInstructionChunks(List<SuperInstructionRegistry.Recipe> recipes)
+    {
+        List<SuperInstructionChunk> chunks = new ArrayList<>();
+        List<SuperInstructionRegistry.Recipe> current = new ArrayList<>();
+        int chunkIndex = 0;
+        for (SuperInstructionRegistry.Recipe recipe : recipes)
+        {
+            current.add(recipe);
+            if (current.size() <= 1)
+            {
+                continue;
+            }
+            if (current.size() > MAX_SUPER_INSTRUCTION_CHUNK_RECIPES ||
+                tooLargeSuperInstructionChunk(chunkIndex, current))
+            {
+                current.remove(current.size() - 1);
+                chunks.add(newSuperInstructionChunk(chunkIndex++, current));
+                current = new ArrayList<>();
+                current.add(recipe);
+            }
+        }
+        if (!current.isEmpty())
+        {
+            chunks.add(newSuperInstructionChunk(chunkIndex, current));
+        }
+        return List.copyOf(chunks);
+    }
+
+    private boolean tooLargeSuperInstructionChunk(
+            int chunkIndex,
+            List<SuperInstructionRegistry.Recipe> recipes)
+    {
+        return FileUtils.estimateMaxSize(genSuperInstructionChunkMethod(chunkIndex, recipes)) >
+               SUPER_INSTRUCTION_CHUNK_CODE_SIZE_LIMIT;
+    }
+
+    private SuperInstructionChunk newSuperInstructionChunk(
+            int chunkIndex,
+            List<SuperInstructionRegistry.Recipe> recipes)
+    {
+        List<SuperInstructionRegistry.Recipe> chunkRecipes = List.copyOf(recipes);
+        return new SuperInstructionChunk(
+                chunkIndex,
+                chunkRecipes,
+                genSuperInstructionChunkMethod(chunkIndex, chunkRecipes));
     }
 
     private MethodNode genInterpretChunkMethod(int chunkIndex, List<Opcs> opcodes)
@@ -990,9 +1088,54 @@ public class VMGenerator extends ClassObj
         List<SuperInstructionRegistry.Recipe> recipes = superInstructions.recipes();
         @SuppressWarnings("unchecked")
         java.util.function.Consumer<AdvInsnBuilder>[] cases = new java.util.function.Consumer[recipes.size()];
-        for (SuperInstructionRegistry.Recipe recipe : recipes)
+        for (SuperInstructionChunk chunk : superInstructionChunks)
         {
-            cases[recipe.id()] = b -> {
+            for (int recipeIndex = 0; recipeIndex < chunk.recipes.size(); recipeIndex++)
+            {
+                SuperInstructionRegistry.Recipe recipe = chunk.recipes.get(recipeIndex);
+                int localRecipeIndex = recipeIndex;
+                cases[recipe.id()] = b -> b.directCall(AdvInsnBuilder.callStatic(
+                        className(),
+                        superInstructionChunkName(chunk.index),
+                        "V",
+                        context.program(),
+                        context.frame(),
+                        context.code(),
+                        context.constants(),
+                        context.opcode(),
+                        AdvInsnBuilder.constant(localRecipeIndex),
+                        context.instructionIndex()));
+            }
+        }
+        ib.switchTable(superId, 0, this::generateUnknownOpcode, cases);
+    }
+
+    private MethodNode genSuperInstructionChunkMethod(
+            int chunkIndex,
+            List<SuperInstructionRegistry.Recipe> recipes)
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                superInstructionChunkName(chunkIndex),
+                interpretChunkDescriptor());
+        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        Local recipeIndex = ib.getLocal("recipeIndex", "I", InterpretContext.RIGHT_VALUE);
+        Local passedInstructionIndex = ib.getLocal("passedInstructionIndex", "I", 6);
+        InterpretContext context = new InterpretContext(
+                className(),
+                frameLayout,
+                programLayout,
+                vmLayout,
+                null);
+        ib.set(context.instructionIndex(), passedInstructionIndex);
+        ib.set(context.operandIndex(), AdvInsnBuilder.constant(1));
+
+        @SuppressWarnings("unchecked")
+        java.util.function.Consumer<AdvInsnBuilder>[] cases = new java.util.function.Consumer[recipes.size()];
+        for (int i = 0; i < recipes.size(); i++)
+        {
+            SuperInstructionRegistry.Recipe recipe = recipes.get(i);
+            cases[i] = b -> {
                 for (Opcs opcode : recipe.sequence())
                 {
                     InterpretBranch branch = branches.get(opcode);
@@ -1004,7 +1147,10 @@ public class VMGenerator extends ClassObj
                 }
             };
         }
-        ib.switchTable(superId, 0, this::generateUnknownOpcode, cases);
+
+        ib.switchTable(recipeIndex, 0, this::generateUnknownOpcode, cases);
+        ib.returnVoid();
+        return method;
     }
 
     private String interpretChunkName(int chunkIndex)
@@ -1012,6 +1158,13 @@ public class VMGenerator extends ClassObj
         return interpretChunkNames.computeIfAbsent(
                 chunkIndex,
                 index -> namer.method(className(), "interpretChunk$" + index, interpretChunkDescriptor()));
+    }
+
+    private String superInstructionChunkName(int chunkIndex)
+    {
+        return superInstructionChunkNames.computeIfAbsent(
+                chunkIndex,
+                index -> namer.method(className(), "superInstructionChunk$" + index, interpretChunkDescriptor()));
     }
 
     private String interpretHandlerDescriptor()
@@ -2868,5 +3021,20 @@ public class VMGenerator extends ClassObj
                 throw new IllegalStateException("No InterpretBranch for " + opcode);
             }
         }
+    }
+
+    private record InterpretChunk(int index, List<Opcs> opcodes, MethodNode method)
+    {
+    }
+
+    private record InterpretChunkSlot(int chunkIndex, int opcodeIndex)
+    {
+    }
+
+    private record SuperInstructionChunk(
+            int index,
+            List<SuperInstructionRegistry.Recipe> recipes,
+            MethodNode method)
+    {
     }
 }

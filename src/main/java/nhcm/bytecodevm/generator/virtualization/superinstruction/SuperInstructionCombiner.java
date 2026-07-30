@@ -282,30 +282,61 @@ public class SuperInstructionCombiner
 
     private static boolean isFusable(VMInstruction instruction)
     {
-        return switch (instruction.opcode)
-        {
-            case NOP, ACONST_NULL,
-                 ICONST_M1, ICONST_0, ICONST_1, ICONST_2, ICONST_3, ICONST_4, ICONST_5,
-                 LCONST_0, LCONST_1,
-                 FCONST_0, FCONST_1, FCONST_2,
-                 DCONST_0, DCONST_1,
-                 BIPUSH, SIPUSH,
-                 ILOAD, LLOAD, FLOAD, DLOAD, ALOAD,
-                 ISTORE, LSTORE, FSTORE, DSTORE, ASTORE,
-                 POP, POP2,
-                 DUP, DUP_X1, DUP_X2, DUP2, DUP2_X1, DUP2_X2,
-                 SWAP,
-                 IADD, LADD, FADD, DADD,
-                 ISUB, LSUB, FSUB, DSUB,
-                 IMUL, LMUL, FMUL, DMUL,
-                 INEG, LNEG, FNEG, DNEG,
-                 ISHL, LSHL, ISHR, LSHR, IUSHR, LUSHR,
-                 IAND, LAND, IOR, LOR, IXOR, LXOR,
-                 IINC,
-                 I2L, I2F, I2D, L2I, L2F, L2D, F2I, F2L, F2D, D2I, D2L, D2F, I2B, I2C, I2S,
-                 LCMP, FCMPL, FCMPG, DCMPL, DCMPG -> true;
-            default -> false;
-        };
+        return true;
+//        return switch (instruction.opcode)
+//        {
+//            case NOP, ACONST_NULL,
+//                 ICONST_M1, ICONST_0, ICONST_1, ICONST_2, ICONST_3, ICONST_4, ICONST_5,
+//                 LCONST_0, LCONST_1,
+//                 FCONST_0, FCONST_1, FCONST_2,
+//                 DCONST_0, DCONST_1,
+//                 BIPUSH, SIPUSH,
+//                 ILOAD, LLOAD, FLOAD, DLOAD, ALOAD,
+//                 ISTORE, LSTORE, FSTORE, DSTORE, ASTORE,
+//                 POP, POP2,
+//                 DUP, DUP_X1, DUP_X2, DUP2, DUP2_X1, DUP2_X2,
+//                 SWAP,
+//                 IADD, LADD, FADD, DADD,
+//                 ISUB, LSUB, FSUB, DSUB,
+//                 IMUL, LMUL, FMUL, DMUL,
+//                 INEG, LNEG, FNEG, DNEG,
+//                 ISHL, LSHL, ISHR, LSHR, IUSHR, LUSHR,
+//                 IAND, LAND, IOR, LOR, IXOR, LXOR,
+//                 IINC,
+//                 I2L, I2F, I2D, L2I, L2F, L2D, F2I, F2L, F2D, D2I, D2L, D2F, I2B, I2C, I2S,
+//                 LCMP, FCMPL, FCMPG, DCMPL, DCMPG,
+//
+//                 LDC,
+//                 IALOAD, LALOAD, FALOAD, DALOAD, AALOAD, BALOAD, CALOAD, SALOAD,
+//                 IASTORE, LASTORE, FASTORE, DASTORE, AASTORE, BASTORE, CASTORE, SASTORE,
+//                 ARRAYLENGTH,
+//                 CHECKCAST,
+//                 INSTANCEOF,
+//                 NEWARRAY,
+//                 ANEWARRAY,
+//
+//                 GETFIELD,
+//                 PUTFIELD,
+//                 GETSTATIC,
+//                 PUTSTATIC,
+//                 NEW,
+//                 MULTIANEWARRAY,
+//
+//                 IDIV, LDIV, FDIV, DDIV,
+//                 IREM, LREM, FREM, DREM,
+//                 IFEQ, IFNE, IFLT, IFGE, IFGT, IFLE,
+//                 IF_ICMPEQ, IF_ICMPNE, IF_ICMPLT, IF_ICMPGE, IF_ICMPGT, IF_ICMPLE,
+//                 IF_ACMPEQ, IF_ACMPNE,
+//                 IFNULL, IFNONNULL,
+//                 GOTO,
+//                 TABLESWITCH,
+//                 LOOKUPSWITCH,
+//                 IRETURN, LRETURN, FRETURN, DRETURN, ARETURN, RETURN,
+//                 ATHROW,
+//                 MONITORENTER, MONITOREXIT,
+//                 INVOKEVIRTUAL, INVOKESPECIAL, INVOKESTATIC, INVOKEINTERFACE, INVOKEDYNAMIC -> true;
+//            default -> false;
+//        };
     }
 
     private static boolean endsBlock(Opcs opcode)
