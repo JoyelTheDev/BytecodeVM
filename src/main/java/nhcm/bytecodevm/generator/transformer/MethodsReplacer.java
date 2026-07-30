@@ -4,6 +4,8 @@ import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.data.CompiledMethod;
+import nhcm.bytecodevm.data.VMIntegrityPlan;
+import nhcm.bytecodevm.utils.RandomUtils;
 import nhcm.bytecodevm.utils.MethodUtils;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -19,11 +21,18 @@ public class MethodsReplacer
 {
     private final List<CompiledMethod> compiledMethods;
     private final String vmClassName;
+    private final VMIntegrityPlan integrityPlan;
 
     public MethodsReplacer(List<CompiledMethod> compiledMethods, String vmClassName)
     {
+        this(compiledMethods, vmClassName, null);
+    }
+
+    public MethodsReplacer(List<CompiledMethod> compiledMethods, String vmClassName, VMIntegrityPlan integrityPlan)
+    {
         this.compiledMethods = List.copyOf(Objects.requireNonNull(compiledMethods, "compiledMethods"));
         this.vmClassName = Objects.requireNonNull(vmClassName, "vmClassName");
+        this.integrityPlan = integrityPlan;
     }
 
     public Map<String, ClassNode> transform()
@@ -74,6 +83,22 @@ public class MethodsReplacer
         Expr receiver = isStatic
                 ? AdvInsnBuilder.constant(null)
                 : AdvInsnBuilder.cast(AdvInsnBuilder.self(owner.name), "java/lang/Object");
+        Local integrityKey = null;
+        if (usesIntegrityCheck())
+        {
+            integrityKey = ib.var("integrityKey", "I");
+            if (RandomUtils.randomDouble() <= integrityPlan.ratio())
+            {
+                ib.set(integrityKey, AdvInsnBuilder.callStatic(
+                        integrityPlan.owner(),
+                        integrityPlan.methodName(),
+                        "I"));
+            }
+            else
+            {
+                ib.set(integrityKey, AdvInsnBuilder.constant(0));
+            }
+        }
         Expr execute;
         if (compiledMethod.isSegmented())
         {
@@ -83,25 +108,41 @@ public class MethodsReplacer
             {
                 ib.setArray(codeIds, AdvInsnBuilder.constant(index), AdvInsnBuilder.constant(compiledMethod.codeIds.get(index)));
             }
-            execute = AdvInsnBuilder.callStatic(
-                    vmClassName,
-                    "execute",
-                    "Ljava/lang/Object;",
-                    codeIds,
-                    receiver,
-                    argArray
-            );
+            execute = integrityKey == null
+                    ? AdvInsnBuilder.callStatic(
+                            vmClassName,
+                            "execute",
+                            "Ljava/lang/Object;",
+                            codeIds,
+                            receiver,
+                            argArray)
+                    : AdvInsnBuilder.callStatic(
+                            vmClassName,
+                            "execute",
+                            "Ljava/lang/Object;",
+                            codeIds,
+                            receiver,
+                            argArray,
+                            integrityKey);
         }
         else
         {
-            execute = AdvInsnBuilder.callStatic(
-                    vmClassName,
-                    "execute",
-                    "Ljava/lang/Object;",
-                    AdvInsnBuilder.constant(compiledMethod.codeId),
-                    receiver,
-                    argArray
-            );
+            execute = integrityKey == null
+                    ? AdvInsnBuilder.callStatic(
+                            vmClassName,
+                            "execute",
+                            "Ljava/lang/Object;",
+                            AdvInsnBuilder.constant(compiledMethod.codeId),
+                            receiver,
+                            argArray)
+                    : AdvInsnBuilder.callStatic(
+                            vmClassName,
+                            "execute",
+                            "Ljava/lang/Object;",
+                            AdvInsnBuilder.constant(compiledMethod.codeId),
+                            receiver,
+                            argArray,
+                            integrityKey);
         }
         if(returnType.equals(Type.VOID_TYPE))
         {
@@ -111,6 +152,11 @@ public class MethodsReplacer
         {
             ib.returnValue(AdvInsnBuilder.cast(execute, returnType));
         }
+    }
+
+    private boolean usesIntegrityCheck()
+    {
+        return integrityPlan != null && integrityPlan.ratio() > 0.0D;
     }
 
     private static void validate(CompiledMethod compiledMethod)

@@ -3,9 +3,11 @@ package nhcm.bytecodevm.generator;
 import lombok.Getter;
 import nhcm.bytecodevm.config.BytecodeVMConfig;
 import nhcm.bytecodevm.data.CompiledMethod;
+import nhcm.bytecodevm.data.VMIntegrityPlan;
 import nhcm.bytecodevm.data.vminsn.VMInstruction;
 import nhcm.bytecodevm.data.vminsn.VMMethod;
 import nhcm.bytecodevm.data.VirtualizationResult;
+import nhcm.bytecodevm.generator.integrity.VMIntegrityGenerator;
 import nhcm.bytecodevm.generator.globalclass.MethodFrameGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
@@ -15,6 +17,7 @@ import nhcm.bytecodevm.generator.virtualization.CodePoolGenerator;
 import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionRegistry;
 import nhcm.bytecodevm.generator.virtualization.VMGenerator;
 import nhcm.bytecodevm.generator.virtualization.VMObfProfile;
+import nhcm.bytecodevm.tools.JarTransformer;
 import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.tools.VMMethodCompiler;
 import nhcm.bytecodevm.utils.MethodUtils;
@@ -26,7 +29,7 @@ import java.util.*;
 
 public class VMSetGenerator
 {
-    private static final int CODE_POOL_METHOD_SIZE_LIMIT = 55_000;
+    private static final int CODE_POOL_METHOD_SIZE_LIMIT = 32_000;
 
     public interface ProgressListener
     {
@@ -104,10 +107,15 @@ public class VMSetGenerator
 
     public VirtualizationResult compile()
     {
-        return compile(null);
+        return compile(null, null);
     }
 
     public VirtualizationResult compile(ProgressListener progress)
+    {
+        return compile(null, progress);
+    }
+
+    public VirtualizationResult compile(JarTransformer.JarContext serializationContext, ProgressListener progress)
     {
         compiledMethods.clear();
         codePoolMethods.clear();
@@ -187,11 +195,104 @@ public class VMSetGenerator
             codePoolClasses.add(codePoolGenerator.getClassNode());
         }
 
+        IntegrityBuild integrityBuild = buildIntegrity(serializationContext, vmClass, codePoolClasses);
+
         reportProgress(progress, completedSteps, totalSteps, "Replacing methods");
-        Map<String, ClassNode> transformedTargets = new MethodsReplacer(compiledMethods, vmClassName).transform();
+        Map<String, ClassNode> transformedTargets = new MethodsReplacer(
+                compiledMethods,
+                vmClassName,
+                integrityBuild.plan()).transform();
+        VirtualizationResult integrityResult = virtualizeIntegrityWrappers(integrityBuild);
+        if (integrityResult != null)
+        {
+            transformedTargets.putAll(integrityResult.transformedTarget);
+        }
         completedSteps++;
         reportProgress(progress, completedSteps, totalSteps, "Replaced methods");
-        return new VirtualizationResult(transformedTargets, vmClass, codePoolClasses);
+
+        List<ClassNode> generatedClasses = new ArrayList<>(codePoolClasses);
+        if (integrityResult != null)
+        {
+            generatedClasses.add(integrityResult.vmClass);
+            generatedClasses.addAll(integrityResult.codePoolClass);
+        }
+        return new VirtualizationResult(transformedTargets, vmClass, generatedClasses);
+    }
+
+    private IntegrityBuild buildIntegrity(
+            JarTransformer.JarContext serializationContext,
+            ClassNode vmClass,
+            List<ClassNode> codePoolClasses)
+    {
+        if (!config.vmIntegrityCheck ||
+            config.vmIntegrityCheckRatio <= 0.0D ||
+            serializationContext == null ||
+            compiledMethods.isEmpty())
+        {
+            return IntegrityBuild.empty();
+        }
+
+        Map<String, ClassNode> hashClassesByName = new LinkedHashMap<>();
+        addHashClass(hashClassesByName, methodFrameGenerator.getClassNode());
+        addHashClass(hashClassesByName, vmProgramGenerator.getClassNode());
+        addHashClass(hashClassesByName, vmCodePoolGenerator.getClassNode());
+        addHashClass(hashClassesByName, vmClass);
+        for (ClassNode codePoolClass : codePoolClasses)
+        {
+            addHashClass(hashClassesByName, codePoolClass);
+        }
+        List<ClassNode> hashClasses = new ArrayList<>(hashClassesByName.values());
+
+        JarTransformer.JarContext snapshot = new JarTransformer.JarContext();
+        snapshot.classes.putAll(serializationContext.classes);
+        for (ClassNode hashClass : hashClasses)
+        {
+            snapshot.addClass(hashClass);
+        }
+        snapshot.resources.putAll(serializationContext.resources);
+
+        List<VMIntegrityGenerator.HashTarget> targets = new ArrayList<>();
+        for (ClassNode hashClass : hashClasses)
+        {
+            int seed = nonZeroRandom();
+            int expected = VMIntegrityGenerator.hashBytes(JarTransformer.toBytes(hashClass, snapshot), seed);
+            targets.add(new VMIntegrityGenerator.HashTarget(hashClass.name + ".class", seed, expected));
+        }
+
+        String carrierName = namer.className(
+                classPackage(vmClassName),
+                classSimpleName(vmClassName) + "$Integrity");
+        VMIntegrityGenerator generator = new VMIntegrityGenerator(
+                carrierName,
+                targets,
+                config.vmIntegrityCheckRatio,
+                namer);
+
+        return new IntegrityBuild(generator.plan(), generator.classNode(), generator.deriveMethod());
+    }
+
+    private VirtualizationResult virtualizeIntegrityWrappers(IntegrityBuild integrityBuild)
+    {
+        if (integrityBuild.plan() == null)
+        {
+            return null;
+        }
+
+        VMSetGenerator integrityVm = new VMSetGenerator(
+                classSimpleName(integrityBuild.plan().owner()) + "$VM",
+                classPackage(integrityBuild.plan().owner()),
+                OpcMutator.MutateStrategy.RANDOM_INT.getMutator(),
+                methodFrameGenerator,
+                vmProgramGenerator,
+                vmCodePoolGenerator,
+                config.integrityConfig(),
+                namer);
+        for (CompiledMethod compiledMethod : compiledMethods)
+        {
+            integrityVm.addMethod(compiledMethod.source, compiledMethod.owner);
+        }
+        integrityVm.addMethod(integrityBuild.deriveMethod(), integrityBuild.carrierClass());
+        return integrityVm.compile();
     }
 
     private static void reportProgress(ProgressListener progress, int completed, int total, String status)
@@ -200,6 +301,11 @@ public class VMSetGenerator
         {
             progress.update(completed, total, status);
         }
+    }
+
+    private static void addHashClass(Map<String, ClassNode> classes, ClassNode classNode)
+    {
+        classes.putIfAbsent(classNode.name, classNode);
     }
 
     private int createCodePools(ProgressListener progress, int completedSteps, int totalSteps)
@@ -390,8 +496,26 @@ public class VMSetGenerator
         return codeId;
     }
 
+    private static int nonZeroRandom()
+    {
+        int value;
+        do
+        {
+            value = RandomUtils.randomInt();
+        } while (value == 0);
+        return value;
+    }
+
     public boolean hasMethods()
     {
         return !methodsToObfuscate.isEmpty();
+    }
+
+    private record IntegrityBuild(VMIntegrityPlan plan, ClassNode carrierClass, MethodNode deriveMethod)
+    {
+        private static IntegrityBuild empty()
+        {
+            return new IntegrityBuild(null, null, null);
+        }
     }
 }

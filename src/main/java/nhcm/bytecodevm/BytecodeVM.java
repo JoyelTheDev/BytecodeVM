@@ -17,7 +17,7 @@ public class BytecodeVM
     private static final Logger logger = LoggerFactory.getLogger(BytecodeVM.class);
     private static final AtomicBoolean terminating = new AtomicBoolean(false);
 
-    private static final String version = "1.3.0";
+    private static final String version = "1.4.0";
 
     private static final String defaultConfig = """
             {
@@ -43,6 +43,8 @@ public class BytecodeVM
               "constantFix": false,
               "includeMethodsCalledWithin": false,
               "excludeMethodsCalledWithin": false,
+              "vmIntegrityCheck": false,
+              "vmIntegrityCheckRatio": 1.0,
               "superInstruction": false,
               "superInstructionCombineRange": [2, 5],
               "superInstructionMode": "HYBRID", // RANDOM, PATTERN, HYBRID

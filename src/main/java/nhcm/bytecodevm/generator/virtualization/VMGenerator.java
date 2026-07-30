@@ -237,7 +237,9 @@ public class VMGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.monitors.name(), vmLayout.monitors.descriptor(), "Ljava/util/Map<Ljava/lang/Object;Ljava/util/concurrent/locks/ReentrantLock;>;"));
         cn.methods.add(genClInitMethod(codePoolGenerators));
         cn.methods.add(genExecuteMethod());
+        cn.methods.add(genExecuteWithIntegrityMethod());
         cn.methods.add(genExecuteSegmentedMethod());
+        cn.methods.add(genExecuteSegmentedWithIntegrityMethod());
         cn.methods.add(genInterpretMethod());
         cn.methods.add(genInstructionIndexMethod());
         cn.methods.add(genDecodeOpcodeMethod());
@@ -790,6 +792,7 @@ public class VMGenerator extends ClassObj
                 "I",
                 program,
                 index));
+        ib.set(stateKey, AdvInsnBuilder.bitXor(stateKey, AdvInsnBuilder.field(frame, frameLayout.integrityKey)));
         ib.set(blockIndex, layoutValue(program, index, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_BLOCK_INDEX), stateKey));
         ib.set(AdvInsnBuilder.field(frame, frameLayout.stateKey), stateKey);
         ib.set(AdvInsnBuilder.field(frame, frameLayout.blockIndex), blockIndex);
@@ -1208,9 +1211,33 @@ public class VMGenerator extends ClassObj
         Local codeId = ib.getLocal("codeId", "I", 0);
         Local receiver = ib.getLocal("receiver", "java/lang/Object", 1);
         Local arguments = ib.getLocal("arguments", "[Ljava/lang/Object;", 2);
-        Local program = ib.getLocal("program", programLayout.owner, 3);
-        Local frame = ib.getLocal("frame", frameLayout.owner, 4);
-        Local argumentOffset = ib.getLocal("argumentOffset", "I", 5);
+        ib.returnValue(AdvInsnBuilder.callStatic(
+                vmLayout.owner,
+                "execute",
+                "java/lang/Object",
+                codeId,
+                receiver,
+                arguments,
+                AdvInsnBuilder.constant(0)));
+        return methodNode;
+    }
+
+    private MethodNode genExecuteWithIntegrityMethod()
+    {
+        MethodNode methodNode = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PUBLIC, Acc.STATIC},
+                "execute",
+                "(ILjava/lang/Object;[Ljava/lang/Object;I)Ljava/lang/Object;",
+                "<T:Ljava/lang/Object;>(ILjava/lang/Object;[Ljava/lang/Object;I)TT;",
+                null);
+        AdvInsnBuilder ib = new AdvInsnBuilder(methodNode);
+        Local codeId = ib.getLocal("codeId", "I", 0);
+        Local receiver = ib.getLocal("receiver", "java/lang/Object", 1);
+        Local arguments = ib.getLocal("arguments", "[Ljava/lang/Object;", 2);
+        Local integrityKey = ib.getLocal("integrityKey", "I", 3);
+        Local program = ib.getLocal("program", programLayout.owner, 4);
+        Local frame = ib.getLocal("frame", frameLayout.owner, 5);
+        Local argumentOffset = ib.getLocal("argumentOffset", "I", 6);
 
         // VMProgram program = resolve(codeId);
         ib.set(program, AdvInsnBuilder.callStatic(
@@ -1224,6 +1251,7 @@ public class VMGenerator extends ClassObj
                 frameLayout.owner,
                 AdvInsnBuilder.callVirtual(program, programLayout.owner, programLayout.maxLocals.name(), "I"),
                 AdvInsnBuilder.callVirtual(program, programLayout.owner, programLayout.maxStack.name(), "I")));
+        ib.set(AdvInsnBuilder.field(frame, frameLayout.integrityKey), integrityKey);
 
         // Instance methods reserve locals[0] for the receiver.
         ib.ifElse(
@@ -1284,12 +1312,36 @@ public class VMGenerator extends ClassObj
         Local codeIds = ib.getLocal("codeIds", "[I", 0);
         Local receiver = ib.getLocal("receiver", "java/lang/Object", 1);
         Local arguments = ib.getLocal("arguments", "[Ljava/lang/Object;", 2);
-        Local firstProgram = ib.getLocal("firstProgram", programLayout.owner, 3);
-        Local program = ib.getLocal("program", programLayout.owner, 4);
-        Local frame = ib.getLocal("frame", frameLayout.owner, 5);
-        Local argumentOffset = ib.getLocal("argumentOffset", "I", 6);
-        Local index = ib.getLocal("segmentIndex", "I", 7);
-        Local candidate = ib.getLocal("candidateProgram", programLayout.owner, 8);
+        ib.returnValue(AdvInsnBuilder.callStatic(
+                vmLayout.owner,
+                "execute",
+                "java/lang/Object",
+                codeIds,
+                receiver,
+                arguments,
+                AdvInsnBuilder.constant(0)));
+        return methodNode;
+    }
+
+    private MethodNode genExecuteSegmentedWithIntegrityMethod()
+    {
+        MethodNode methodNode = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PUBLIC, Acc.STATIC},
+                "execute",
+                "([ILjava/lang/Object;[Ljava/lang/Object;I)Ljava/lang/Object;",
+                "<T:Ljava/lang/Object;>([ILjava/lang/Object;[Ljava/lang/Object;I)TT;",
+                null);
+        AdvInsnBuilder ib = new AdvInsnBuilder(methodNode);
+        Local codeIds = ib.getLocal("codeIds", "[I", 0);
+        Local receiver = ib.getLocal("receiver", "java/lang/Object", 1);
+        Local arguments = ib.getLocal("arguments", "[Ljava/lang/Object;", 2);
+        Local integrityKey = ib.getLocal("integrityKey", "I", 3);
+        Local firstProgram = ib.getLocal("firstProgram", programLayout.owner, 4);
+        Local program = ib.getLocal("program", programLayout.owner, 5);
+        Local frame = ib.getLocal("frame", frameLayout.owner, 6);
+        Local argumentOffset = ib.getLocal("argumentOffset", "I", 7);
+        Local index = ib.getLocal("segmentIndex", "I", 8);
+        Local candidate = ib.getLocal("candidateProgram", programLayout.owner, 9);
 
         ib.set(firstProgram, AdvInsnBuilder.callStatic(
                 vmLayout.owner,
@@ -1300,6 +1352,7 @@ public class VMGenerator extends ClassObj
                 frameLayout.owner,
                 AdvInsnBuilder.callVirtual(firstProgram, programLayout.owner, programLayout.maxLocals.name(), "I"),
                 AdvInsnBuilder.callVirtual(firstProgram, programLayout.owner, programLayout.maxStack.name(), "I")));
+        ib.set(AdvInsnBuilder.field(frame, frameLayout.integrityKey), integrityKey);
 
         ib.ifElse(
                 AdvInsnBuilder.notNull(receiver),

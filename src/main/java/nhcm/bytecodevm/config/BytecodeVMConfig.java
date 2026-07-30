@@ -39,6 +39,8 @@ public class BytecodeVMConfig
     public final boolean constantFix;
     public final boolean includeMethodsCalledWithin;
     public final boolean excludeMethodsCalledWithin;
+    public final boolean vmIntegrityCheck;
+    public final double vmIntegrityCheckRatio;
     public final boolean superInstruction;
     public final int superInstructionCombineMin;
     public final int superInstructionCombineMax;
@@ -142,6 +144,8 @@ public class BytecodeVMConfig
                 .constantFix(optionalBoolean(json, "constantFix", false, "fixConstants"))
                 .includeMethodsCalledWithin(optionalBoolean(json, "includeMethodsCalledWithin", false))
                 .excludeMethodsCalledWithin(optionalBoolean(json, "excludeMethodsCalledWithin", false))
+                .vmIntegrityCheck(optionalBoolean(json, "vmIntegrityCheck", false))
+                .vmIntegrityCheckRatio(optionalDouble(json, "vmIntegrityCheckRatio", 1.0D, 0.0D, 1.0D))
                 .superInstruction(optionalBoolean(json, "superInstruction", false, "superinstrcution"))
                 .superInstructionCombineMin(superInstructionRange[0])
                 .superInstructionCombineMax(superInstructionRange[1])
@@ -181,6 +185,8 @@ public class BytecodeVMConfig
                 .constantFix(constantFix)
                 .includeMethodsCalledWithin(includeMethodsCalledWithin)
                 .excludeMethodsCalledWithin(excludeMethodsCalledWithin)
+                .vmIntegrityCheck(vmIntegrityCheck)
+                .vmIntegrityCheckRatio(vmIntegrityCheckRatio)
                 .superInstruction(statementEnabled("superInstruction", superInstruction, owner, method))
                 .superInstructionCombineMin(superInstructionCombineMin)
                 .superInstructionCombineMax(superInstructionCombineMax)
@@ -191,6 +197,47 @@ public class BytecodeVMConfig
                 .includes(includes)
                 .exclusions(exclusions)
                 .matchRules(matchRules)
+                .build();
+    }
+
+    public BytecodeVMConfig integrityConfig()
+    {
+        return BytecodeVMConfig
+                .builder()
+                .inputFile(inputFile)
+                .outputFile(outputFile)
+                .createMode(VMCreateMode.PER_METHOD)
+                .location(location)
+                .mutateMode(MutateMode.ALL_RANDOM_INT)
+                .interpretMode(InterpretMode.SAVE_ALL_INSTRUCTION)
+                .renameMode(renameMode)
+                .protectCodePool(true)
+                .virtualizeInstructionAddresses(true)
+                .encryptOperands(true)
+                .perMethodOpcodeMap(true)
+                .shuffleConstants(true)
+                .bindConstantsToOperands(true)
+                .splitCodeStreams(true)
+                .shuffleInstructionBlocks(true)
+                .obfuscateDispatch(true)
+                .dynamicCodePoolBuild(true)
+                .dynamicStateKey(true)
+                .virtualControlFlowGraph(true)
+                .constantFix(false)
+                .includeMethodsCalledWithin(false)
+                .excludeMethodsCalledWithin(false)
+                .vmIntegrityCheck(false)
+                .vmIntegrityCheckRatio(0.0D)
+                .superInstruction(superInstruction)
+                .superInstructionCombineMin(superInstructionCombineMin)
+                .superInstructionCombineMax(superInstructionCombineMax)
+                .superInstructionMode(superInstructionMode)
+                .superInstructionMaxHandlers(superInstructionMaxHandlers)
+                .superInstructionMinFrequency(superInstructionMinFrequency)
+                .vmCount(1)
+                .includes(new String[]{"*"})
+                .exclusions(new String[0])
+                .matchRules(MatchRules.empty())
                 .build();
     }
 
@@ -233,6 +280,22 @@ public class BytecodeVMConfig
             return defaultValue;
         }
         int result = value.getAsInt();
+        if(result < minValue || result > maxValue)
+        {
+            throw new IllegalArgumentException(
+                    "Config value " + key + " must be between " + minValue + " and " + maxValue);
+        }
+        return result;
+    }
+
+    private static double optionalDouble(JsonObject json, String key, double defaultValue, double minValue, double maxValue)
+    {
+        JsonElement value = json.get(key);
+        if(value == null || value.isJsonNull())
+        {
+            return defaultValue;
+        }
+        double result = value.getAsDouble();
         if(result < minValue || result > maxValue)
         {
             throw new IllegalArgumentException(
@@ -327,6 +390,11 @@ public class BytecodeVMConfig
             return new MatchRules(
                     parseRuleGroups(json, "includes"),
                     parseRuleGroups(json, "exclusions"));
+        }
+
+        private static MatchRules empty()
+        {
+            return new MatchRules(Map.of(), Map.of());
         }
 
         public String[] includes(String key)

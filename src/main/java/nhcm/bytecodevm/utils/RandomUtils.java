@@ -44,6 +44,11 @@ public class RandomUtils
         return ThreadLocalRandom.current().nextBoolean();
     }
 
+    public static double randomDouble()
+    {
+        return RANDOM.nextDouble();
+    }
+
     public static <T> void shuffle(List<T> list)
     {
         Collections.shuffle(list, RANDOM);

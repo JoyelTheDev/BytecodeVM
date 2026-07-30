@@ -151,15 +151,7 @@ public class JarTransformer
 
                 jos.putNextEntry(new JarEntry(entryName));
 
-                ClassWriter cw = new ContextClassWriter(
-                        ClassWriter.COMPUTE_FRAMES |
-                        ClassWriter.COMPUTE_MAXS,
-                        context
-                );
-
-                cn.accept(cw);
-
-                jos.write(cw.toByteArray());
+                jos.write(toBytes(cn, context));
                 jos.closeEntry();
                 classCount++;
             }
@@ -187,6 +179,17 @@ public class JarTransformer
                         " class(es), " +
                         LogColors.strong(resourceCount) +
                         " resource(s)"));
+    }
+
+    public static byte[] toBytes(ClassNode classNode, JarContext context)
+    {
+        ClassWriter cw = new ContextClassWriter(
+                ClassWriter.COMPUTE_FRAMES |
+                ClassWriter.COMPUTE_MAXS,
+                context
+        );
+        classNode.accept(cw);
+        return cw.toByteArray();
     }
 
     private static byte[] readAllBytes(InputStream is) throws IOException

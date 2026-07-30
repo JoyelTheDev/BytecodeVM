@@ -71,6 +71,8 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
   "constantFix": false,
   "includeMethodsCalledWithin": false,
   "excludeMethodsCalledWithin": false,
+  "vmIntegrityCheck": false,
+  "vmIntegrityCheckRatio": 1.0,
   "superInstruction": true,
   "superInstructionCombineRange": [2, 5],
   "superInstructionMode": "HYBRID",
@@ -94,7 +96,7 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
 
 ### Options
 
-`input`, `output`, `createMode`, `location`, `mutateMode`, `renameMode`, `interpretMode`, `includes`, and `exclusions` are required. The boolean protection fields are optional and default to `true` when omitted, except `constantFix` and `superInstruction`, which default to `false`.
+`input`, `output`, `createMode`, `location`, `mutateMode`, `renameMode`, `interpretMode`, `includes`, and `exclusions` are required. The boolean protection fields are optional and default to `true` when omitted, except `constantFix`, `vmIntegrityCheck`, and `superInstruction`, which default to `false`.
 
 | Field | Values | Default  | Description |
 |---|---|----------|---|
@@ -120,6 +122,8 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
 | `constantFix` | `true`, `false` | `false`  | Moves `ConstantValue` data from static final fields into `<clinit>` assignments and clears the field value attribute. |
 | `includeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively includes target-jar methods called from explicitly included methods. |
 | `excludeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively excludes target-jar methods called from explicitly included methods. |
+| `vmIntegrityCheck` | `true`, `false` | `false`  | Generates a second-stage integrity VM that checks the generated VM and CodePool class bytes before dispatching protected methods. |
+| `vmIntegrityCheckRatio` | `0.0` to `1.0` | `1.0` | Controls how many replaced method stubs call the integrity VM. `1.0` checks every stub. |
 | `superInstruction` | `true`, `false` | `false`  | Fuses safe VM instruction sequences into synthetic super instructions with generated handlers. |
 | `superInstructionCombineRange` | `[min, max]` | `[2, 5]` | Minimum and maximum VM instruction count to fuse into one super instruction. |
 | `superInstructionMode` | `RANDOM`, `PATTERN`, `HYBRID` | `HYBRID` | Chooses random ranges, frequent opcode patterns, or both. |
@@ -141,32 +145,13 @@ When `superInstruction` is enabled, the generator scans VM instructions inside s
 | `PATTERN` | Registers frequent opcode sequences and fuses only matching patterns. |
 | `HYBRID` | Uses frequent patterns first, then randomly fuses remaining safe ranges. |
 
-The first implementation intentionally avoids crossing jump targets, try/catch boundaries, returns, throws, switches, monitor instructions, field/invoke/object/array operations, division, and remainder. That keeps exception mapping and virtual control flow stable while still reducing dispatch overhead for common stack/local/math sequences.
+## VM Integrity Check
 
-## Constant Fix
+When `vmIntegrityCheck` is enabled, each generated VM set gets a second-stage integrity carrier. After the normal VM and CodePool classes are generated, their final class bytes are hashed. The expected hash data is written into a generated `deriveIntegrityKey` method, and that method is then virtualized again with a dedicated high-strength VM using `SAVE_ALL_INSTRUCTION`.
 
-When `constantFix` is enabled, fields with a `ConstantValue` attribute are rewritten from field metadata into bytecode initialization:
+Protected method stubs call the virtualized integrity method before entering the normal VM. The method returns `0` when the generated VM classes are intact. If a hash mismatches or a class resource cannot be read, it returns a non-zero corruption key. That key is mixed into the VM frame state, so opcode/layout/operand decoding fails indirectly instead of using a simple `if/throw` check.
 
-```text
-static final int VALUE = 123; // ConstantValue attribute
-```
-
-becomes an assignment emitted before the first `RETURN` in `<clinit>`:
-
-```text
-ldc/const 123
-putstatic Owner.VALUE : I
-```
-
-Then the field value attribute is cleared. This currently applies only to `static final` fields whose constants are valid JVM `ConstantValue` types: primitive values and `String`. It can be controlled with `includes.constantFix` and `exclusions.constantFix`; class and field match rules are both supported.
-
-## Called Method Expansion
-
-`includeMethodsCalledWithin` and `excludeMethodsCalledWithin` expand method selection through calls found inside explicitly included methods. A root method is one that matches `includes.all`, matches a method rule, is not excluded by `exclusions.all`, and is otherwise eligible for virtualization.
-
-When `includeMethodsCalledWithin` is enabled, the scanner recursively follows `INVOKE*` instructions from those root methods. If the called method exists in the input jar and is eligible for virtualization, it is added even if it did not match the original include method pattern.
-
-When `excludeMethodsCalledWithin` is enabled, the same discovered called methods are removed from virtualization. If both include and exclude call expansion affect a method, exclusion wins. Explicit exclusions still win over call expansion.
+The integrity VM itself is not included in the hash target set to avoid self-referential hashes.
 
 ## Include / Exclude Match Expressions
 

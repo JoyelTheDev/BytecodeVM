@@ -107,7 +107,7 @@ public class Obfuscator
             VirtualizationResult result;
             try (CliProgress progress = new CliProgress(generator.vmClassName))
             {
-                result = generator.compile(progress::update);
+                result = generator.compile(context, progress::update);
             }
             context.classes.putAll(result.transformedTarget);
             context.addClass(result.vmClass);
