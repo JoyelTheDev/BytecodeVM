@@ -39,6 +39,7 @@ public class BytecodeVMConfig
     public final boolean constantFix;
     public final boolean includeMethodsCalledWithin;
     public final boolean excludeMethodsCalledWithin;
+    public final boolean virtualizeInvocationBridges;
     public final boolean vmIntegrityCheck;
     public final double vmIntegrityCheckRatio;
     public final boolean superInstruction;
@@ -144,6 +145,7 @@ public class BytecodeVMConfig
                 .constantFix(optionalBoolean(json, "constantFix", false, "fixConstants"))
                 .includeMethodsCalledWithin(optionalBoolean(json, "includeMethodsCalledWithin", false))
                 .excludeMethodsCalledWithin(optionalBoolean(json, "excludeMethodsCalledWithin", false))
+                .virtualizeInvocationBridges(optionalBoolean(json, "virtualizeInvocationBridges", false))
                 .vmIntegrityCheck(optionalBoolean(json, "vmIntegrityCheck", false))
                 .vmIntegrityCheckRatio(optionalDouble(json, "vmIntegrityCheckRatio", 1.0D, 0.0D, 1.0D))
                 .superInstruction(optionalBoolean(json, "superInstruction", false, "superinstrcution"))
@@ -185,6 +187,7 @@ public class BytecodeVMConfig
                 .constantFix(constantFix)
                 .includeMethodsCalledWithin(includeMethodsCalledWithin)
                 .excludeMethodsCalledWithin(excludeMethodsCalledWithin)
+                .virtualizeInvocationBridges(virtualizeInvocationBridges)
                 .vmIntegrityCheck(vmIntegrityCheck)
                 .vmIntegrityCheckRatio(vmIntegrityCheckRatio)
                 .superInstruction(statementEnabled("superInstruction", superInstruction, owner, method))
@@ -226,6 +229,7 @@ public class BytecodeVMConfig
                 .constantFix(false)
                 .includeMethodsCalledWithin(false)
                 .excludeMethodsCalledWithin(false)
+                .virtualizeInvocationBridges(false)
                 .vmIntegrityCheck(false)
                 .vmIntegrityCheckRatio(0.0D)
                 .superInstruction(superInstruction)

@@ -126,50 +126,30 @@ public class VMSetGenerator
         int completedSteps = 0;
         reportProgress(progress, completedSteps, totalSteps, "Compiling methods");
 
+        List<PendingMethod> invocationBridges = new ArrayList<>();
         for (Map.Entry<MethodNode, ClassNode> entry : methodsToObfuscate.entrySet())
         {
             ClassNode owner = entry.getValue();
             MethodNode method = entry.getKey();
 
-            invocationBridgeGenerator.rewrite(owner, method);
-            VMMethod vmMethod = compiler.compile(owner, method);
-            BytecodeVMConfig methodConfig = config.forMethod(owner, method);
-
-            int codeId = generateUniqueCodeId();
-            CompiledMethod compiledMethod = new CompiledMethod(
-                    owner,
-                    method,
-                    vmMethod,
-                    codeId,
-                    List.of(codeId),
-                    method.desc,
-                    MethodUtils.isStatic(method),
-                    true,
-                    methodConfig);
-            List<CompiledMethod> codePoolParts = splitForCodePools(compiledMethod);
-            codePoolMethods.addAll(codePoolParts);
-            if (codePoolParts.size() == 1)
+            for (MethodNode bridge : invocationBridgeGenerator.rewrite(owner, method))
             {
-                compiledMethods.add(compiledMethod);
+                if (config.virtualizeInvocationBridges && InvocationBridgeGenerator.canVirtualizeBridge(bridge))
+                {
+                    invocationBridges.add(new PendingMethod(owner, bridge));
+                }
             }
-            else
-            {
-                compiledMethods.add(new CompiledMethod(
-                        owner,
-                        method,
-                        vmMethod,
-                        codePoolParts.getFirst().codeId,
-                        codePoolParts.stream().map(part -> part.codeId).toList(),
-                        method.desc,
-                        MethodUtils.isStatic(method),
-                        false,
-                        methodConfig));
-            }
+            compileMethod(owner, method);
             completedSteps++;
             reportProgress(progress, completedSteps, totalSteps, "Compiling methods");
         }
 
-        totalSteps = methodCount + codePoolMethods.size() + 3;
+        for (PendingMethod bridge : invocationBridges)
+        {
+            compileMethod(bridge.owner(), bridge.method());
+        }
+
+        totalSteps = methodCount + invocationBridges.size() + codePoolMethods.size() + 3;
         reportProgress(progress, completedSteps, totalSteps, "Planning pools");
         completedSteps += createCodePools(progress, completedSteps, totalSteps);
         reportProgress(progress, completedSteps, totalSteps, "Built code pools");
@@ -306,6 +286,42 @@ public class VMSetGenerator
     private static void addHashClass(Map<String, ClassNode> classes, ClassNode classNode)
     {
         classes.putIfAbsent(classNode.name, classNode);
+    }
+
+    private void compileMethod(ClassNode owner, MethodNode method)
+    {
+        VMMethod vmMethod = compiler.compile(owner, method);
+        BytecodeVMConfig methodConfig = config.forMethod(owner, method);
+
+        int codeId = generateUniqueCodeId();
+        CompiledMethod compiledMethod = new CompiledMethod(
+                owner,
+                method,
+                vmMethod,
+                codeId,
+                List.of(codeId),
+                method.desc,
+                MethodUtils.isStatic(method),
+                true,
+                methodConfig);
+        List<CompiledMethod> codePoolParts = splitForCodePools(compiledMethod);
+        codePoolMethods.addAll(codePoolParts);
+        if (codePoolParts.size() == 1)
+        {
+            compiledMethods.add(compiledMethod);
+            return;
+        }
+
+        compiledMethods.add(new CompiledMethod(
+                owner,
+                method,
+                vmMethod,
+                codePoolParts.getFirst().codeId,
+                codePoolParts.stream().map(part -> part.codeId).toList(),
+                method.desc,
+                MethodUtils.isStatic(method),
+                false,
+                methodConfig));
     }
 
     private int createCodePools(ProgressListener progress, int completedSteps, int totalSteps)
@@ -517,5 +533,9 @@ public class VMSetGenerator
         {
             return new IntegrityBuild(null, null, null);
         }
+    }
+
+    private record PendingMethod(ClassNode owner, MethodNode method)
+    {
     }
 }

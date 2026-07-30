@@ -46,6 +46,7 @@ public class ConstantFixTransformer
                 }
                 MethodNode clinit = findOrCreateClinit(classNode);
                 clinit.instructions.insertBefore(firstReturn(clinit), initializer(classNode, field));
+                clinit.maxStack = Math.max(clinit.maxStack, constantStackSize(field.desc));
                 field.value = null;
                 changed++;
             }
@@ -114,6 +115,12 @@ public class ConstantFixTransformer
         pushConstant(instructions, field.desc, field.value);
         instructions.add(new FieldInsnNode(Opcodes.PUTSTATIC, owner.name, field.name, field.desc));
         return instructions;
+    }
+
+    private static int constantStackSize(String descriptor)
+    {
+        Type type = Type.getType(descriptor);
+        return type == Type.LONG_TYPE || type == Type.DOUBLE_TYPE ? 2 : 1;
     }
 
     private static void pushConstant(InsnList instructions, String descriptor, Object value)

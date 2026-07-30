@@ -40,12 +40,13 @@ public class BytecodeVM
               "dynamicCodePoolBuild": true,
               "dynamicStateKey": true,
               "virtualControlFlowGraph": true,
-              "constantFix": false,
+              "constantFix": true,
               "includeMethodsCalledWithin": false,
               "excludeMethodsCalledWithin": false,
-              "vmIntegrityCheck": false,
+              "virtualizeInvocationBridges": true,
+              "vmIntegrityCheck": true,
               "vmIntegrityCheckRatio": 1.0,
-              "superInstruction": false,
+              "superInstruction": true,
               "superInstructionCombineRange": [2, 5],
               "superInstructionMode": "HYBRID", // RANDOM, PATTERN, HYBRID
               "superInstructionMaxHandlers": 128,
@@ -55,7 +56,7 @@ public class BytecodeVM
                 "all": ["*", "* *(*)*"]
               },
               "exclusions": {
-                "all": ["* <init>(*)V", "* <clinit>()V"]
+                "all": ["* <init>(*)V"]
               }
             }
             """;
