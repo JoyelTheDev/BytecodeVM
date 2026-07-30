@@ -48,6 +48,7 @@ public final class InterpretContext
     public static final int INSTRUCTION_INDEX = 49;
     public static final int ORIGINAL_PC = 50;
     public static final int OPERAND_INDEX = 51;
+    public static final int DISPATCH_SELECTOR = 52;
     public static final int JUMP_TARGET = 9;
     public static final int SWITCH_KEY = 10;
     public static final int SWITCH_MIN = 11;

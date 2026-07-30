@@ -119,9 +119,19 @@ public class VMSetGenerator
 
             invocationBridgeGenerator.rewrite(owner, method);
             VMMethod vmMethod = compiler.compile(owner, method);
+            BytecodeVMConfig methodConfig = config.forMethod(owner, method);
 
             int codeId = generateUniqueCodeId();
-            CompiledMethod compiledMethod = new CompiledMethod(owner, method, vmMethod, codeId, method.desc, MethodUtils.isStatic(method));
+            CompiledMethod compiledMethod = new CompiledMethod(
+                    owner,
+                    method,
+                    vmMethod,
+                    codeId,
+                    List.of(codeId),
+                    method.desc,
+                    MethodUtils.isStatic(method),
+                    true,
+                    methodConfig);
             List<CompiledMethod> codePoolParts = splitForCodePools(compiledMethod);
             codePoolMethods.addAll(codePoolParts);
             if (codePoolParts.size() == 1)
@@ -138,7 +148,8 @@ public class VMSetGenerator
                         codePoolParts.stream().map(part -> part.codeId).toList(),
                         method.desc,
                         MethodUtils.isStatic(method),
-                        false));
+                        false,
+                        methodConfig));
             }
             completedSteps++;
             reportProgress(progress, completedSteps, totalSteps, "Compiling methods");
@@ -326,9 +337,11 @@ public class VMSetGenerator
                 method.source,
                 segmentMethod,
                 codeId,
+                List.of(codeId),
                 method.descriptor,
                 method.isStatic,
-                false);
+                false,
+                method.config);
     }
 
     private static IllegalStateException methodTooLarge(CompiledMethod method)

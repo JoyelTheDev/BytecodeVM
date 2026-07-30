@@ -9,12 +9,9 @@ This obfuscator is used for demo only, not for production use.
 It can make your program hundreds of times slower. 
 Its purpose is to demonstrate the concept of bytecode virtualization.
 
-## Requirements
-
-- JDK 21
-- Gradle wrapper included in this repository
-
 ## Build
+
+This project uses JDK 21
 
 ```powershell
 .\gradlew.bat build
@@ -70,8 +67,16 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
   "dynamicStateKey": true,
   "virtualControlFlowGraph": true,
   "vmCount": 1,
-  "includes": ["*", "* *(*)*"],
-  "exclusions": ["* <init>(*)V", "* <clinit>()V"]
+  "includes": {
+    "all": ["*", "* *(*)*"],
+    "protectCodePool": ["* @Sensitive *(*)*"],
+    "encryptOperands": ["com.example.secure.* *(*)*"],
+    "obfuscateDispatch": ["* *(*)*"]
+  },
+  "exclusions": {
+    "all": ["* <init>(*)V", "* <clinit>()V"],
+    "dynamicStateKey": ["* fastPath(*)*"]
+  }
 }
 ```
 
@@ -101,12 +106,45 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
 | `dynamicStateKey` | `true`, `false` | `true` | Adds per-instruction runtime state keys used by opcode, layout, and operand decoding. |
 | `virtualControlFlowGraph` | `true`, `false` | `true` | Stores methods as shuffled virtual basic blocks and resolves instruction indexes through block-local lookup. |
 | `vmCount` | `1` to `1024` | `1` | Expands each non-`PER_METHOD` VM grouping into up to this many randomized VM sets and distributes matched methods among them. |
-| `includes` | Match expressions | Required | Methods/classes to virtualize. |
-| `exclusions` | Match expressions | Required | Methods/classes to skip. Exclusions win over includes. |
+| `includes` | Array or object of match expressions | Required | Methods/classes to virtualize, plus optional per-boolean include groups. |
+| `exclusions` | Array or object of match expressions | Required | Methods/classes to skip, plus optional per-boolean exclude groups. Exclusions win over includes. |
 
 ## Include / Exclude Match Expressions
 
 `includes` and `exclusions` use the same matcher syntax. A target is selected when it matches an include rule and does not match an exclusion rule. Exclusions always win.
+
+The legacy array form is still supported:
+
+```jsonc
+{
+  "includes": ["*", "* *(*)*"],
+  "exclusions": ["* <init>(*)V", "* <clinit>()V"]
+}
+```
+
+You can also use grouped object form:
+
+```jsonc
+{
+  "includes": {
+    "all": ["*", "* *(*)*"],
+    "protectCodePool": ["* @Sensitive *(*)*"],
+    "encryptOperands": ["com.example.secure.* *(*)*"]
+  },
+  "exclusions": {
+    "all": ["* <init>(*)V", "* <clinit>()V"],
+    "dynamicStateKey": ["* hotLoop(*)*"]
+  }
+}
+```
+
+`all` controls which classes and methods are virtualized. Boolean option groups only control that option for matched methods. For example, if `encryptOperands` is globally `true` and `includes.encryptOperands` is present, operand encryption is enabled only for methods matching that group. If a boolean option is globally `false`, its include group does not turn it on.
+
+Supported boolean group names are:
+
+`protectCodePool`, `virtualizeInstructionAddresses`, `encryptOperands`, `perMethodOpcodeMap`, `shuffleConstants`, `bindConstantsToOperands`, `splitCodeStreams`, `shuffleInstructionBlocks`, `obfuscateDispatch`, `dynamicCodePoolBuild`, `dynamicStateKey`, and `virtualControlFlowGraph`.
+
+Only included classes and then methods will be processed.
 
 Wildcards are supported with `*`. Class names use dot form in config rules, while method descriptors use JVM descriptor syntax.
 
@@ -158,10 +196,3 @@ Annotation matching checks both runtime-visible and runtime-invisible annotation
   ]
 }
 ```
-
-## Notes
-
-- Always exclude constructors and static initializers unless you have verified the generated output carefully.
-- Start with a small include pattern and expand it after testing.
-- Bytecode virtualization adds runtime overhead by design. Measure your target workload after obfuscation.
-- If a generated jar fails verification or launch, rerun with `-Dbytecodevm.log.level=DEBUG` and test with the smallest reproducible input jar.

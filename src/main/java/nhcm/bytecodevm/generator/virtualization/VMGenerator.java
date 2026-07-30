@@ -476,31 +476,29 @@ public class VMGenerator extends ClassObj
         ib.set(stateKey, AdvInsnBuilder.field(frame, frameLayout.stateKey));
         ib.set(virtualPc, layoutValue(program, index, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_PC), stateKey));
         ib.set(virtualOpcode, AdvInsnBuilder.arrayAt(callProgramArray(program, programLayout.opcodeStream.name()), index));
-        if (config.perMethodOpcodeMap)
-        {
-            ib.ifCondition(
-                    AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
-                    b -> b.set(virtualOpcode, AdvInsnBuilder.bitXor(
-                            virtualOpcode,
-                            mixCall(
-                                    AdvInsnBuilder.bitXor(key, stateKey),
-                                    virtualPc,
-                                    index,
-                                    AdvInsnBuilder.constant(profile.saltOpcode)))));
-        }
+        ib.ifCondition(
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                        featureEnabled(program, ProtectedVMMethod.FEATURE_PER_METHOD_OPCODE_MAP)),
+                b -> b.set(virtualOpcode, AdvInsnBuilder.bitXor(
+                        virtualOpcode,
+                        mixCall(
+                                AdvInsnBuilder.bitXor(key, stateKey),
+                                virtualPc,
+                                index,
+                                AdvInsnBuilder.constant(profile.saltOpcode)))));
         ib.set(mappedOpcode, AdvInsnBuilder.arrayAt(callProgramArray(program, programLayout.opcodeMap.name()), virtualOpcode));
-        if (config.perMethodOpcodeMap)
-        {
-            ib.ifCondition(
-                    AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
-                    b -> b.set(mappedOpcode, AdvInsnBuilder.bitXor(
-                            mappedOpcode,
-                            mixCall(
-                                    key,
-                                    virtualOpcode,
-                                    AdvInsnBuilder.constant(profile.saltOpcodeMap),
-                                    AdvInsnBuilder.constant(0)))));
-        }
+        ib.ifCondition(
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                        featureEnabled(program, ProtectedVMMethod.FEATURE_PER_METHOD_OPCODE_MAP)),
+                b -> b.set(mappedOpcode, AdvInsnBuilder.bitXor(
+                        mappedOpcode,
+                        mixCall(
+                                key,
+                                virtualOpcode,
+                                AdvInsnBuilder.constant(profile.saltOpcodeMap),
+                                AdvInsnBuilder.constant(0)))));
         ib.returnValue(mappedOpcode);
         return method;
     }
@@ -560,42 +558,39 @@ public class VMGenerator extends ClassObj
                         stringConcat(AdvInsnBuilder.constant("Operand out of range "), operandIndex))));
         ib.set(operandPosition, AdvInsnBuilder.plus(operandStart, operandIndex));
         ib.set(value, AdvInsnBuilder.arrayAt(callProgramArray(program, programLayout.operandStream.name()), operandPosition));
-        if (config.encryptOperands || config.bindConstantsToOperands)
-        {
-            ib.ifCondition(
-                    AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
-                    b -> {
-                        if (config.encryptOperands)
-                        {
-                            b.set(value, AdvInsnBuilder.bitXor(
+        ib.ifCondition(
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                        featureEnabled(program, ProtectedVMMethod.FEATURE_ENCRYPT_OPERANDS)),
+                b -> b.set(value, AdvInsnBuilder.bitXor(
+                        value,
+                        mixCall(
+                                AdvInsnBuilder.bitXor(AdvInsnBuilder.bitXor(key, stateKey), opcode),
+                                virtualPc,
+                                operandIndex,
+                                AdvInsnBuilder.bitXor(AdvInsnBuilder.constant(profile.saltOperand), operandPosition)))));
+        ib.ifCondition(
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                        featureEnabled(program, ProtectedVMMethod.FEATURE_BIND_CONSTANTS)),
+                b -> {
+                    b.set(constantMask, layoutValue(
+                            program,
+                            instructionIndex,
+                            AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_CONSTANT_MASK),
+                            stateKey));
+                    b.ifCondition(
+                            AdvInsnBuilder.notEqual(
+                                    AdvInsnBuilder.bitAnd(constantMask, AdvInsnBuilder.shiftLeft(AdvInsnBuilder.constant(1), operandIndex)),
+                                    AdvInsnBuilder.constant(0)),
+                            constant -> constant.set(value, AdvInsnBuilder.bitXor(
                                     value,
                                     mixCall(
                                             AdvInsnBuilder.bitXor(AdvInsnBuilder.bitXor(key, stateKey), opcode),
                                             virtualPc,
                                             operandIndex,
-                                            AdvInsnBuilder.bitXor(AdvInsnBuilder.constant(profile.saltOperand), operandPosition))));
-                        }
-                        if (config.bindConstantsToOperands)
-                        {
-                            b.set(constantMask, layoutValue(
-                                    program,
-                                    instructionIndex,
-                                    AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_CONSTANT_MASK),
-                                    stateKey));
-                            b.ifCondition(
-                                    AdvInsnBuilder.notEqual(
-                                            AdvInsnBuilder.bitAnd(constantMask, AdvInsnBuilder.shiftLeft(AdvInsnBuilder.constant(1), operandIndex)),
-                                            AdvInsnBuilder.constant(0)),
-                                    constant -> constant.set(value, AdvInsnBuilder.bitXor(
-                                            value,
-                                            mixCall(
-                                                    AdvInsnBuilder.bitXor(AdvInsnBuilder.bitXor(key, stateKey), opcode),
-                                                    virtualPc,
-                                                    operandIndex,
-                                                    AdvInsnBuilder.constant(profile.saltConstant)))));
-                        }
-                    });
-        }
+                                            AdvInsnBuilder.constant(profile.saltConstant)))));
+                });
         ib.returnValue(value);
         return method;
     }
@@ -885,16 +880,13 @@ public class VMGenerator extends ClassObj
                 programLayout,
                 vmLayout,
                 afterDispatch);
-        SwitchCase[] cases = new SwitchCase[opcodes.size()];
+        List<SwitchCase> cases = new ArrayList<>();
         for (int i = 0; i < opcodes.size(); i++)
         {
             int chunkIndex = i / INTERPRET_CHUNK_SIZE;
             int opcodeIndex = i % INTERPRET_CHUNK_SIZE;
             int mutatedOpcode = opcMutator.toMutated(opcodes.get(i));
-            int dispatchKey = config.obfuscateDispatch
-                    ? dispatchKey(mutatedOpcode)
-                    : mutatedOpcode;
-            cases[i] = AdvInsnBuilder.switchCase(dispatchKey, b -> {
+            java.util.function.Consumer<AdvInsnBuilder> dispatchBody = b -> {
                 b.directCall(AdvInsnBuilder.callStatic(
                         className(),
                         interpretChunkName(chunkIndex),
@@ -907,12 +899,20 @@ public class VMGenerator extends ClassObj
                         AdvInsnBuilder.constant(opcodeIndex),
                         context.instructionIndex()));
                 b.gotoLabel(afterDispatch);
-            });
+            };
+            cases.add(AdvInsnBuilder.switchCase(mutatedOpcode, dispatchBody));
+            int dispatchKey = dispatchKey(mutatedOpcode);
+            if (dispatchKey != mutatedOpcode)
+            {
+                cases.add(AdvInsnBuilder.switchCase(dispatchKey, dispatchBody));
+            }
         }
-        Expr selector = config.obfuscateDispatch
-                ? AdvInsnBuilder.callStatic(className(), vmLayout.dispatchKey.name(), "I", context.opcode())
-                : context.opcode();
-        ib.switchLookup(selector, b -> b.gotoLabel(unknownOpcode), cases);
+        Local selector = context.intLocal("dispatchSelector", InterpretContext.DISPATCH_SELECTOR);
+        ib.set(selector, context.opcode());
+        ib.ifCondition(
+                featureEnabled(context.program(), ProtectedVMMethod.FEATURE_OBFUSCATE_DISPATCH),
+                b -> b.set(selector, AdvInsnBuilder.callStatic(className(), vmLayout.dispatchKey.name(), "I", context.opcode())));
+        ib.switchLookup(selector, b -> b.gotoLabel(unknownOpcode), cases.toArray(SwitchCase[]::new));
     }
 
     private MethodNode genInterpretChunkMethod(int chunkIndex, List<Opcs> opcodes)
@@ -2433,6 +2433,15 @@ public class VMGenerator extends ClassObj
     private Expr callProgramInt(Expr program, String methodName)
     {
         return AdvInsnBuilder.callVirtual(program, programLayout.owner, methodName, "I");
+    }
+
+    private Condition featureEnabled(Expr program, int flag)
+    {
+        return AdvInsnBuilder.notEqual(
+                AdvInsnBuilder.bitAnd(
+                        callProgramInt(program, programLayout.featureFlags.name()),
+                        AdvInsnBuilder.constant(flag)),
+                AdvInsnBuilder.constant(0));
     }
 
     private Expr layoutValue(Expr program, Expr instructionIndex, Expr field, Expr stateKey)

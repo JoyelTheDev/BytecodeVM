@@ -30,6 +30,11 @@ public class ProtectedVMMethod
     public static final int BLOCK_START_SLOT = 2;
     public static final int BLOCK_SLOT_COUNT = 3;
 
+    public static final int FEATURE_PER_METHOD_OPCODE_MAP = 1;
+    public static final int FEATURE_ENCRYPT_OPERANDS = 1 << 1;
+    public static final int FEATURE_BIND_CONSTANTS = 1 << 2;
+    public static final int FEATURE_OBFUSCATE_DISPATCH = 1 << 3;
+
     public final int[] opcodeStream;
     public final int[] operandStream;
     public final int[] layoutStream;
@@ -38,6 +43,7 @@ public class ProtectedVMMethod
     public final int[] exceptionHandlers;
     public final int[] opcodeMap;
     public final int methodKey;
+    public final int featureFlags;
 
     private ProtectedVMMethod(
             int[] opcodeStream,
@@ -47,7 +53,8 @@ public class ProtectedVMMethod
             Object[] constants,
             int[] exceptionHandlers,
             int[] opcodeMap,
-            int methodKey)
+            int methodKey,
+            int featureFlags)
     {
         this.opcodeStream = opcodeStream;
         this.operandStream = operandStream;
@@ -57,6 +64,7 @@ public class ProtectedVMMethod
         this.exceptionHandlers = exceptionHandlers;
         this.opcodeMap = opcodeMap;
         this.methodKey = methodKey;
+        this.featureFlags = featureFlags;
     }
 
     public static ProtectedVMMethod from(CompiledMethod compiledMethod, BytecodeVMConfig config)
@@ -72,6 +80,7 @@ public class ProtectedVMMethod
         VMMethod method = compiledMethod.vmMethod;
         List<VMInstruction> instructions = method.getInstructions();
         boolean protect = config.protectCodePool;
+        int featureFlags = featureFlags(config);
         boolean dynamicStateKey = protect && config.dynamicStateKey;
         boolean virtualizeInstructionAddresses = protect &&
                                                 config.virtualizeInstructionAddresses &&
@@ -179,7 +188,30 @@ public class ProtectedVMMethod
                         virtualizeInstructionAddresses,
                         profile),
                 opcodeLayout.encodedOpcodeMap,
-                methodKey);
+                methodKey,
+                featureFlags);
+    }
+
+    private static int featureFlags(BytecodeVMConfig config)
+    {
+        int flags = 0;
+        if (config.perMethodOpcodeMap)
+        {
+            flags |= FEATURE_PER_METHOD_OPCODE_MAP;
+        }
+        if (config.encryptOperands)
+        {
+            flags |= FEATURE_ENCRYPT_OPERANDS;
+        }
+        if (config.bindConstantsToOperands)
+        {
+            flags |= FEATURE_BIND_CONSTANTS;
+        }
+        if (config.obfuscateDispatch)
+        {
+            flags |= FEATURE_OBFUSCATE_DISPATCH;
+        }
+        return flags;
     }
 
     public static EncodedString encodeString(String value, VMObfProfile profile)

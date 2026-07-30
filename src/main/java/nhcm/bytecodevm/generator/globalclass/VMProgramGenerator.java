@@ -37,6 +37,7 @@ public class VMProgramGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.exceptionHandlersField.name(), layout.exceptionHandlersField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.opcodeMapField.name(), layout.opcodeMapField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.methodKeyField.name(), layout.methodKeyField.descriptor()));
+        cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.featureFlagsField.name(), layout.featureFlagsField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.maxLocalsField.name(), layout.maxLocalsField.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.FINAL}, layout.maxStackField.name(), layout.maxStackField.descriptor()));
         cn.methods.add(genConstructor());
@@ -48,6 +49,7 @@ public class VMProgramGenerator extends ClassObj
         cn.methods.add(genObjectGetter(layout.exceptionHandlers, layout.exceptionHandlersField));
         cn.methods.add(genObjectGetter(layout.opcodeMap, layout.opcodeMapField));
         cn.methods.add(genIntGetter(layout.methodKey, layout.methodKeyField));
+        cn.methods.add(genIntGetter(layout.featureFlags, layout.featureFlagsField));
         cn.methods.add(genIntGetter(layout.maxLocals, layout.maxLocalsField));
         cn.methods.add(genIntGetter(layout.maxStack, layout.maxStackField));
         this.classNode = cn;
@@ -71,8 +73,9 @@ public class VMProgramGenerator extends ClassObj
         Local exceptionHandlers = ib.getLocal("exceptionHandlers", "[I", 6);
         Local opcodeMap = ib.getLocal("opcodeMap", "[I", 7);
         Local methodKey = ib.getLocal("methodKey", "I", 8);
-        Local maxLocals = ib.getLocal("maxLocals", "I", 9);
-        Local maxStack = ib.getLocal("maxStack", "I", 10);
+        Local featureFlags = ib.getLocal("featureFlags", "I", 9);
+        Local maxLocals = ib.getLocal("maxLocals", "I", 10);
+        Local maxStack = ib.getLocal("maxStack", "I", 11);
 
         ib.callNoArgSuperConstructor("java/lang/Object");
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.opcodeStreamField), opcodeStream);
@@ -83,6 +86,7 @@ public class VMProgramGenerator extends ClassObj
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.exceptionHandlersField), exceptionHandlers);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.opcodeMapField), opcodeMap);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.methodKeyField), methodKey);
+        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.featureFlagsField), featureFlags);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.maxLocalsField), maxLocals);
         ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.maxStackField), maxStack);
         ib.returnVoid();

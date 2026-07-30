@@ -17,6 +17,7 @@ public class VMProgramLayout
     public final FieldRef exceptionHandlersField;
     public final FieldRef opcodeMapField;
     public final FieldRef methodKeyField;
+    public final FieldRef featureFlagsField;
     public final FieldRef maxLocalsField;
     public final FieldRef maxStackField;
 
@@ -29,6 +30,7 @@ public class VMProgramLayout
     public final MethodRef exceptionHandlers;
     public final MethodRef opcodeMap;
     public final MethodRef methodKey;
+    public final MethodRef featureFlags;
     public final MethodRef maxLocals;
     public final MethodRef maxStack;
 
@@ -50,10 +52,11 @@ public class VMProgramLayout
         this.exceptionHandlersField = field("exceptionHandlers", "[I");
         this.opcodeMapField = field("opcodeMap", "[I");
         this.methodKeyField = field("methodKey", "I");
+        this.featureFlagsField = field("featureFlags", "I");
         this.maxLocalsField = field("maxLocals", "I");
         this.maxStackField = field("maxStack", "I");
 
-        this.init = method("<init>", "([I[I[I[I[Ljava/lang/Object;[I[IIII)V");
+        this.init = method("<init>", "([I[I[I[I[Ljava/lang/Object;[I[IIIII)V");
         this.opcodeStream = method("opcodeStream", "()[I");
         this.operandStream = method("operandStream", "()[I");
         this.layoutStream = method("layoutStream", "()[I");
@@ -62,6 +65,7 @@ public class VMProgramLayout
         this.exceptionHandlers = method("exceptionHandlers", "()[I");
         this.opcodeMap = method("opcodeMap", "()[I");
         this.methodKey = method("methodKey", "()I");
+        this.featureFlags = method("featureFlags", "()I");
         this.maxLocals = method("maxLocals", "()I");
         this.maxStack = method("maxStack", "()I");
     }

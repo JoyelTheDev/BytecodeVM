@@ -1,5 +1,6 @@
 package nhcm.bytecodevm.data;
 
+import nhcm.bytecodevm.config.BytecodeVMConfig;
 import nhcm.bytecodevm.data.vminsn.VMMethod;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -17,10 +18,11 @@ public class CompiledMethod
     public final String descriptor;
     public final boolean isStatic;
     public final boolean virtualizeInstructionAddresses;
+    public final BytecodeVMConfig config;
 
     public CompiledMethod(ClassNode owner, MethodNode source, VMMethod vmMethod, int codeId, String descriptor, boolean isStatic)
     {
-        this(owner, source, vmMethod, codeId, List.of(codeId), descriptor, isStatic, true);
+        this(owner, source, vmMethod, codeId, List.of(codeId), descriptor, isStatic, true, null);
     }
 
     public CompiledMethod(
@@ -32,7 +34,7 @@ public class CompiledMethod
             boolean isStatic,
             boolean virtualizeInstructionAddresses)
     {
-        this(owner, source, vmMethod, codeId, List.of(codeId), descriptor, isStatic, virtualizeInstructionAddresses);
+        this(owner, source, vmMethod, codeId, List.of(codeId), descriptor, isStatic, virtualizeInstructionAddresses, null);
     }
 
     public CompiledMethod(
@@ -45,6 +47,20 @@ public class CompiledMethod
             boolean isStatic,
             boolean virtualizeInstructionAddresses)
     {
+        this(owner, source, vmMethod, codeId, codeIds, descriptor, isStatic, virtualizeInstructionAddresses, null);
+    }
+
+    public CompiledMethod(
+            ClassNode owner,
+            MethodNode source,
+            VMMethod vmMethod,
+            int codeId,
+            List<Integer> codeIds,
+            String descriptor,
+            boolean isStatic,
+            boolean virtualizeInstructionAddresses,
+            BytecodeVMConfig config)
+    {
         this.owner = owner;
         this.source = source;
         this.vmMethod = vmMethod;
@@ -53,6 +69,7 @@ public class CompiledMethod
         this.descriptor = descriptor;
         this.isStatic = isStatic;
         this.virtualizeInstructionAddresses = virtualizeInstructionAddresses;
+        this.config = config;
     }
 
     public boolean isSegmented()

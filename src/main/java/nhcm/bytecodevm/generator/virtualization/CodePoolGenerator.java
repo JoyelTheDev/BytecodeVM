@@ -44,6 +44,7 @@ public class CodePoolGenerator extends ClassObj
     private final List<CompiledMethod> methodsByExceptionHandlersIndex;
     private final List<CompiledMethod> methodsByOpcodeMapIndex;
     private final List<CompiledMethod> methodsByMethodKeyIndex;
+    private final List<CompiledMethod> methodsByFeatureFlagsIndex;
     private final List<CompiledMethod> methodsByMaxLocalsIndex;
     private final List<CompiledMethod> methodsByMaxStackIndex;
     private final Map<Integer, Integer> codeIndexById;
@@ -54,6 +55,7 @@ public class CodePoolGenerator extends ClassObj
     private final Map<Integer, Integer> exceptionHandlersIndexById;
     private final Map<Integer, Integer> opcodeMapIndexById;
     private final Map<Integer, Integer> methodKeyIndexById;
+    private final Map<Integer, Integer> featureFlagsIndexById;
     private final Map<Integer, Integer> maxLocalsIndexById;
     private final Map<Integer, Integer> maxStackIndexById;
     private final Map<Integer, ProtectedVMMethod> protectedMethodById;
@@ -119,6 +121,7 @@ public class CodePoolGenerator extends ClassObj
         this.methodsByExceptionHandlersIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByOpcodeMapIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByMethodKeyIndex = createLayout(compiledMethods, shuffleMethods);
+        this.methodsByFeatureFlagsIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByMaxLocalsIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByMaxStackIndex = createLayout(compiledMethods, shuffleMethods);
         this.codeIndexById = indexByCodeId(methodsByCodeIndex);
@@ -129,6 +132,7 @@ public class CodePoolGenerator extends ClassObj
         this.exceptionHandlersIndexById = indexByCodeId(methodsByExceptionHandlersIndex);
         this.opcodeMapIndexById = indexByCodeId(methodsByOpcodeMapIndex);
         this.methodKeyIndexById = indexByCodeId(methodsByMethodKeyIndex);
+        this.featureFlagsIndexById = indexByCodeId(methodsByFeatureFlagsIndex);
         this.maxLocalsIndexById = indexByCodeId(methodsByMaxLocalsIndex);
         this.maxStackIndexById = indexByCodeId(methodsByMaxStackIndex);
 
@@ -153,6 +157,7 @@ public class CodePoolGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.exceptionHandlers.name(), layout.exceptionHandlers.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.opcodeMaps.name(), layout.opcodeMaps.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.methodKeys.name(), layout.methodKeys.descriptor()));
+        cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.featureFlags.name(), layout.featureFlags.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.maxLocals.name(), layout.maxLocals.descriptor()));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.maxStack.name(), layout.maxStack.descriptor()));
 
@@ -165,6 +170,7 @@ public class CodePoolGenerator extends ClassObj
         clinit.instructions.add(initEXCEPTION_HANDLERS());
         clinit.instructions.add(initOPCODE_MAPS());
         clinit.instructions.add(initMETHOD_KEYS());
+        clinit.instructions.add(initFEATURE_FLAGS());
         clinit.instructions.add(initMAX_LOCALS_MAX_STACK());
         AdvInsnBuilder ib = new AdvInsnBuilder(0);
         ib.set(AdvInsnBuilder.staticField(layout.instance), AdvInsnBuilder.newObject(layout.owner));
@@ -375,6 +381,19 @@ public class CodePoolGenerator extends ClassObj
         return ib.toInsnList();
     }
 
+    private InsnList initFEATURE_FLAGS()
+    {
+        AdvInsnBuilder ib = new AdvInsnBuilder(0);
+        int[] flags = new int[methodsByFeatureFlagsIndex.size()];
+        for (int slot = 0; slot < methodsByFeatureFlagsIndex.size(); slot++)
+        {
+            flags[slot] = protectedMethodById.get(methodsByFeatureFlagsIndex.get(slot).codeId).featureFlags;
+        }
+        Local featureFlags = emitIntArray(ib, "featureFlags", flags);
+        ib.set(AdvInsnBuilder.staticField(layout.featureFlags), featureFlags);
+        return ib.toInsnList();
+    }
+
     private InsnList initIntRows(
             String localName,
             FieldRef target,
@@ -386,7 +405,12 @@ public class CodePoolGenerator extends ClassObj
         ib.set(table, AdvInsnBuilder.newMultiArray("[[I", 1, AdvInsnBuilder.constant(methods.size())));
         for (int slot = 0; slot < methods.size(); slot++)
         {
-            Local row = emitIntArray(ib, localName + slot, data.apply(methods.get(slot)));
+            CompiledMethod method = methods.get(slot);
+            Local row = emitIntArray(
+                    ib,
+                    localName + slot,
+                    data.apply(method),
+                    methodConfig(method).dynamicCodePoolBuild);
             ib.setArray(table, AdvInsnBuilder.constant(slot), row);
         }
         ib.set(AdvInsnBuilder.staticField(target), table);
@@ -395,7 +419,12 @@ public class CodePoolGenerator extends ClassObj
 
     private Local emitIntArray(AdvInsnBuilder ib, String name, int[] values)
     {
-        if (config.dynamicCodePoolBuild)
+        return emitIntArray(ib, name, values, config.dynamicCodePoolBuild);
+    }
+
+    private Local emitIntArray(AdvInsnBuilder ib, String name, int[] values, boolean dynamicCodePoolBuild)
+    {
+        if (dynamicCodePoolBuild)
         {
             int key = RandomUtils.randomInt();
             long[] packedValues = packInts(values, key, profile);
@@ -480,7 +509,11 @@ public class CodePoolGenerator extends ClassObj
         {
             int[] handlers = protectedMethodById.get(methodsByExceptionHandlersIndex.get(slot).codeId).exceptionHandlers;
 
-            Local handlerRow = emitIntArray(ib, "exceptionHandlers" + slot, handlers);
+            Local handlerRow = emitIntArray(
+                    ib,
+                    "exceptionHandlers" + slot,
+                    handlers,
+                    methodConfig(methodsByExceptionHandlersIndex.get(slot)).dynamicCodePoolBuild);
             ib.setArray(exceptionHandlers, AdvInsnBuilder.constant(slot), handlerRow);
         }
 
@@ -607,6 +640,7 @@ public class CodePoolGenerator extends ClassObj
                 exceptionHandlerRow(codeId),
                 opcodeMapRow(codeId),
                 methodKeyValue(codeId),
+                featureFlagsValue(codeId),
                 maxLocalsValue(codeId),
                 maxStackValue(codeId));
     }
@@ -665,6 +699,13 @@ public class CodePoolGenerator extends ClassObj
         return AdvInsnBuilder.arrayAt(
                 AdvInsnBuilder.staticField(layout.methodKeys),
                 AdvInsnBuilder.constant(methodKeyIndexById.get(codeId)));
+    }
+
+    private Expr featureFlagsValue(int codeId)
+    {
+        return AdvInsnBuilder.arrayAt(
+                AdvInsnBuilder.staticField(layout.featureFlags),
+                AdvInsnBuilder.constant(featureFlagsIndexById.get(codeId)));
     }
 
     private Expr maxLocalsValue(int codeId)
@@ -765,9 +806,14 @@ public class CodePoolGenerator extends ClassObj
         Map<Integer, ProtectedVMMethod> protectedMethods = new HashMap<>();
         for (CompiledMethod method : methods)
         {
-            protectedMethods.put(method.codeId, ProtectedVMMethod.from(method, config, profile));
+            protectedMethods.put(method.codeId, ProtectedVMMethod.from(method, method.config == null ? config : method.config, profile));
         }
         return Map.copyOf(protectedMethods);
+    }
+
+    private BytecodeVMConfig methodConfig(CompiledMethod method)
+    {
+        return method.config == null ? config : method.config;
     }
 
     private static Expr add(Expr first, Expr... rest)

@@ -41,8 +41,12 @@ public class BytecodeVM
               "dynamicStateKey": true,
               "virtualControlFlowGraph": true,
               "vmCount": 1,
-              "includes": ["*", "* *(*)*"],
-              "exclusions": []
+              "includes": {
+                "all": ["*", "* *(*)*"]
+              },
+              "exclusions": {
+                "all": ["* <init>(*)V", "* <clinit>()V"]
+              }
             }
             """;
 

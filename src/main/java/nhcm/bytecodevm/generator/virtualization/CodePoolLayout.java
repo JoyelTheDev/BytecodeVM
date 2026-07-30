@@ -20,6 +20,7 @@ public class CodePoolLayout
     public final FieldRef exceptionHandlers;
     public final FieldRef opcodeMaps;
     public final FieldRef methodKeys;
+    public final FieldRef featureFlags;
     public final FieldRef maxLocals;
     public final FieldRef maxStack;
 
@@ -55,6 +56,7 @@ public class CodePoolLayout
         this.exceptionHandlers = field("EXCEPTION_HANDLERS", "[[I");
         this.opcodeMaps = field("OPCODE_MAPS", "[[I");
         this.methodKeys = field("METHOD_KEYS", "[I");
+        this.featureFlags = field("FEATURE_FLAGS", "[I");
         this.maxLocals = field("MAX_LOCALS", "[I");
         this.maxStack = field("MAX_STACK", "[I");
 
