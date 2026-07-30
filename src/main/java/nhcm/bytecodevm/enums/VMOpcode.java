@@ -128,7 +128,8 @@ public enum VMOpcode
     THROW(Opcs.ATHROW),
     CAST(Opcs.CHECKCAST),
     INSTANCE_OF(Opcs.INSTANCEOF),
-    MONITOR(Opcs.MONITORENTER, Opcs.MONITOREXIT);
+    MONITOR(Opcs.MONITORENTER, Opcs.MONITOREXIT),
+    SUPER_INSTRUCTION(Opcs.SUPER_INSTRUCTION);
 
     private static final Map<Opcs, VMOpcode> BY_OPCODE;
 

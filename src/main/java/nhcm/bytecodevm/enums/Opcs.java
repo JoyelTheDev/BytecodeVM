@@ -158,7 +158,8 @@ public enum Opcs
     MONITOREXIT(Opcodes.MONITOREXIT, false),
     MULTIANEWARRAY(Opcodes.MULTIANEWARRAY, OperandFormat.MULTI_ARRAY),
     IFNULL(Opcodes.IFNULL, true),
-    IFNONNULL(Opcodes.IFNONNULL, true);
+    IFNONNULL(Opcodes.IFNONNULL, true),
+    SUPER_INSTRUCTION(-1, OperandFormat.NONE);
 
     public final int opcode;
     public final boolean hasOperand;

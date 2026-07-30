@@ -62,6 +62,7 @@ public class CodePoolGenerator extends ClassObj
     private final VMProgramGenerator vmProgramGenerator;
     private final BytecodeVMConfig config;
     private final VMObfProfile profile;
+    private final SuperInstructionRegistry superInstructions;
 
     public CodePoolGenerator(
             String className,
@@ -96,9 +97,24 @@ public class CodePoolGenerator extends ClassObj
             GeneratedMemberNamer namer,
             VMObfProfile profile)
     {
+        this(className, compiledMethods, vmProgramGenerator, vmCodePoolGenerator, config, shuffleMethods, namer, profile, new SuperInstructionRegistry(config.superInstructionMaxHandlers));
+    }
+
+    public CodePoolGenerator(
+            String className,
+            List<CompiledMethod> compiledMethods,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            boolean shuffleMethods,
+            GeneratedMemberNamer namer,
+            VMObfProfile profile,
+            SuperInstructionRegistry superInstructions)
+    {
         super(className);
         this.config = Objects.requireNonNull(config, "config");
         this.profile = Objects.requireNonNull(profile, "profile");
+        this.superInstructions = Objects.requireNonNull(superInstructions, "superInstructions");
         this.vmProgramGenerator = vmProgramGenerator;
         this.layout = new CodePoolLayout(
                 className,
@@ -112,7 +128,8 @@ public class CodePoolGenerator extends ClassObj
         }
         validateUniqueCodeIds(compiledMethods);
         this.compiledMethods = List.copyOf(compiledMethods);
-        this.protectedMethodById = protectMethods(this.compiledMethods, this.config, this.profile);
+        SuperInstructionCombiner.prepare(this.compiledMethods, this.config, this.superInstructions);
+        this.protectedMethodById = protectMethods(this.compiledMethods, this.config, this.profile, this.superInstructions);
         this.methodsByCodeIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByOperandIndex = createLayout(compiledMethods, shuffleMethods);
         this.methodsByLayoutIndex = createLayout(compiledMethods, shuffleMethods);
@@ -194,6 +211,10 @@ public class CodePoolGenerator extends ClassObj
             {
                 usedOpcodes.add(insn.opcode);
             }
+        }
+        if (protectedMethodById.values().stream().anyMatch(method -> method.usesSuperInstructions))
+        {
+            usedOpcodes.add(Opcs.SUPER_INSTRUCTION);
         }
         return List.copyOf(usedOpcodes);
     }
@@ -801,12 +822,17 @@ public class CodePoolGenerator extends ClassObj
     private static Map<Integer, ProtectedVMMethod> protectMethods(
             List<CompiledMethod> methods,
             BytecodeVMConfig config,
-            VMObfProfile profile)
+            VMObfProfile profile,
+            SuperInstructionRegistry superInstructions)
     {
         Map<Integer, ProtectedVMMethod> protectedMethods = new HashMap<>();
         for (CompiledMethod method : methods)
         {
-            protectedMethods.put(method.codeId, ProtectedVMMethod.from(method, method.config == null ? config : method.config, profile));
+            protectedMethods.put(method.codeId, ProtectedVMMethod.from(
+                    method,
+                    method.config == null ? config : method.config,
+                    profile,
+                    superInstructions));
         }
         return Map.copyOf(protectedMethods);
     }

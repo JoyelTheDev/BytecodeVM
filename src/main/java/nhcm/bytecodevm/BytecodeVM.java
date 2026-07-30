@@ -40,7 +40,12 @@ public class BytecodeVM
               "dynamicCodePoolBuild": true,
               "dynamicStateKey": true,
               "virtualControlFlowGraph": true,
-              "vmCount": 1,
+              "superInstruction": false,
+              "superInstructionCombineRange": [2, 5],
+              "superInstructionMode": "HYBRID", // RANDOM, PATTERN, HYBRID
+              "superInstructionMaxHandlers": 128,
+              "superInstructionMinFrequency": 2,
+              "vmCount": 4,
               "includes": {
                 "all": ["*", "* *(*)*"]
               },
@@ -67,8 +72,9 @@ public class BytecodeVM
             By NHCM, Version %s
             
             MUST READ:
-            This obfuscator is used for demo only, not for production use.
-            It can make your program hundreds of times slower.
+            This obfuscator is intended for demonstration purposes only and is not suitable for production use.
+            It can make your program hundreds of times slower, while the quality of its protection is not guaranteed.
+            This obfuscator may not even provide protection comparable to existing virtualization tools such as V*P or The*ida, or even basic bytecode-to-native obfuscation tools such as JN*C.
             Its purpose is to demonstrate the concept of bytecode virtualization.
             """.formatted(version);
 

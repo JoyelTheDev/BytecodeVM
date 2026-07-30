@@ -10,6 +10,7 @@ import nhcm.bytecodevm.generator.globalclass.MethodFrameGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
 import nhcm.bytecodevm.generator.virtualization.CodePoolGenerator;
+import nhcm.bytecodevm.generator.virtualization.SuperInstructionRegistry;
 import nhcm.bytecodevm.generator.virtualization.VMGenerator;
 import nhcm.bytecodevm.generator.virtualization.VMObfProfile;
 import nhcm.bytecodevm.tools.OpcMutator;
@@ -52,6 +53,7 @@ public class VMSetGenerator
     private final BytecodeVMConfig config;
     private final GeneratedMemberNamer namer;
     private final VMObfProfile protectionProfile;
+    private final SuperInstructionRegistry superInstructions;
 
     public VMSetGenerator(
             String name, String location,
@@ -82,6 +84,7 @@ public class VMSetGenerator
         this.config = config;
         this.namer = namer;
         this.protectionProfile = VMObfProfile.random();
+        this.superInstructions = new SuperInstructionRegistry(config.superInstructionMaxHandlers);
         this.compiler = new VMMethodCompiler(opcMutator);
     }
 
@@ -107,6 +110,7 @@ public class VMSetGenerator
         compiledMethods.clear();
         codePoolMethods.clear();
         codePoolGenerators.clear();
+        superInstructions.clear();
         int methodCount = methodsToObfuscate.size();
         int totalSteps = methodCount * 2 + 3;
         int completedSteps = 0;
@@ -161,7 +165,17 @@ public class VMSetGenerator
         reportProgress(progress, completedSteps, totalSteps, "Built code pools");
 
         reportProgress(progress, completedSteps, totalSteps, "Generating VM");
-        ClassNode vmClass = new VMGenerator(vmClassName, codePoolGenerators, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config, namer, protectionProfile).getClassNode();
+        ClassNode vmClass = new VMGenerator(
+                vmClassName,
+                codePoolGenerators,
+                opcMutator,
+                methodFrameGenerator,
+                vmProgramGenerator,
+                vmCodePoolGenerator,
+                config,
+                namer,
+                protectionProfile,
+                superInstructions).getClassNode();
         completedSteps++;
         reportProgress(progress, completedSteps, totalSteps, "Generated VM");
 
@@ -206,7 +220,8 @@ public class VMSetGenerator
                     config,
                     true,
                     namer,
-                    protectionProfile));
+                    protectionProfile,
+                    superInstructions));
         }
         return plannedSteps + 1;
     }

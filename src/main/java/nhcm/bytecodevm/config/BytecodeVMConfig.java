@@ -36,6 +36,12 @@ public class BytecodeVMConfig
     public final boolean dynamicCodePoolBuild;
     public final boolean dynamicStateKey;
     public final boolean virtualControlFlowGraph;
+    public final boolean superInstruction;
+    public final int superInstructionCombineMin;
+    public final int superInstructionCombineMax;
+    public final SuperInstructionMode superInstructionMode;
+    public final int superInstructionMaxHandlers;
+    public final int superInstructionMinFrequency;
     public final int vmCount;
     public final String[] includes;
     public final String[] exclusions;
@@ -76,12 +82,27 @@ public class BytecodeVMConfig
         SAVE_ONLY_REQUIRED_INSTRUCTION
     }
 
+    public enum SuperInstructionMode
+    {
+        RANDOM,
+        PATTERN,
+        HYBRID
+    }
+
     public static BytecodeVMConfig parse(Path file) throws IOException
     {
         JsonObject json = new Gson().fromJson(Files.newBufferedReader(file), JsonObject.class);
         MatchRules matchRules = MatchRules.parse(json);
         String[] includes = matchRules.includes("all");
         String[] exclusions = matchRules.exclusions("all");
+        int[] superInstructionRange = optionalIntRange(
+                json,
+                "superInstructionCombineRange",
+                "superinstrcutioncombinerange",
+                2,
+                5,
+                2,
+                32);
         return BytecodeVMConfig
                 .builder()
                 .inputFile(Path.of(requiredString(json, "input")))
@@ -103,6 +124,12 @@ public class BytecodeVMConfig
                 .dynamicCodePoolBuild(optionalBoolean(json, "dynamicCodePoolBuild", true))
                 .dynamicStateKey(optionalBoolean(json, "dynamicStateKey", true))
                 .virtualControlFlowGraph(optionalBoolean(json, "virtualControlFlowGraph", true))
+                .superInstruction(optionalBoolean(json, "superInstruction", false, "superinstrcution"))
+                .superInstructionCombineMin(superInstructionRange[0])
+                .superInstructionCombineMax(superInstructionRange[1])
+                .superInstructionMode(optionalEnum(json, "superInstructionMode", SuperInstructionMode.HYBRID))
+                .superInstructionMaxHandlers(optionalInt(json, "superInstructionMaxHandlers", 128, 1, 4096))
+                .superInstructionMinFrequency(optionalInt(json, "superInstructionMinFrequency", 2, 1, 1_000_000))
                 .vmCount(optionalInt(json, "vmCount", 1, 1, 1024))
                 .includes(includes)
                 .exclusions(exclusions)
@@ -133,6 +160,12 @@ public class BytecodeVMConfig
                 .dynamicCodePoolBuild(statementEnabled("dynamicCodePoolBuild", dynamicCodePoolBuild, owner, method))
                 .dynamicStateKey(statementEnabled("dynamicStateKey", dynamicStateKey, owner, method))
                 .virtualControlFlowGraph(statementEnabled("virtualControlFlowGraph", virtualControlFlowGraph, owner, method))
+                .superInstruction(statementEnabled("superInstruction", superInstruction, owner, method))
+                .superInstructionCombineMin(superInstructionCombineMin)
+                .superInstructionCombineMax(superInstructionCombineMax)
+                .superInstructionMode(superInstructionMode)
+                .superInstructionMaxHandlers(superInstructionMaxHandlers)
+                .superInstructionMinFrequency(superInstructionMinFrequency)
                 .vmCount(vmCount)
                 .includes(includes)
                 .exclusions(exclusions)
@@ -147,7 +180,23 @@ public class BytecodeVMConfig
 
     private static boolean optionalBoolean(JsonObject json, String key, boolean defaultValue)
     {
+        return optionalBoolean(json, key, defaultValue, new String[0]);
+    }
+
+    private static boolean optionalBoolean(JsonObject json, String key, boolean defaultValue, String... aliases)
+    {
         JsonElement value = json.get(key);
+        if(value == null || value.isJsonNull())
+        {
+            for (String alias : aliases)
+            {
+                value = json.get(alias);
+                if(value != null && !value.isJsonNull())
+                {
+                    break;
+                }
+            }
+        }
         if(value == null || value.isJsonNull())
         {
             return defaultValue;
@@ -169,6 +218,48 @@ public class BytecodeVMConfig
                     "Config value " + key + " must be between " + minValue + " and " + maxValue);
         }
         return result;
+    }
+
+    private static <T extends Enum<T>> T optionalEnum(JsonObject json, String key, T defaultValue)
+    {
+        JsonElement value = json.get(key);
+        if(value == null || value.isJsonNull())
+        {
+            return defaultValue;
+        }
+        return Enum.valueOf(defaultValue.getDeclaringClass(), value.getAsString());
+    }
+
+    private static int[] optionalIntRange(
+            JsonObject json,
+            String key,
+            String alias,
+            int defaultMin,
+            int defaultMax,
+            int minValue,
+            int maxValue)
+    {
+        JsonElement value = json.get(key);
+        if(value == null || value.isJsonNull())
+        {
+            value = json.get(alias);
+        }
+        if(value == null || value.isJsonNull())
+        {
+            return new int[]{defaultMin, defaultMax};
+        }
+        if(!value.isJsonArray() || value.getAsJsonArray().size() != 2)
+        {
+            throw new IllegalArgumentException("Config value must be a two-item array: " + key);
+        }
+        int min = value.getAsJsonArray().get(0).getAsInt();
+        int max = value.getAsJsonArray().get(1).getAsInt();
+        if(min < minValue || max > maxValue || min > max)
+        {
+            throw new IllegalArgumentException(
+                    "Config value " + key + " must be between " + minValue + " and " + maxValue + " with min <= max");
+        }
+        return new int[]{min, max};
     }
 
     private static String requiredString(JsonObject json, String key)

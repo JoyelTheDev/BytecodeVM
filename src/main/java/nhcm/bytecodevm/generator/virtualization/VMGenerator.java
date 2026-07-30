@@ -152,6 +152,7 @@ public class VMGenerator extends ClassObj
     private final BytecodeVMConfig config;
     private final GeneratedMemberNamer namer;
     private final VMObfProfile profile;
+    private final SuperInstructionRegistry superInstructions;
     private final Map<Integer, String> interpretChunkNames = new HashMap<>();
 
     public VMGenerator(
@@ -190,6 +191,21 @@ public class VMGenerator extends ClassObj
             GeneratedMemberNamer namer,
             VMObfProfile profile)
     {
+        this(className, codePoolGenerators, opcMutator, methodFrameGenerator, vmProgramGenerator, vmCodePoolGenerator, config, namer, profile, new SuperInstructionRegistry(config.superInstructionMaxHandlers));
+    }
+
+    public VMGenerator(
+            String className,
+            List<CodePoolGenerator> codePoolGenerators,
+            OpcMutator opcMutator,
+            MethodFrameGenerator methodFrameGenerator,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            GeneratedMemberNamer namer,
+            VMObfProfile profile,
+            SuperInstructionRegistry superInstructions)
+    {
         super(className);
         this.codePoolGenerators = List.copyOf(codePoolGenerators);
         this.opcMutator = opcMutator;
@@ -202,6 +218,7 @@ public class VMGenerator extends ClassObj
         this.config = config;
         this.namer = namer;
         this.profile = Objects.requireNonNull(profile, "profile");
+        this.superInstructions = Objects.requireNonNull(superInstructions, "superInstructions");
         ClassNode cn = ClassUtils.newClassNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, className);
         InsnUtils.addPrivateInit(cn);
         this.classNode = cn;
@@ -854,6 +871,10 @@ public class VMGenerator extends ClassObj
                 }
             }
         }
+        if (!superInstructions.recipes().isEmpty())
+        {
+            opcodeSet.add(Opcs.SUPER_INSTRUCTION);
+        }
 
         List<Opcs> opcodes = new ArrayList<>(opcodeSet);
         opcodes.sort((left, right) -> Integer.compare(
@@ -937,12 +958,19 @@ public class VMGenerator extends ClassObj
         for (int i = 0; i < opcodes.size(); i++)
         {
             Opcs opcode = opcodes.get(i);
-            InterpretBranch branch = branches.get(opcode);
-            if (branch == null)
+            if (opcode == Opcs.SUPER_INSTRUCTION)
             {
-                throw new IllegalStateException("Missing interpret branch: " + opcode);
+                cases[i] = b -> generateSuperInstruction(b, context);
             }
-            cases[i] = b -> branch.generate(b, context, opcode);
+            else
+            {
+                InterpretBranch branch = branches.get(opcode);
+                if (branch == null)
+                {
+                    throw new IllegalStateException("Missing interpret branch: " + opcode);
+                }
+                cases[i] = b -> branch.generate(b, context, opcode);
+            }
         }
 
         ib.switchTable(
@@ -952,6 +980,30 @@ public class VMGenerator extends ClassObj
                 cases);
         ib.returnVoid();
         return method;
+    }
+
+    private void generateSuperInstruction(AdvInsnBuilder ib, InterpretContext context)
+    {
+        Local superId = context.intLocal("superId", InterpretContext.RIGHT_VALUE);
+        context.nextOperand(ib, superId);
+        List<SuperInstructionRegistry.Recipe> recipes = superInstructions.recipes();
+        @SuppressWarnings("unchecked")
+        java.util.function.Consumer<AdvInsnBuilder>[] cases = new java.util.function.Consumer[recipes.size()];
+        for (SuperInstructionRegistry.Recipe recipe : recipes)
+        {
+            cases[recipe.id()] = b -> {
+                for (Opcs opcode : recipe.sequence())
+                {
+                    InterpretBranch branch = branches.get(opcode);
+                    if (branch == null)
+                    {
+                        throw new IllegalStateException("Missing interpret branch for super instruction body: " + opcode);
+                    }
+                    branch.generate(b, context, opcode);
+                }
+            };
+        }
+        ib.switchTable(superId, 0, this::generateUnknownOpcode, cases);
     }
 
     private String interpretChunkName(int chunkIndex)
@@ -2806,7 +2858,7 @@ public class VMGenerator extends ClassObj
     {
         for (Opcs opcode : Opcs.values())
         {
-            if(opcode == Opcs.INVOKEDYNAMIC)
+            if(opcode == Opcs.INVOKEDYNAMIC || opcode == Opcs.SUPER_INSTRUCTION)
             {
                 continue;
             }

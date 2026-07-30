@@ -44,6 +44,7 @@ public class ProtectedVMMethod
     public final int[] opcodeMap;
     public final int methodKey;
     public final int featureFlags;
+    public final boolean usesSuperInstructions;
 
     private ProtectedVMMethod(
             int[] opcodeStream,
@@ -54,7 +55,8 @@ public class ProtectedVMMethod
             int[] exceptionHandlers,
             int[] opcodeMap,
             int methodKey,
-            int featureFlags)
+            int featureFlags,
+            boolean usesSuperInstructions)
     {
         this.opcodeStream = opcodeStream;
         this.operandStream = operandStream;
@@ -65,6 +67,7 @@ public class ProtectedVMMethod
         this.opcodeMap = opcodeMap;
         this.methodKey = methodKey;
         this.featureFlags = featureFlags;
+        this.usesSuperInstructions = usesSuperInstructions;
     }
 
     public static ProtectedVMMethod from(CompiledMethod compiledMethod, BytecodeVMConfig config)
@@ -77,8 +80,22 @@ public class ProtectedVMMethod
             BytecodeVMConfig config,
             VMObfProfile profile)
     {
+        return from(compiledMethod, config, profile, new SuperInstructionRegistry(config.superInstructionMaxHandlers));
+    }
+
+    public static ProtectedVMMethod from(
+            CompiledMethod compiledMethod,
+            BytecodeVMConfig config,
+            VMObfProfile profile,
+            SuperInstructionRegistry superInstructions)
+    {
         VMMethod method = compiledMethod.vmMethod;
-        List<VMInstruction> instructions = method.getInstructions();
+        List<VMInstruction> instructions = SuperInstructionCombiner.combine(
+                method,
+                config,
+                superInstructions,
+                method.getOpcMutator());
+        boolean usesSuperInstructions = instructions.stream().anyMatch(instruction -> instruction.opcode == Opcs.SUPER_INSTRUCTION);
         boolean protect = config.protectCodePool;
         int featureFlags = featureFlags(config);
         boolean dynamicStateKey = protect && config.dynamicStateKey;
@@ -189,7 +206,8 @@ public class ProtectedVMMethod
                         profile),
                 opcodeLayout.encodedOpcodeMap,
                 methodKey,
-                featureFlags);
+                featureFlags,
+                usesSuperInstructions);
     }
 
     private static int featureFlags(BytecodeVMConfig config)
@@ -580,7 +598,7 @@ public class ProtectedVMMethod
         int mask = 0;
         for (int operandIndex = 0; operandIndex < instruction.operandCount(); operandIndex++)
         {
-            if (instruction.opcode.isConstantOperand(operandIndex) && operandIndex < Integer.SIZE)
+            if (instruction.operand(operandIndex).constantReference && operandIndex < Integer.SIZE)
             {
                 mask |= 1 << operandIndex;
             }
