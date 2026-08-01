@@ -35,10 +35,4 @@ public @interface Virtualize
 
     /** Controls call-graph expansion from this target method. */
     CallPolicy calls() default CallPolicy.CONFIG;
-
-    /**
-     * Controls ConstantValue relocation for the annotated class. This value is
-     * ignored when the annotation is placed directly on a method.
-     */
-    Toggle constantFix() default Toggle.CONFIG;
 }

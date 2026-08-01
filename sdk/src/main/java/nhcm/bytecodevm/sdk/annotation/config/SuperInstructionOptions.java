@@ -23,7 +23,5 @@ public @interface SuperInstructionOptions
 
     int combineMax() default CONFIG;
 
-    int maxHandlers() default CONFIG;
-
     int minFrequency() default CONFIG;
 }

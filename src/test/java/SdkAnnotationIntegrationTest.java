@@ -48,8 +48,21 @@ public final class SdkAnnotationIntegrationTest
         BytecodeVMConfig methodConfig = baseConfig().forMethod(owner, protectedMethod);
         require(methodConfig.vmStructure == VMStructure.DATA_FLOW,
                 "Method VM structure did not override YAML");
-        require(!methodConfig.encryptOperands,
-                "Method VM boolean did not override YAML");
+        require(methodConfig.protectCodePool,
+                "Disabling encryption unexpectedly disabled the CodePool");
+        require(!methodConfig.virtualizeInstructionAddresses &&
+                        !methodConfig.encryptOperands &&
+                        !methodConfig.perMethodOpcodeMap &&
+                        !methodConfig.bindConstantsToOperands &&
+                        !methodConfig.dynamicStateKey,
+                "The encrypt SDK group did not disable every mapped option");
+        require(methodConfig.shuffleConstants &&
+                        methodConfig.splitCodeStreams &&
+                        methodConfig.shuffleInstructionBlocks &&
+                        methodConfig.virtualControlFlowGraph,
+                "The encrypt SDK group changed the independent shuffle group");
+        require(methodConfig.obfuscateDispatch && methodConfig.dynamicCodePoolBuild,
+                "The encrypt SDK group changed the independent obfuscate group");
         require(methodConfig.includeMethodsCalledWithin,
                 "CallPolicy.INCLUDE was not applied");
         require(!methodConfig.excludeMethodsCalledWithin,
@@ -122,7 +135,7 @@ public final class SdkAnnotationIntegrationTest
         AnnotationNode vmOptions = new AnnotationNode(VM_OPTIONS);
         vmOptions.values = List.of(
                 "structure", enumValue(SDK_VM_STRUCTURE, "DATA_FLOW"),
-                "encryptOperands", enumValue(TOGGLE, "DISABLED"));
+                "encrypt", enumValue(TOGGLE, "DISABLED"));
         AnnotationNode virtualize = new AnnotationNode(SdkAnnotationReader.VIRTUALIZE);
         virtualize.values = List.of(
                 "vm", vmOptions,

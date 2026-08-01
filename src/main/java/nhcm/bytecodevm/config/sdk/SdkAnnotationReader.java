@@ -36,10 +36,7 @@ public final class SdkAnnotationReader
         Boolean protectConstantFix = protectClass == null
                 ? null
                 : toggle(values(protectClass).get("constantFix"), null, owner.name + " @ProtectClass.constantFix");
-        Boolean constantFix = options.constantFix() != null
-                ? options.constantFix()
-                : protectConstantFix;
-        return new ClassDirectives(protectClass != null, excluded, options, constantFix);
+        return new ClassDirectives(protectClass != null, excluded, options, protectConstantFix);
     }
 
     public static MethodDirectives methodDirectives(ClassNode owner, MethodNode method)
@@ -77,54 +74,9 @@ public final class SdkAnnotationReader
         {
             builder.vmStructure(options.vmStructure());
         }
-        if (options.protectCodePool() != null)
-        {
-            builder.protectCodePool(options.protectCodePool());
-        }
-        if (options.virtualizeInstructionAddresses() != null)
-        {
-            builder.virtualizeInstructionAddresses(options.virtualizeInstructionAddresses());
-        }
-        if (options.encryptOperands() != null)
-        {
-            builder.encryptOperands(options.encryptOperands());
-        }
-        if (options.perMethodOpcodeMap() != null)
-        {
-            builder.perMethodOpcodeMap(options.perMethodOpcodeMap());
-        }
-        if (options.shuffleConstants() != null)
-        {
-            builder.shuffleConstants(options.shuffleConstants());
-        }
-        if (options.bindConstantsToOperands() != null)
-        {
-            builder.bindConstantsToOperands(options.bindConstantsToOperands());
-        }
-        if (options.splitCodeStreams() != null)
-        {
-            builder.splitCodeStreams(options.splitCodeStreams());
-        }
-        if (options.shuffleInstructionBlocks() != null)
-        {
-            builder.shuffleInstructionBlocks(options.shuffleInstructionBlocks());
-        }
-        if (options.obfuscateDispatch() != null)
-        {
-            builder.obfuscateDispatch(options.obfuscateDispatch());
-        }
-        if (options.dynamicCodePoolBuild() != null)
-        {
-            builder.dynamicCodePoolBuild(options.dynamicCodePoolBuild());
-        }
-        if (options.dynamicStateKey() != null)
-        {
-            builder.dynamicStateKey(options.dynamicStateKey());
-        }
-        if (options.virtualControlFlowGraph() != null)
-        {
-            builder.virtualControlFlowGraph(options.virtualControlFlowGraph());
-        }
+        applyEncrypt(builder, options.encrypt());
+        applyShuffle(builder, options.shuffle());
+        applyObfuscate(builder, options.obfuscate());
         if (options.integrityCheck() != null)
         {
             builder.vmIntegrityCheck(options.integrityCheck());
@@ -149,10 +101,6 @@ public final class SdkAnnotationReader
         if (options.superInstructionCombineMax() != null)
         {
             builder.superInstructionCombineMax(options.superInstructionCombineMax());
-        }
-        if (options.superInstructionMaxHandlers() != null)
-        {
-            builder.superInstructionMaxHandlers(options.superInstructionMaxHandlers());
         }
         if (options.superInstructionMinFrequency() != null)
         {
@@ -181,27 +129,69 @@ public final class SdkAnnotationReader
                 true,
                 toggle(root.get("enabled"), true, target + " @Virtualize.enabled"),
                 vmStructure(vmValues.get("structure"), target),
-                toggle(vmValues.get("protectCodePool"), null, target),
-                toggle(vmValues.get("virtualizeInstructionAddresses"), null, target),
-                toggle(vmValues.get("encryptOperands"), null, target),
-                toggle(vmValues.get("perMethodOpcodeMap"), null, target),
-                toggle(vmValues.get("shuffleConstants"), null, target),
-                toggle(vmValues.get("bindConstantsToOperands"), null, target),
-                toggle(vmValues.get("splitCodeStreams"), null, target),
-                toggle(vmValues.get("shuffleInstructionBlocks"), null, target),
-                toggle(vmValues.get("obfuscateDispatch"), null, target),
-                toggle(vmValues.get("dynamicCodePoolBuild"), null, target),
-                toggle(vmValues.get("dynamicStateKey"), null, target),
-                toggle(vmValues.get("virtualControlFlowGraph"), null, target),
+                toggle(vmValues.get("encrypt"), null, target + " @VMOptions.encrypt"),
+                toggle(vmValues.get("shuffle"), null, target + " @VMOptions.shuffle"),
+                toggle(vmValues.get("obfuscate"), null, target + " @VMOptions.obfuscate"),
                 toggle(root.get("integrityCheck"), null, target + " @Virtualize.integrityCheck"),
                 callPolicy(root.get("calls"), target),
-                toggle(root.get("constantFix"), null, target + " @Virtualize.constantFix"),
                 toggle(superValues.get("enabled"), null, target),
                 superInstructionMode(superValues.get("mode"), target),
                 integer(superValues.get("combineMin"), target),
                 integer(superValues.get("combineMax"), target),
-                integer(superValues.get("maxHandlers"), target),
                 integer(superValues.get("minFrequency"), target));
+    }
+
+    private static void applyEncrypt(
+            BytecodeVMConfig.BytecodeVMConfigBuilder builder,
+            Boolean enabled)
+    {
+        if (enabled == null)
+        {
+            return;
+        }
+        if (enabled)
+        {
+            builder.protectCodePool(true);
+        }
+        builder.virtualizeInstructionAddresses(enabled)
+                .encryptOperands(enabled)
+                .perMethodOpcodeMap(enabled)
+                .bindConstantsToOperands(enabled)
+                .dynamicStateKey(enabled);
+    }
+
+    private static void applyShuffle(
+            BytecodeVMConfig.BytecodeVMConfigBuilder builder,
+            Boolean enabled)
+    {
+        if (enabled == null)
+        {
+            return;
+        }
+        if (enabled)
+        {
+            builder.protectCodePool(true);
+        }
+        builder.shuffleConstants(enabled)
+                .splitCodeStreams(enabled)
+                .shuffleInstructionBlocks(enabled)
+                .virtualControlFlowGraph(enabled);
+    }
+
+    private static void applyObfuscate(
+            BytecodeVMConfig.BytecodeVMConfigBuilder builder,
+            Boolean enabled)
+    {
+        if (enabled == null)
+        {
+            return;
+        }
+        if (enabled)
+        {
+            builder.protectCodePool(true);
+        }
+        builder.obfuscateDispatch(enabled)
+                .dynamicCodePoolBuild(enabled);
     }
 
     private static void validate(BytecodeVMConfig config, String target)
@@ -214,12 +204,6 @@ public final class SdkAnnotationReader
                     "Invalid SDK SuperInstruction combine range on " + target +
                             ": [" + config.superInstructionCombineMin + ", " +
                             config.superInstructionCombineMax + "]");
-        }
-        if (config.superInstructionMaxHandlers < 1 || config.superInstructionMaxHandlers > 4096)
-        {
-            throw new IllegalArgumentException(
-                    "Invalid SDK SuperInstruction maxHandlers on " + target +
-                            ": " + config.superInstructionMaxHandlers);
         }
         if (config.superInstructionMinFrequency < 1 || config.superInstructionMinFrequency > 1_000_000)
         {

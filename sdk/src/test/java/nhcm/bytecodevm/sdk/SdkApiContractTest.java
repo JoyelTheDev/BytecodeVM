@@ -45,8 +45,10 @@ public final class SdkApiContractTest
         VMOptions vm = (VMOptions) defaultValue(Virtualize.class, "vm");
         require(vm.structure() == VMStructure.CONFIG,
                 "VM structure must inherit YAML by default");
-        require(vm.protectCodePool() == Toggle.CONFIG,
-                "VM toggles must inherit YAML by default");
+        require(vm.encrypt() == Toggle.CONFIG &&
+                        vm.shuffle() == Toggle.CONFIG &&
+                        vm.obfuscate() == Toggle.CONFIG,
+                "VM option groups must inherit YAML by default");
 
         SuperInstructionOptions superInstructions =
                 (SuperInstructionOptions) defaultValue(Virtualize.class, "superInstructions");
@@ -56,6 +58,8 @@ public final class SdkApiContractTest
                 "SuperInstruction mode must inherit YAML by default");
         require(superInstructions.combineMin() == SuperInstructionOptions.CONFIG,
                 "SuperInstruction numeric values must inherit YAML by default");
+        requireMissing(Virtualize.class, "constantFix");
+        requireMissing(SuperInstructionOptions.class, "maxHandlers");
     }
 
     private static void verifyTarget(Class<?> type, ElementType... expected)
@@ -84,6 +88,19 @@ public final class SdkApiContractTest
     {
         Method method = owner.getMethod(name);
         return method.getDefaultValue();
+    }
+
+    private static void requireMissing(Class<?> owner, String name)
+    {
+        try
+        {
+            owner.getMethod(name);
+            throw new AssertionError(owner.getSimpleName() + '.' + name + " must not be exposed");
+        }
+        catch (NoSuchMethodException expected)
+        {
+            // Expected API shape.
+        }
     }
 
     private static void require(boolean condition, String message)

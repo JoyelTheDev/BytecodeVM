@@ -15,27 +15,12 @@ public @interface VMOptions
     /** Selects a concrete VM structure or an automatic strength tier. */
     VMStructure structure() default VMStructure.CONFIG;
 
-    Toggle protectCodePool() default Toggle.CONFIG;
+    /** Enables encrypted addresses, operands, opcode maps, constants, and state keys. */
+    Toggle encrypt() default Toggle.CONFIG;
 
-    Toggle virtualizeInstructionAddresses() default Toggle.CONFIG;
+    /** Enables constant, stream, instruction-block, and virtual-CFG shuffling. */
+    Toggle shuffle() default Toggle.CONFIG;
 
-    Toggle encryptOperands() default Toggle.CONFIG;
-
-    Toggle perMethodOpcodeMap() default Toggle.CONFIG;
-
-    Toggle shuffleConstants() default Toggle.CONFIG;
-
-    Toggle bindConstantsToOperands() default Toggle.CONFIG;
-
-    Toggle splitCodeStreams() default Toggle.CONFIG;
-
-    Toggle shuffleInstructionBlocks() default Toggle.CONFIG;
-
-    Toggle obfuscateDispatch() default Toggle.CONFIG;
-
-    Toggle dynamicCodePoolBuild() default Toggle.CONFIG;
-
-    Toggle dynamicStateKey() default Toggle.CONFIG;
-
-    Toggle virtualControlFlowGraph() default Toggle.CONFIG;
+    /** Enables dispatch obfuscation and dynamic CodePool construction. */
+    Toggle obfuscate() default Toggle.CONFIG;
 }

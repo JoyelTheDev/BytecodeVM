@@ -204,7 +204,11 @@ public final class LicenseService {
 }
 ```
 
-Every SDK option uses `CONFIG` to inherit its value from the enclosing class annotation and then YAML. Method values override class values. A method-level structure or SuperInstruction handler-budget override is assigned to a compatible VM set, so it does not silently retain an incompatible global VM structure.
+Every SDK option uses `CONFIG` to inherit its value from the enclosing class annotation and then YAML. Method values override class values. A method-level structure override is assigned to a compatible VM set, so it does not silently retain an incompatible global VM structure.
+
+`VMOptions` groups the low-level YAML switches into three practical controls. `encrypt` controls virtual addresses, operands, per-method opcode maps, constant binding, and dynamic state keys. `shuffle` controls constants, split streams, instruction blocks, and virtual-CFG layout. `obfuscate` controls dispatch obfuscation and dynamic CodePool construction. Explicitly enabling any group also enables `protectCodePool`; disabling one group leaves the other groups unchanged. Fine-grained tuning remains available in YAML.
+
+Constant relocation is class metadata, so the SDK exposes `constantFix` only through `@ProtectClass`. `superInstructionMaxHandlers` controls a VM-set-wide handler registry and therefore remains YAML-only; per-target `SuperInstructionOptions` exposes enablement, mode, combine range, and minimum pattern frequency.
 
 ```java
 import nhcm.bytecodevm.sdk.annotation.Virtualize;
@@ -218,8 +222,9 @@ import nhcm.bytecodevm.sdk.enums.VMStructure;
 @Virtualize(
     vm = @VMOptions(
         structure = VMStructure.DATA_FLOW,
-        encryptOperands = Toggle.ENABLED,
-        dynamicStateKey = Toggle.ENABLED
+        encrypt = Toggle.ENABLED,
+        shuffle = Toggle.ENABLED,
+        obfuscate = Toggle.ENABLED
     ),
     superInstructions = @SuperInstructionOptions(
         enabled = Toggle.ENABLED,
