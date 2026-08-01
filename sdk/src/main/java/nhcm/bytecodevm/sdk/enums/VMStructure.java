@@ -1,6 +1,10 @@
 package nhcm.bytecodevm.sdk.enums;
 
-/** VM structure override exposed by the annotation SDK. */
+/**
+ * VM structure override exposed by the annotation SDK.
+ * {@code LOW}, {@code MEDIUM}, and {@code HIGH} use the same ranked candidate
+ * pools documented by the main BytecodeVM configuration.
+ */
 public enum VMStructure
 {
     CONFIG,

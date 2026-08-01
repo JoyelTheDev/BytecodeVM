@@ -9,7 +9,9 @@ import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /** Integration contract for the dependency-free SDK annotation reader. */
 public final class SdkAnnotationIntegrationTest
@@ -26,6 +28,8 @@ public final class SdkAnnotationIntegrationTest
 
     public static void main(String[] args)
     {
+        verifyAutomaticStructures();
+
         ClassNode owner = fixtureClass();
         MethodNode protectedMethod = owner.methods.get(0);
         MethodNode excludedMethod = owner.methods.get(1);
@@ -64,6 +68,40 @@ public final class SdkAnnotationIntegrationTest
                 "@Virtualize remained after cleanup");
         require(excludedMethod.invisibleAnnotations.isEmpty(),
                 "@DoNotVirtualize remained after cleanup");
+    }
+
+    private static void verifyAutomaticStructures()
+    {
+        verifyAutomaticTier(VMStructure.LOW, EnumSet.of(
+                VMStructure.SIMPLE_DISPATCH,
+                VMStructure.DISTRIBUTED_DISPATCH,
+                VMStructure.MULTIPLE_DISPATCH,
+                VMStructure.THREADED_DIRECT,
+                VMStructure.THREADED_INDIRECT));
+        verifyAutomaticTier(VMStructure.MEDIUM, EnumSet.of(
+                VMStructure.CALL_THREADED,
+                VMStructure.RECURSIVE,
+                VMStructure.CONTINUATION_PASSING,
+                VMStructure.OBJECT,
+                VMStructure.SELF_MODIFYING,
+                VMStructure.EVENT,
+                VMStructure.COROUTINE));
+        verifyAutomaticTier(VMStructure.HIGH, EnumSet.of(
+                VMStructure.DATA_FLOW,
+                VMStructure.POLYMORPHIC,
+                VMStructure.GRAPH,
+                VMStructure.FSM,
+                VMStructure.REGISTER_BASED));
+    }
+
+    private static void verifyAutomaticTier(VMStructure automatic, Set<VMStructure> expected)
+    {
+        Set<VMStructure> actual = EnumSet.noneOf(VMStructure.class);
+        for (int index = 0; index < expected.size(); index++)
+        {
+            actual.add(automatic.resolveAuto());
+        }
+        require(actual.equals(expected), automatic + " candidate pool mismatch: " + actual);
     }
 
     private static ClassNode fixtureClass()

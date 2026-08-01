@@ -159,7 +159,7 @@ public class BytecodeVMConfig
                 .superInstructionMode(optionalEnum(yaml, "superInstructionMode", SuperInstructionMode.HYBRID))
                 .superInstructionMaxHandlers(optionalInt(yaml, "superInstructionMaxHandlers", 128, 1, 4096))
                 .superInstructionMinFrequency(optionalInt(yaml, "superInstructionMinFrequency", 2, 1, 1_000_000))
-                .vmCount(optionalInt(yaml, "vmCount", 1, 1, 1024))
+                .vmCount(optionalInt(yaml, "vmCount", 5, 1, 1024))
                 .includes(includes)
                 .exclusions(exclusions)
                 .matchRules(matchRules)

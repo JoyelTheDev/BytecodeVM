@@ -37,25 +37,25 @@ public enum VMStructure
     private static final VMStructure[] LOW_CANDIDATES = {
             SIMPLE_DISPATCH,
             DISTRIBUTED_DISPATCH,
-            MULTIPLE_DISPATCH
+            MULTIPLE_DISPATCH,
+            THREADED_DIRECT,
+            THREADED_INDIRECT
     };
     private static final VMStructure[] MEDIUM_CANDIDATES = {
-            THREADED_DIRECT,
-            THREADED_INDIRECT,
             CALL_THREADED,
             RECURSIVE,
             CONTINUATION_PASSING,
             OBJECT,
-            REGISTER_BASED
-    };
-    private static final VMStructure[] HIGH_CANDIDATES = {
-            POLYMORPHIC,
             SELF_MODIFYING,
-            DATA_FLOW,
-            GRAPH,
-            FSM,
             EVENT,
             COROUTINE
+    };
+    private static final VMStructure[] HIGH_CANDIDATES = {
+            DATA_FLOW,
+            POLYMORPHIC,
+            GRAPH,
+            FSM,
+            REGISTER_BASED
     };
     private static final Map<VMStructure, ArrayDeque<VMStructure>> AUTO_BAGS = new EnumMap<>(VMStructure.class);
 

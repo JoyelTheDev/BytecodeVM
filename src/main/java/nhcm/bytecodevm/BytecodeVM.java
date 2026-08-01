@@ -34,17 +34,20 @@ public class BytecodeVM
             # interpretMode: SAVE_ALL_INSTRUCTION, SAVE_ONLY_REQUIRED_INSTRUCTION
             interpretMode: SAVE_ONLY_REQUIRED_INSTRUCTION
             # Automatic tiers:
-            #   LOW    -> SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH
-            #   MEDIUM -> THREADED_DIRECT, THREADED_INDIRECT, CALL_THREADED, RECURSIVE,
-            #             CONTINUATION_PASSING, OBJECT, REGISTER_BASED
-            #   HIGH   -> POLYMORPHIC, SELF_MODIFYING, DATA_FLOW, GRAPH, FSM, EVENT, COROUTINE
+            # Tiers rank analysis resistance, not runtime speed. Use LOW or a
+            # concrete structure for latency-sensitive and heavily executed methods.
+            #   LOW    -> SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
+            #             THREADED_DIRECT, THREADED_INDIRECT
+            #   MEDIUM -> CALL_THREADED, RECURSIVE, CONTINUATION_PASSING, OBJECT,
+            #             SELF_MODIFYING, EVENT, COROUTINE
+            #   HIGH   -> DATA_FLOW, POLYMORPHIC, GRAPH, FSM, REGISTER_BASED
             # Concrete VM structures:
             #   SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
             #   THREADED_DIRECT, THREADED_INDIRECT, CALL_THREADED, RECURSIVE,
             #   CONTINUATION_PASSING, OBJECT, POLYMORPHIC, SELF_MODIFYING,
             #   REGISTER_BASED, DATA_FLOW, GRAPH, FSM, EVENT, COROUTINE
             vmStructure: HIGH
-            vmCount: 4
+            vmCount: 5
 
             # CodePool, bytecode encoding, and virtual control flow protection.
             protectCodePool: true

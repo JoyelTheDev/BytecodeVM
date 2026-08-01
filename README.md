@@ -66,13 +66,19 @@ createMode: ONE_FOR_ALL # ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
 location: ONE_PACKAGE # SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
 renameMode: DISABLE
 interpretMode: SAVE_ONLY_REQUIRED_INSTRUCTION
-# Automatic: LOW, MEDIUM, HIGH.
+# Automatic tiers, ranked by the current implementation:
+# These tiers describe analysis resistance, not runtime speed.
+# LOW: SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
+#      THREADED_DIRECT, THREADED_INDIRECT
+# MEDIUM: CALL_THREADED, RECURSIVE, CONTINUATION_PASSING, OBJECT,
+#         SELF_MODIFYING, EVENT, COROUTINE
+# HIGH: DATA_FLOW, POLYMORPHIC, GRAPH, FSM, REGISTER_BASED
 # Concrete: SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
 # THREADED_DIRECT, THREADED_INDIRECT, CALL_THREADED, RECURSIVE,
 # CONTINUATION_PASSING, OBJECT, POLYMORPHIC, SELF_MODIFYING,
 # REGISTER_BASED, DATA_FLOW, GRAPH, FSM, EVENT, COROUTINE.
 vmStructure: HIGH
-vmCount: 4
+vmCount: 5
 
 # CodePool and virtual control-flow protection.
 protectCodePool: true
@@ -157,7 +163,7 @@ exclusions:
 | `superInstructionMode` | `RANDOM`, `PATTERN`, `HYBRID` | `HYBRID` | Chooses random ranges, frequent opcode patterns, or both. |
 | `superInstructionMaxHandlers` | `1` to `4096` | `128`    | Caps generated super-instruction recipes per VM set. |
 | `superInstructionMinFrequency` | Positive integer | `2`      | Minimum pattern frequency before `PATTERN` or `HYBRID` pre-registers a recipe. |
-| `vmCount` | `1` to `1024` | `4`      | Expands each non-`PER_METHOD` VM grouping into up to this many randomized VM sets and distributes matched methods among them. |
+| `vmCount` | `1` to `1024` | `5`      | Expands each non-`PER_METHOD` VM grouping into this many randomized VM sets and distributes matched methods among them. Five covers the complete current `HIGH` candidate bag. |
 | `includes` | Array or object of match expressions | Required | Methods/classes to virtualize, plus optional per-boolean include groups. |
 | `exclusions` | Array or object of match expressions | Required | Methods/classes to skip, plus optional per-boolean exclude groups. Exclusions win over includes. |
 
@@ -248,30 +254,32 @@ The original application bytecode is still transformed by virtualization, consta
 
 ## VM Structures
 
-`vmStructure` is resolved once per VM set. A concrete value never silently falls back to `SIMPLE_DISPATCH`. `LOW`, `MEDIUM`, and `HIGH` select from shuffled strength-tier bags, so separate VM sets can use different architectures while staying within the requested protection level. Automatic selection avoids repeats until the tier's candidate bag is exhausted; the no-repeat window is capped at 12 candidates.
+`vmStructure` is resolved once per VM set. A concrete value never silently falls back to `SIMPLE_DISPATCH`. `LOW`, `MEDIUM`, and `HIGH` select from shuffled strength-tier bags ranked by the protection actually generated, rather than by architecture names. Separate VM sets can therefore use different architectures while staying within the requested protection level. Automatic selection avoids repeats until the tier's candidate bag is exhausted; the no-repeat window is capped at 12 candidates. Use `vmCount: 5` to cover every current `HIGH` candidate once before that bag is refilled.
 
-| Value | Generated execution shape                                                                                                                                                                                                       | Relative cost |
+The ranking measures static-analysis resistance, not throughput or latency. `HIGH` structures add maps, handler objects, state machines, dependency scheduling, or register lowering and can exceed the timing budget of hot or latency-sensitive code. Pin those methods to a concrete lower-cost structure with the SDK, select them into a separate VM set, or exclude them from virtualization.
+
+| Value | Generated execution shape                                                                                                                                                                                                       | Relative protection |
 |---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
 | `SIMPLE_DISPATCH` | Baseline decode loop with one central opcode dispatcher and split semantic chunks.                                                                                                                                              | Lowest |
 | `DISTRIBUTED_DISPATCH` | Routes encoded opcode keys into disjoint dispatch shard methods.                                                                                                                                                                | Low |
-| `MULTIPLE_DISPATCH` | Chooses among several equivalent dispatchers with different key transforms and case layouts.                                                                                                                                    | Medium |
-| `THREADED_DIRECT` | Stores direct handler tokens in the VM opcode stream and maps them straight to generated executable handler objects without an opcode switch.                                                                                   | Low-medium |
-| `THREADED_INDIRECT` | Resolves decoded opcodes to dense runtime tokens, then indexes a generated handler array through an interface trampoline.                                                                                                       | Medium |
-| `CALL_THREADED` | Uses generated callable handler objects, bounded tail segments, and an outer trampoline.                                                                                                                                        | High |
+| `MULTIPLE_DISPATCH` | Chooses among several equivalent dispatchers with different key transforms and case layouts.                                                                                                                                    | Low |
+| `THREADED_DIRECT` | Stores direct handler tokens in the VM opcode stream and maps them straight to generated executable handler objects without an opcode switch.                                                                                   | Low |
+| `THREADED_INDIRECT` | Resolves decoded opcodes to dense runtime tokens, then indexes a generated handler array through an interface trampoline.                                                                                                       | Low |
+| `CALL_THREADED` | Uses generated callable handler objects, bounded tail segments, and an outer trampoline.                                                                                                                                        | Medium |
 | `RECURSIVE` | Executes bounded recursive segments and returns to a loop before JVM stack depth can grow without limit.                                                                                                                        | Medium |
-| `CONTINUATION_PASSING` | Encoded continuation actions select generated continuation handler variants through a switch-free trampoline.                                                                                                                   | High |
-| `OBJECT` | Materializes token-bound instruction objects backed by generated semantic shards and executes them through interface dispatch.                                                                                                  | High |
+| `CONTINUATION_PASSING` | Encoded continuation actions select generated continuation handler variants through a switch-free trampoline.                                                                                                                   | Medium |
+| `OBJECT` | Materializes token-bound instruction objects backed by generated semantic shards and executes them through interface dispatch.                                                                                                  | Medium |
 | `POLYMORPHIC` | Generates multiple semantic-equivalent handler classes per opcode and selects a variant from runtime state.                                                                                                                     | High |
-| `SELF_MODIFYING` | Copies opcode data per frame, re-encodes executed slots, tracks matching masks, and resolves semantics through a probed handler ring.                                                                                           | High |
+| `SELF_MODIFYING` | Copies opcode data per frame, re-encodes executed slots, tracks matching masks, and resolves semantics through a probed handler ring.                                                                                           | Medium |
 | `REGISTER_BASED` | Lowers constants, local moves, arithmetic, shifts, conversions, compares, and increments into explicit `destination/sourceA/sourceB` register micro-ops. Complex JVM operations remain behavior-preserving bridge instructions. | High |
-| `DATA_FLOW` | Lowers exception-safe basic-block regions into shuffled register nodes with encoded RAW, WAR, and WAW dependency masks, then executes ready nodes instead of following source order.                                            | High |
-| `GRAPH` | Walks encoded node/edge state and uses that state to select among generated graph-node handler layers.                                                                                                                          | Medium-high |
-| `FSM` | Maintains encoded states independent of the VM pc and indexes a generated state-by-symbol transition matrix.                                                                                                                    | Medium-high |
-| `EVENT` | Uses a bounded event-token ring and state-selected generated listener objects; each execution pulse emits the next event.                                                                                                       | High |
-| `COROUTINE` | Uses a reusable continuation-state array, separate resume phases, and bounded yield pulses without threads or Project Loom.                                                                                                     | High |
-| `LOW` | Chooses `SIMPLE_DISPATCH`, `DISTRIBUTED_DISPATCH`, or `MULTIPLE_DISPATCH`.                                                                                                                                                      | Low |
-| `MEDIUM` | Chooses `THREADED_DIRECT`, `THREADED_INDIRECT`, `CALL_THREADED`, `RECURSIVE`, `CONTINUATION_PASSING`, `OBJECT`, or `REGISTER_BASED`.                                                                                                                         | Medium |
-| `HIGH` | Chooses `POLYMORPHIC`, `SELF_MODIFYING`, `DATA_FLOW`, `GRAPH`, `FSM`, `EVENT`, or `COROUTINE`.                                                                                                                                  | High |
+| `DATA_FLOW` | Lowers exception-safe basic-block regions into shuffled register nodes with encoded RAW, WAR, and WAW dependency masks, then executes ready nodes instead of following source order.                                            | Highest |
+| `GRAPH` | Walks encoded node/edge state and uses that state to select among generated graph-node handler layers.                                                                                                                          | High |
+| `FSM` | Maintains encoded states independent of the VM pc and indexes a generated state-by-symbol transition matrix.                                                                                                                    | High |
+| `EVENT` | Uses a bounded event-token ring and state-selected generated listener objects; each execution pulse emits the next event.                                                                                                       | Medium |
+| `COROUTINE` | Uses a reusable continuation-state array, separate resume phases, and bounded yield pulses without threads or Project Loom.                                                                                                     | Medium |
+| `LOW` | Chooses `SIMPLE_DISPATCH`, `DISTRIBUTED_DISPATCH`, `MULTIPLE_DISPATCH`, `THREADED_DIRECT`, or `THREADED_INDIRECT`.                                                                                                              | Low |
+| `MEDIUM` | Chooses `CALL_THREADED`, `RECURSIVE`, `CONTINUATION_PASSING`, `OBJECT`, `SELF_MODIFYING`, `EVENT`, or `COROUTINE`.                                                                                                             | Medium |
+| `HIGH` | Chooses `DATA_FLOW`, `POLYMORPHIC`, `GRAPH`, `FSM`, or `REGISTER_BASED`.                                                                                                                                                       | High |
 
 `SIMPLE_DISPATCH` alone retains split multi-opcode `interpretChunk` methods and named opcode/operand decoders as the compatibility baseline. Non-simple structures inline opcode, next-pc, original-pc, layout, and operand decoding into their generated kernels and semantic handlers. Their handler and kernel descriptors vary by structure, and each VM set receives separate Frame, Program, and CodePool support types with a structure-specific field order.
 
