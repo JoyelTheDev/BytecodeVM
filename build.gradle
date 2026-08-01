@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'BytecodeVM'
-version = '1.4.0'
+version = '2.0.0'
 
 java {
     toolchain {
@@ -30,11 +30,21 @@ dependencies {
     compileOnly("org.projectlombok:lombok:1.18.46")
     annotationProcessor("org.projectlombok:lombok:1.18.46")
 
-    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'org.yaml:snakeyaml:2.6'
 
     implementation 'org.slf4j:slf4j-api:2.0.17'
     implementation 'ch.qos.logback:logback-classic:1.5.18'
 }
+
+tasks.register('verifySdkIntegration', JavaExec) {
+    group = 'verification'
+    description = 'Verifies SDK annotation parsing, overrides, and output cleanup.'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'SdkAnnotationIntegrationTest'
+}
+
+check.dependsOn verifySdkIntegration
 
 jar {
     manifest {

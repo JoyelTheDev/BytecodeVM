@@ -12,27 +12,41 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 public class MethodsReplacer
 {
     private final List<CompiledMethod> compiledMethods;
     private final String vmClassName;
     private final VMIntegrityPlan integrityPlan;
+    private final Set<MethodNode> integrityProtectedMethods;
 
     public MethodsReplacer(List<CompiledMethod> compiledMethods, String vmClassName)
     {
-        this(compiledMethods, vmClassName, null);
+        this(compiledMethods, vmClassName, null, null);
     }
 
     public MethodsReplacer(List<CompiledMethod> compiledMethods, String vmClassName, VMIntegrityPlan integrityPlan)
     {
+        this(compiledMethods, vmClassName, integrityPlan, null);
+    }
+
+    public MethodsReplacer(
+            List<CompiledMethod> compiledMethods,
+            String vmClassName,
+            VMIntegrityPlan integrityPlan,
+            Set<MethodNode> integrityProtectedMethods)
+    {
         this.compiledMethods = List.copyOf(Objects.requireNonNull(compiledMethods, "compiledMethods"));
         this.vmClassName = Objects.requireNonNull(vmClassName, "vmClassName");
         this.integrityPlan = integrityPlan;
+        this.integrityProtectedMethods = copyIdentitySet(integrityProtectedMethods);
     }
 
     public Map<String, ClassNode> transform()
@@ -87,7 +101,7 @@ public class MethodsReplacer
         if (usesIntegrityCheck())
         {
             integrityKey = ib.var("integrityKey", "I");
-            if (RandomUtils.randomDouble() <= integrityPlan.ratio())
+            if (usesIntegrityCheck(compiledMethod))
             {
                 ib.set(integrityKey, AdvInsnBuilder.callStatic(
                         integrityPlan.owner(),
@@ -96,7 +110,7 @@ public class MethodsReplacer
             }
             else
             {
-                ib.set(integrityKey, AdvInsnBuilder.constant(0));
+                ib.set(integrityKey, AdvInsnBuilder.constant(integrityPlan.expectedCapability()));
             }
         }
         Expr execute;
@@ -157,6 +171,28 @@ public class MethodsReplacer
     private boolean usesIntegrityCheck()
     {
         return integrityPlan != null && integrityPlan.ratio() > 0.0D;
+    }
+
+    private boolean usesIntegrityCheck(CompiledMethod method)
+    {
+        if (!usesIntegrityCheck())
+        {
+            return false;
+        }
+        return integrityProtectedMethods == null
+                ? RandomUtils.randomDouble() <= integrityPlan.ratio()
+                : integrityProtectedMethods.contains(method.source);
+    }
+
+    private static Set<MethodNode> copyIdentitySet(Set<MethodNode> source)
+    {
+        if (source == null)
+        {
+            return null;
+        }
+        Set<MethodNode> copy = Collections.newSetFromMap(new IdentityHashMap<>());
+        copy.addAll(source);
+        return Collections.unmodifiableSet(copy);
     }
 
     private static void validate(CompiledMethod compiledMethod)

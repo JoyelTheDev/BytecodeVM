@@ -1,0 +1,44 @@
+package nhcm.bytecodevm.sdk.annotation;
+
+import nhcm.bytecodevm.sdk.annotation.config.SuperInstructionOptions;
+import nhcm.bytecodevm.sdk.annotation.config.VMOptions;
+import nhcm.bytecodevm.sdk.enums.CallPolicy;
+import nhcm.bytecodevm.sdk.enums.Toggle;
+
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * Selects a class or method for bytecode virtualization.
+ * Values left at {@code CONFIG} are resolved from an enclosing annotation
+ * and then from the obfuscator YAML configuration.
+ */
+@Documented
+@Retention(RetentionPolicy.CLASS)
+@Target({ElementType.TYPE, ElementType.METHOD})
+public @interface Virtualize
+{
+    /** Controls whether this target is virtualized. */
+    Toggle enabled() default Toggle.ENABLED;
+
+    /** Per-target VM overrides. */
+    VMOptions vm() default @VMOptions;
+
+    /** Per-target SuperInstruction overrides. */
+    SuperInstructionOptions superInstructions() default @SuperInstructionOptions;
+
+    /** Controls integrity protection for this target. */
+    Toggle integrityCheck() default Toggle.CONFIG;
+
+    /** Controls call-graph expansion from this target method. */
+    CallPolicy calls() default CallPolicy.CONFIG;
+
+    /**
+     * Controls ConstantValue relocation for the annotated class. This value is
+     * ignored when the annotation is placed directly on a method.
+     */
+    Toggle constantFix() default Toggle.CONFIG;
+}

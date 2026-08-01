@@ -30,6 +30,21 @@ public class VMInstruction
         this.operands = Collections.unmodifiableList(operands);
     }
 
+    public static VMInstruction synthetic(
+            int programCounter,
+            int nextProgramCounter,
+            int mutatedOpcode,
+            Opcs opcode,
+            List<VMOperand> operands)
+    {
+        return new VMInstruction(
+                programCounter,
+                nextProgramCounter,
+                mutatedOpcode,
+                opcode,
+                operands);
+    }
+
     public VMOperand operand(int index)
     {
         return operands.get(index);

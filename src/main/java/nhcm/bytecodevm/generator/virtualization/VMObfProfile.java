@@ -4,6 +4,8 @@ import nhcm.bytecodevm.utils.RandomUtils;
 
 public class VMObfProfile
 {
+    private final int[] layoutSlots;
+    public final int decodeVariant;
     public final int mixSeed;
     public final int mixRoundA;
     public final int mixRoundB;
@@ -41,6 +43,8 @@ public class VMObfProfile
             int saltBlock,
             int dispatchSalt)
     {
+        this.layoutSlots = randomPermutation(ProtectedVMMethod.RECORD_SIZE);
+        this.decodeVariant = RandomUtils.randomInt();
         this.mixSeed = mixSeed;
         this.mixRoundA = mixRoundA;
         this.mixRoundB = mixRoundB;
@@ -101,9 +105,19 @@ public class VMObfProfile
         return mix(methodKey ^ stateKey, slot, field, saltLayout);
     }
 
+    public int layoutSlot(int logicalField)
+    {
+        return layoutSlots[logicalField];
+    }
+
     public int stateMix(int methodKey, int slot)
     {
         return mix(methodKey, slot, saltState, 0);
+    }
+
+    public int chainedStateMix(int methodKey, int previousState, int slot, int blockIndex)
+    {
+        return mix(methodKey ^ previousState, slot, blockIndex, saltState);
     }
 
     public int blockMix(int methodKey, int blockIndex, int field)
@@ -151,6 +165,11 @@ public class VMObfProfile
         return mix(dispatchSalt, opcode, saltOpcode, 0);
     }
 
+    public int directHandlerToken(int opcode)
+    {
+        return Integer.rotateLeft(opcode ^ saltHandler, 13);
+    }
+
     private static int nonZeroRandom()
     {
         int value;
@@ -159,5 +178,22 @@ public class VMObfProfile
             value = RandomUtils.randomInt();
         } while (value == 0);
         return value;
+    }
+
+    private static int[] randomPermutation(int size)
+    {
+        int[] values = new int[size];
+        for (int index = 0; index < size; index++)
+        {
+            values[index] = index;
+        }
+        for (int index = size - 1; index > 0; index--)
+        {
+            int replacement = RandomUtils.randomInt(index + 1);
+            int value = values[index];
+            values[index] = values[replacement];
+            values[replacement] = value;
+        }
+        return values;
     }
 }

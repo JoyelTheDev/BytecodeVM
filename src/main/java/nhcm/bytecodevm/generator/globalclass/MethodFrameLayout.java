@@ -21,6 +21,9 @@ public class MethodFrameLayout
     public final FieldRef stackPointer;
     public final FieldRef returnValue;
     public final FieldRef returned;
+    public final FieldRef mutableCode;
+    public final FieldRef mutableMasks;
+    public final FieldRef mutableProgram;
 
     public final MethodRef init;
     public final MethodRef push;
@@ -59,6 +62,9 @@ public class MethodFrameLayout
         this.stackPointer = field("stackPointer", "I");
         this.returnValue = field("returnValue", "Ljava/lang/Object;");
         this.returned = field("returned", "Z");
+        this.mutableCode = field("mutableCode", "[I");
+        this.mutableMasks = field("mutableMasks", "[I");
+        this.mutableProgram = field("mutableProgram", "Ljava/lang/Object;");
 
         this.init = method("<init>", "(II)V");
         this.push = method("push", "(Ljava/lang/Object;)V");

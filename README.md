@@ -1,6 +1,6 @@
 # BytecodeVM
 
-(Credit to GPT 5.5)
+(Credit to GPT-5.5 and GPT 5.6)
 
 BytecodeVM is a Java bytecode virtualizing obfuscator.
 It rewrites selected Java methods into a compact virtual bytecode program, injects a generated VM, and executes the protected logic through that VM at runtime.
@@ -22,7 +22,7 @@ This project uses JDK 21
 The runnable fat jar is generated at:
 
 ```text
-build/libs/BytecodeVM.jar
+build/libs/BytecodeVM-2.0.0.jar
 ```
 
 ## Usage
@@ -30,74 +30,98 @@ build/libs/BytecodeVM.jar
 Create a default config:
 
 ```powershell
-java -jar build\libs\BytecodeVM.jar --defaultconfig
+java -jar BytecodeVM-2.0.0.jar --defaultconfig
 ```
 
 Run obfuscation:
 
 ```powershell
-java -jar build\libs\BytecodeVM.jar --config defaultconfig.json
+java -jar BytecodeVM-2.0.0.jar --config config.yml
+```
+
+Run obfuscation with default config:
+
+```powershell
+java -jar BytecodeVM-2.0.0.jar --defaultrun <input jar>
 ```
 
 Set log level when debugging:
 
 ```powershell
-java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defaultconfig.json
+java "-Dbytecodevm.log.level=DEBUG" -jar BytecodeVM-2.0.0.jar --config config.yml
 ```
 
 ## Config
 
-```jsonc
-{
-  "input": "./input.jar",
-  "output": "./output.jar",
-  "createMode": "ONE_FOR_ALL", // ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
-  "location": "ONE_PACKAGE", // SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
-  "mutateMode": "ALL_RANDOM_INT", // ALL_RANDOM_INT, ALL_RESORT, ALL_AUTO_CHOOSE, NO_CHANGE
-  "renameMode": "DISABLE", // ENABLE, DISABLE
-  "interpretMode": "SAVE_ONLY_REQUIRED_INSTRUCTION", // SAVE_ALL_INSTRUCTION, SAVE_ONLY_REQUIRED_INSTRUCTION
-  "protectCodePool": true,
-  "virtualizeInstructionAddresses": true,
-  "encryptOperands": true,
-  "perMethodOpcodeMap": true,
-  "shuffleConstants": true,
-  "bindConstantsToOperands": true,
-  "splitCodeStreams": true,
-  "shuffleInstructionBlocks": true,
-  "obfuscateDispatch": true,
-  "dynamicCodePoolBuild": true,
-  "dynamicStateKey": true,
-  "virtualControlFlowGraph": true,
-  "constantFix": true,
-  "includeMethodsCalledWithin": false,
-  "excludeMethodsCalledWithin": false,
-  "virtualizeInvocationBridges": true,
-  "vmIntegrityCheck": true,
-  "vmIntegrityCheckRatio": 1.0,
-  "superInstruction": true,
-  "superInstructionCombineRange": [2, 5],
-  "superInstructionMode": "HYBRID",
-  "superInstructionMaxHandlers": 128,
-  "superInstructionMinFrequency": 2,
-  "vmCount": 4,
-  "includes": {
-    "all": ["*", "* *(*)*"],
-    "protectCodePool": ["* @Sensitive *(*)*"],
-    "encryptOperands": ["com.example.secure.* *(*)*"],
-    "obfuscateDispatch": ["* *(*)*"],
-    "constantFix": ["com.example.secure.* *"],
-    "superInstruction": ["com.example.hot.* *(*)*"]
-  },
-  "exclusions": {
-    "all": ["* <init>(*)V"],
-    "dynamicStateKey": ["* fastPath(*)*"]
-  }
-}
+BytecodeVM configuration uses YAML (`.yml` or `.yaml`). YAML supports `#` comments;
+quote matcher expressions containing `*` because that character has special meaning in YAML.
+
+```yaml
+# Relative paths use the current working directory.
+input: ./input.jar
+output: ./output.jar
+
+# VM allocation and generated runtime shape.
+createMode: ONE_FOR_ALL # ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
+location: ONE_PACKAGE # SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
+renameMode: DISABLE
+interpretMode: SAVE_ONLY_REQUIRED_INSTRUCTION
+# Automatic: LOW, MEDIUM, HIGH.
+# Concrete: SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
+# THREADED_DIRECT, THREADED_INDIRECT, CALL_THREADED, RECURSIVE,
+# CONTINUATION_PASSING, OBJECT, POLYMORPHIC, SELF_MODIFYING,
+# REGISTER_BASED, DATA_FLOW, GRAPH, FSM, EVENT, COROUTINE.
+vmStructure: HIGH
+vmCount: 4
+
+# CodePool and virtual control-flow protection.
+protectCodePool: true
+virtualizeInstructionAddresses: true
+encryptOperands: true
+perMethodOpcodeMap: true
+shuffleConstants: true
+bindConstantsToOperands: true
+splitCodeStreams: true
+shuffleInstructionBlocks: true
+obfuscateDispatch: true
+dynamicCodePoolBuild: true
+dynamicStateKey: true
+virtualControlFlowGraph: true
+
+# Input transforms and call graph handling.
+constantFix: true
+removeAnnotations: true # Remove BytecodeVM SDK annotations from output classes.
+includeMethodsCalledWithin: false
+excludeMethodsCalledWithin: false
+virtualizeInvocationBridges: true
+
+# Integrity and low-frequency runtime sampling.
+vmIntegrityCheck: true
+vmIntegrityCheckRatio: 1.0
+vmIntegrityRecheckInterval: 65536
+
+# SuperInstruction fusion.
+superInstruction: true
+superInstructionCombineRange: [2, 5]
+superInstructionMode: HYBRID # RANDOM, PATTERN, HYBRID
+superInstructionMaxHandlers: 128
+superInstructionMinFrequency: 2
+
+includes:
+  all: ["*", "* *(*)*"]
+  protectCodePool: ["* @Sensitive *(*)*"]
+  encryptOperands: ["com.example.secure.* *(*)*"]
+  obfuscateDispatch: ["* *(*)*"]
+  constantFix: ["com.example.secure.* *"]
+  superInstruction: ["com.example.hot.* *(*)*"]
+exclusions:
+  all: ["* <init>(*)V"]
+  dynamicStateKey: ["* fastPath(*)*"]
 ```
 
 ### Options
 
-`input`, `output`, `createMode`, `location`, `mutateMode`, `renameMode`, `interpretMode`, `includes`, and `exclusions` are required. The boolean protection fields are optional and default to `true` when omitted, except `constantFix`, `vmIntegrityCheck`, and `superInstruction`, which default to `false`.
+`input`, `output`, `createMode`, `location`, `renameMode`, `interpretMode`, `includes`, and `exclusions` are required. The boolean protection fields are optional and default to `true` when omitted, except `constantFix`, `vmIntegrityCheck`, and `superInstruction`, which default to `false`. Every generated VM set uses an independent random 32-bit opcode mapping.
 
 | Field | Values | Default  | Description |
 |---|---|----------|---|
@@ -105,9 +129,9 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
 | `output` | Path | Required | Output jar path. |
 | `createMode` | `ONE_FOR_ALL`, `PER_METHOD`, `PER_CLASS`, `PER_PACKAGE` | Required | Controls how VM classes are grouped. |
 | `location` | `SAME_PACKAGE_AS_TARGET`, `NEW_PACKAGE`, `ONE_PACKAGE` | Required | Controls where generated VM classes are placed. |
-| `mutateMode` | `ALL_RANDOM_INT`, `ALL_RESORT`, `ALL_AUTO_CHOOSE`, `NO_CHANGE` | Required | Controls opcode mutation strategy. |
-| `renameMode` | `ENABLE`, `DISABLE` | Required | Controls renaming behavior. |
+| `renameMode` | `ENABLE`, `DISABLE` | Required | Randomizes generated VM/support class, field, and method names. It does not rename protected application classes. |
 | `interpretMode` | `SAVE_ALL_INSTRUCTION`, `SAVE_ONLY_REQUIRED_INSTRUCTION` | Required | Controls how many interpreter branches are emitted. |
+| `vmStructure` | See VM Structures below | `MEDIUM` | Selects a concrete VM structure or an automatic protection-strength tier for each VM set. |
 | `protectCodePool` | `true`, `false` | `true`   | Enables code-pool protection. When disabled, most protection sub-options below have no effect. |
 | `virtualizeInstructionAddresses` | `true`, `false` | `true`   | Encodes virtual instruction addresses instead of using direct layout addresses. |
 | `encryptOperands` | `true`, `false` | `true`   | Encrypts virtual instruction operands. |
@@ -118,14 +142,16 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
 | `shuffleInstructionBlocks` | `true`, `false` | `true`   | Shuffles virtual instruction blocks before writing code-pool data. |
 | `obfuscateDispatch` | `true`, `false` | `true`   | Obfuscates interpreter dispatch selection. |
 | `dynamicCodePoolBuild` | `true`, `false` | `true`   | Builds code-pool program data dynamically in generated bytecode instead of storing everything plainly. |
-| `dynamicStateKey` | `true`, `false` | `true`   | Adds per-instruction runtime state keys used by opcode, layout, and operand decoding. |
+| `dynamicStateKey` | `true`, `false` | `true`   | Adds block-entry state capsules and a rolling per-record key chain used by opcode, layout, and operand decoding. |
 | `virtualControlFlowGraph` | `true`, `false` | `true`   | Stores methods as shuffled virtual basic blocks and resolves instruction indexes through block-local lookup. |
 | `constantFix` | `true`, `false` | `false`  | Moves `ConstantValue` data from static final fields into `<clinit>` assignments, updates initializer stack metadata, and clears the field value attribute. |
+| `removeAnnotations` | `true`, `false` | `true` | Removes BytecodeVM SDK annotations from classes and methods after their options have been applied. Other application annotations are untouched. |
 | `includeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively includes target-jar methods called from explicitly included methods. |
 | `excludeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively excludes target-jar methods called from explicitly included methods. |
 | `virtualizeInvocationBridges` | `true`, `false` | `false` | Virtualizes generated `$vm$invoke$N` bridge methods when their bytecode can be represented by the VM. String concat invokedynamic bridges are lowered to normal `StringBuilder` bytecode first. |
 | `vmIntegrityCheck` | `true`, `false` | `false`  | Generates a second-stage integrity VM that checks the generated VM and CodePool class bytes before dispatching protected methods. |
 | `vmIntegrityCheckRatio` | `0.0` to `1.0` | `1.0` | Controls how many replaced method stubs call the integrity VM. `1.0` checks every stub. |
+| `vmIntegrityRecheckInterval` | `0` to `16777216` | `65536` | Approximate protected-entry interval between low-frequency runtime integrity probes. Each probe rechecks one derivation chunk; `0` disables periodic rechecks. |
 | `superInstruction` | `true`, `false` | `false`  | Fuses safe VM instruction sequences into synthetic super instructions with generated handlers. |
 | `superInstructionCombineRange` | `[min, max]` | `[2, 5]` | Minimum and maximum VM instruction count to fuse into one super instruction. |
 | `superInstructionMode` | `RANDOM`, `PATTERN`, `HYBRID` | `HYBRID` | Chooses random ranges, frequent opcode patterns, or both. |
@@ -134,6 +160,126 @@ java "-Dbytecodevm.log.level=DEBUG" -jar build\libs\BytecodeVM.jar --config defa
 | `vmCount` | `1` to `1024` | `4`      | Expands each non-`PER_METHOD` VM grouping into up to this many randomized VM sets and distributes matched methods among them. |
 | `includes` | Array or object of match expressions | Required | Methods/classes to virtualize, plus optional per-boolean include groups. |
 | `exclusions` | Array or object of match expressions | Required | Methods/classes to skip, plus optional per-boolean exclude groups. Exclusions win over includes. |
+
+## Annotation SDK
+
+The `sdk` subproject is a dependency-free Java 8 annotation library. Applications should use it as a compile-only dependency; SDK classes are not required at runtime.
+
+```groovy
+dependencies {
+    compileOnly 'dev.nhcm.bytecodevm:bytecodevm-sdk:2.0.0'
+}
+```
+
+Publish the current checkout to Maven Local with:
+
+```powershell
+gradlew :sdk:publishToMavenLocal
+```
+
+`@ProtectClass` makes a class eligible for SDK-aware and YAML method matching without automatically virtualizing every method. `@Virtualize` on a class selects all eligible methods; on a method it selects only that method. `@DoNotVirtualize` and YAML exclusions always exclude their target.
+
+```java
+import nhcm.bytecodevm.sdk.annotation.DoNotVirtualize;
+import nhcm.bytecodevm.sdk.annotation.ProtectClass;
+import nhcm.bytecodevm.sdk.annotation.Virtualize;
+
+@ProtectClass
+public final class LicenseService {
+    @Virtualize
+    public boolean verify(String key) {
+        return key != null;
+    }
+
+    @DoNotVirtualize
+    public String version() {
+        return "1.0";
+    }
+}
+```
+
+Every SDK option uses `CONFIG` to inherit its value from the enclosing class annotation and then YAML. Method values override class values. A method-level structure or SuperInstruction handler-budget override is assigned to a compatible VM set, so it does not silently retain an incompatible global VM structure.
+
+```java
+import nhcm.bytecodevm.sdk.annotation.Virtualize;
+import nhcm.bytecodevm.sdk.annotation.config.SuperInstructionOptions;
+import nhcm.bytecodevm.sdk.annotation.config.VMOptions;
+import nhcm.bytecodevm.sdk.enums.CallPolicy;
+import nhcm.bytecodevm.sdk.enums.SuperInstructionMode;
+import nhcm.bytecodevm.sdk.enums.Toggle;
+import nhcm.bytecodevm.sdk.enums.VMStructure;
+
+@Virtualize(
+    vm = @VMOptions(
+        structure = VMStructure.DATA_FLOW,
+        encryptOperands = Toggle.ENABLED,
+        dynamicStateKey = Toggle.ENABLED
+    ),
+    superInstructions = @SuperInstructionOptions(
+        enabled = Toggle.ENABLED,
+        mode = SuperInstructionMode.HYBRID,
+        combineMin = 2,
+        combineMax = 6
+    ),
+    integrityCheck = Toggle.ENABLED,
+    calls = CallPolicy.INCLUDE
+)
+public boolean verifyLicense(String key) {
+    return check(key);
+}
+```
+
+`CallPolicy.INCLUDE` recursively virtualizes target-JAR methods reachable from that root. `EXCLUDE` recursively excludes them, `NONE` disables expansion for that root, and `CONFIG` uses the YAML call-expansion settings. Invalid SDK numeric ranges report the annotated class and method. With the default `removeAnnotations: true`, all BytecodeVM SDK declaration annotations are removed after their settings have been applied.
+
+## Rename Mode
+
+When `renameMode` is `ENABLE`, BytecodeVM renames only generated VM artifacts. Target application classes, fields, and methods selected for virtualization keep their original names and owners.
+
+Rename supports:
+
+| Area | Behavior |
+|---|---|
+| VM support classes | `MethodFrame`, `VMProgram`, `VMCodePool`, generated VM classes, CodePool classes, integrity carriers, and auxiliary handler classes receive generated names. |
+| VM fields | Runtime support fields, structure tables, handler rings, CodePool storage fields, frame fields, and program fields receive generated names. |
+| VM methods | VM runtime methods, structure scheduler methods, semantic handler methods, CodePool init helpers, integrity derivation methods, and generated invocation bridges receive generated names. |
+| Handler shards | Interface-dispatched handlers are stored in compact generated shards that use randomized token decision trees rather than enumerable JVM opcode switches. |
+
+The original application bytecode is still transformed by virtualization, constant fixing, invocation bridge rewriting, and method replacement as configured, but its class/member names are not globally remapped by `renameMode`.
+
+## VM Structures
+
+`vmStructure` is resolved once per VM set. A concrete value never silently falls back to `SIMPLE_DISPATCH`. `LOW`, `MEDIUM`, and `HIGH` select from shuffled strength-tier bags, so separate VM sets can use different architectures while staying within the requested protection level. Automatic selection avoids repeats until the tier's candidate bag is exhausted; the no-repeat window is capped at 12 candidates.
+
+| Value | Generated execution shape                                                                                                                                                                                                       | Relative cost |
+|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
+| `SIMPLE_DISPATCH` | Baseline decode loop with one central opcode dispatcher and split semantic chunks.                                                                                                                                              | Lowest |
+| `DISTRIBUTED_DISPATCH` | Routes encoded opcode keys into disjoint dispatch shard methods.                                                                                                                                                                | Low |
+| `MULTIPLE_DISPATCH` | Chooses among several equivalent dispatchers with different key transforms and case layouts.                                                                                                                                    | Medium |
+| `THREADED_DIRECT` | Stores direct handler tokens in the VM opcode stream and maps them straight to generated executable handler objects without an opcode switch.                                                                                   | Low-medium |
+| `THREADED_INDIRECT` | Resolves decoded opcodes to dense runtime tokens, then indexes a generated handler array through an interface trampoline.                                                                                                       | Medium |
+| `CALL_THREADED` | Uses generated callable handler objects, bounded tail segments, and an outer trampoline.                                                                                                                                        | High |
+| `RECURSIVE` | Executes bounded recursive segments and returns to a loop before JVM stack depth can grow without limit.                                                                                                                        | Medium |
+| `CONTINUATION_PASSING` | Encoded continuation actions select generated continuation handler variants through a switch-free trampoline.                                                                                                                   | High |
+| `OBJECT` | Materializes token-bound instruction objects backed by generated semantic shards and executes them through interface dispatch.                                                                                                  | High |
+| `POLYMORPHIC` | Generates multiple semantic-equivalent handler classes per opcode and selects a variant from runtime state.                                                                                                                     | High |
+| `SELF_MODIFYING` | Copies opcode data per frame, re-encodes executed slots, tracks matching masks, and resolves semantics through a probed handler ring.                                                                                           | High |
+| `REGISTER_BASED` | Lowers constants, local moves, arithmetic, shifts, conversions, compares, and increments into explicit `destination/sourceA/sourceB` register micro-ops. Complex JVM operations remain behavior-preserving bridge instructions. | High |
+| `DATA_FLOW` | Lowers exception-safe basic-block regions into shuffled register nodes with encoded RAW, WAR, and WAW dependency masks, then executes ready nodes instead of following source order.                                            | High |
+| `GRAPH` | Walks encoded node/edge state and uses that state to select among generated graph-node handler layers.                                                                                                                          | Medium-high |
+| `FSM` | Maintains encoded states independent of the VM pc and indexes a generated state-by-symbol transition matrix.                                                                                                                    | Medium-high |
+| `EVENT` | Uses a bounded event-token ring and state-selected generated listener objects; each execution pulse emits the next event.                                                                                                       | High |
+| `COROUTINE` | Uses a reusable continuation-state array, separate resume phases, and bounded yield pulses without threads or Project Loom.                                                                                                     | High |
+| `LOW` | Chooses `SIMPLE_DISPATCH`, `DISTRIBUTED_DISPATCH`, or `MULTIPLE_DISPATCH`.                                                                                                                                                      | Low |
+| `MEDIUM` | Chooses `THREADED_DIRECT`, `THREADED_INDIRECT`, `CALL_THREADED`, `RECURSIVE`, `CONTINUATION_PASSING`, `OBJECT`, or `REGISTER_BASED`.                                                                                                                         | Medium |
+| `HIGH` | Chooses `POLYMORPHIC`, `SELF_MODIFYING`, `DATA_FLOW`, `GRAPH`, `FSM`, `EVENT`, or `COROUTINE`.                                                                                                                                  | High |
+
+`SIMPLE_DISPATCH` alone retains split multi-opcode `interpretChunk` methods and named opcode/operand decoders as the compatibility baseline. Non-simple structures inline opcode, next-pc, original-pc, layout, and operand decoding into their generated kernels and semantic handlers. Their handler and kernel descriptors vary by structure, and each VM set receives separate Frame, Program, and CodePool support types with a structure-specific field order.
+
+Every protection profile randomizes its layout-field permutation, decode expression shape, salts, multipliers, opcode mapping, and handler tokens. State-key records form a block-local rolling chain: a block entry is decoded from its capsule, while each later physical record depends on the previous state. CFG transfers, loop entries, and exception handlers resynchronize through the destination block and slot. Interface-dispatched structures use compact shards with randomized binary decision trees instead of `lookupswitch`/`tableswitch` handler banks. Recursive and call-threaded modes use bounded depth plus a trampoline. Object, event, and coroutine state is allocated once per invocation or cached rather than allocated for every virtual instruction. Large integrity target sets are split into independently virtualized derivation chunks to avoid method and CodePool limits.
+
+VM methods that cannot fit in one CodePool initializer are split into independently serializable segments. Each segment rebuilds a local constant pool, remaps constant operands and catch types, and retains only exception handlers whose protected ranges overlap that segment. Program counters and handler targets remain method-global, so the segmented executor can preserve cross-segment branches and exception transfers without copying the original method's full metadata into every CodePool.
+
+`REGISTER_BASED` uses the frame locals plus an operand-register window as one address space. Stack-relative tokens are resolved against the pre-instruction register window, while local slots use direct register ids. `DATA_FLOW` groups up to eight eligible nodes without crossing a jump target, exception boundary, or control-transfer instruction. It randomizes their physical order, remaps dependency masks, and repeatedly executes nodes whose prerequisites are complete. Invocation, exceptions, monitors, objects, arrays, and other unsafe operations retain the existing interpreter semantics as bridge instructions.
 
 ## Super Instructions
 
@@ -149,9 +295,13 @@ When `superInstruction` is enabled, the generator scans VM instructions inside s
 
 ## VM Integrity Check
 
-When `vmIntegrityCheck` is enabled, each generated VM set gets a second-stage integrity carrier. After the normal VM and CodePool classes are generated, their final class bytes are hashed. The expected hash data is written into a generated `deriveIntegrityKey` method, and that method is then virtualized again with a dedicated high-strength VM using `SAVE_ALL_INSTRUCTION`.
+When `vmIntegrityCheck` is enabled, each generated VM set gets a second-stage integrity carrier. After the normal VM and CodePool classes are generated, their final class bytes are hashed. The expected hash data is written into generated derivation methods, and both the derivation chain and one-shot method cold wrappers are virtualized again with a dedicated high-strength VM using `SAVE_ALL_INSTRUCTION`.
 
-Protected method stubs call the virtualized integrity method before entering the normal VM. The method returns `0` when the generated VM classes are intact. If a hash mismatches or a class resource cannot be read, it returns a non-zero corruption key. That key is mixed into the VM frame state, so opcode/layout/operand decoding fails indirectly instead of using a simple `if/throw` check.
+Application stubs do not expose the hash gateway, normal VM owner, or plain code id. Each protected method calls a separate randomized carrier entry using the package-agnostic `(Object receiver, Object[] arguments) -> Object` ABI. On the first call for a VM set, that entry invokes its second-stage-virtualized cold wrapper. The wrapper computes and publishes a non-zero per-VM capability before entering the normal VM, so recursive calls immediately use the hot path instead of nesting more integrity interpreters.
+
+Hot entries do not keep a plain capability or a separate ready flag. The one-shot cold path publishes one volatile 64-bit authenticated state envelope: one half contains an invertibly encoded capability and the other half contains a keyed tag plus its publication marker. Every protected entry inlines envelope recovery and folds any tag mismatch into the dynamic key without a visible failure branch. This adds only one volatile read and a short integer-mixing sequence to the hot path; it does not lock or read class resources again. Each entry also stores only a capability-bound code-id encoding with independently randomized rotation, multiplier, addend, and salt. Skipping the integrity path, replaying a partial state, or supplying the old zero key therefore corrupts method resolution and opcode/layout/operand decoding.
+
+When `vmIntegrityRecheckInterval` is non-zero, hot entries also advance a cheap shared ticket. At a randomized cadence around that interval, one derivation chunk is selected in round-robin order and executed through the second-stage IntegrityVM. A probe checks only that chunk's resources, then corrupts the authenticated state envelope if it observes a mismatch. This amortizes ongoing resource verification across many protected calls instead of re-reading every generated class on every invocation.
 
 The integrity VM itself is not included in the hash target set to avoid self-referential hashes.
 
@@ -159,29 +309,23 @@ The integrity VM itself is not included in the hash target set to avoid self-ref
 
 `includes` and `exclusions` use the same matcher syntax. A target is selected when it matches an include rule and does not match an exclusion rule. Exclusions always win.
 
-The legacy array form is still supported:
+The array form is supported:
 
-```jsonc
-{
-  "includes": ["*", "* *(*)*"],
-  "exclusions": ["* <init>(*)V"]
-}
+```yaml
+includes: ["*", "* *(*)*"]
+exclusions: ["* <init>(*)V"]
 ```
 
 You can also use grouped object form:
 
-```jsonc
-{
-  "includes": {
-    "all": ["*", "* *(*)*"],
-    "protectCodePool": ["* @Sensitive *(*)*"],
-    "encryptOperands": ["com.example.secure.* *(*)*"]
-  },
-  "exclusions": {
-    "all": ["* <init>(*)V"],
-    "dynamicStateKey": ["* hotLoop(*)*"]
-  }
-}
+```yaml
+includes:
+  all: ["*", "* *(*)*"]
+  protectCodePool: ["* @Sensitive *(*)*"]
+  encryptOperands: ["com.example.secure.* *(*)*"]
+exclusions:
+  all: ["* <init>(*)V"]
+  dynamicStateKey: ["* hotLoop(*)*"]
 ```
 
 `all` controls which classes and methods are virtualized. Boolean option groups only control that option for matched methods. For example, if `encryptOperands` is globally `true` and `includes.encryptOperands` is present, operand encryption is enabled only for methods matching that group. If a boolean option is globally `false`, its include group does not turn it on.
@@ -228,17 +372,13 @@ Wildcards are supported with `*`. Class names use dot form in config rules, whil
 
 Annotation matching checks both runtime-visible and runtime-invisible annotations. You may use a simple annotation name, a full class name, or JVM descriptor form:
 
-```jsonc
-{
-  "includes": [
-    "@Virtualized *",
-    "* @Virtualize *(*)*",
-    "com.example.* @com.example.Protect secret(*)*"
-  ],
-  "exclusions": [
-    "* <init>(*)V",
-    "* <clinit>()V",
-    "* @DoNotVirtualize *(*)*"
-  ]
-}
+```yaml
+includes:
+  - "@Virtualized *"
+  - "* @Virtualize *(*)*"
+  - "com.example.* @com.example.Protect secret(*)*"
+exclusions:
+  - "* <init>(*)V"
+  - "* <clinit>()V"
+  - "* @DoNotVirtualize *(*)*"
 ```

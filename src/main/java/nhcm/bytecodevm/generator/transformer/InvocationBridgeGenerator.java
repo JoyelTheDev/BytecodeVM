@@ -1,5 +1,6 @@
 package nhcm.bytecodevm.generator.transformer;
 
+import nhcm.bytecodevm.generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.utils.builder.InsnBuilder;
 import nhcm.bytecodevm.utils.TypeUtils;
 import org.objectweb.asm.Opcodes;
@@ -14,6 +15,17 @@ import java.util.Map;
 public class InvocationBridgeGenerator
 {
     private final Map<ClassNode, Integer> nextIds = new IdentityHashMap<>();
+    private final GeneratedMemberNamer namer;
+
+    public InvocationBridgeGenerator()
+    {
+        this(GeneratedMemberNamer.DISABLED);
+    }
+
+    public InvocationBridgeGenerator(GeneratedMemberNamer namer)
+    {
+        this.namer = namer;
+    }
 
     public List<MethodNode> rewrite(ClassNode owner, MethodNode method)
     {
@@ -39,7 +51,7 @@ public class InvocationBridgeGenerator
             MethodNode source,
             InvokeDynamicInsnNode invocation)
     {
-        String bridgeName = nextBridgeName(owner);
+        String bridgeName = nextBridgeName(owner, invocation.desc);
         MethodNode bridge = new MethodNode(
                 Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
                 bridgeName,
@@ -85,7 +97,7 @@ public class InvocationBridgeGenerator
         String bridgeDescriptor = Type.getMethodDescriptor(
                 Type.getReturnType(invocation.desc),
                 bridgeArguments);
-        String bridgeName = nextBridgeName(owner);
+        String bridgeName = nextBridgeName(owner, bridgeDescriptor);
 
         MethodNode bridge = new MethodNode(
                 Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
@@ -244,24 +256,24 @@ public class InvocationBridgeGenerator
         bridge.maxStack = Math.max(16, locals + 4);
     }
 
-    private String nextBridgeName(ClassNode owner)
+    private String nextBridgeName(ClassNode owner, String descriptor)
     {
         int id = nextIds.getOrDefault(owner, 0);
         String name;
         do
         {
-            name = "$vm$invoke$" + id++;
+            name = namer.method(owner.name, "$vm$invoke$" + id++, descriptor);
         }
-        while (hasMethod(owner, name));
+        while (hasMethod(owner, name, descriptor));
         nextIds.put(owner, id);
         return name;
     }
 
-    private static boolean hasMethod(ClassNode owner, String name)
+    private static boolean hasMethod(ClassNode owner, String name, String descriptor)
     {
         for (MethodNode method : owner.methods)
         {
-            if (method.name.equals(name))
+            if (method.name.equals(name) && method.desc.equals(descriptor))
             {
                 return true;
             }

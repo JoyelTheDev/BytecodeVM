@@ -159,7 +159,9 @@ public enum Opcs
     MULTIANEWARRAY(Opcodes.MULTIANEWARRAY, OperandFormat.MULTI_ARRAY),
     IFNULL(Opcodes.IFNULL, true),
     IFNONNULL(Opcodes.IFNONNULL, true),
-    SUPER_INSTRUCTION(-1, OperandFormat.NONE);
+    SUPER_INSTRUCTION(-1, OperandFormat.NONE),
+    REGISTER_OP(-2, OperandFormat.LOWERED),
+    DATA_FLOW_REGION(-3, OperandFormat.LOWERED);
 
     public final int opcode;
     public final boolean hasOperand;
@@ -226,7 +228,8 @@ public enum Opcs
         MULTI_ARRAY(2, 0b1L, -1),
         INVOKE_DYNAMIC(-1, 0b111L, 4),
         TABLE_SWITCH(-1, 0L, -1),
-        LOOKUP_SWITCH(-1, 0L, -1);
+        LOOKUP_SWITCH(-1, 0L, -1),
+        LOWERED(-1, 0L, -1);
 
         public final int operandCount;
         public final boolean variableLength;
@@ -259,6 +262,9 @@ public enum Opcs
                 case LOOKUP_SWITCH:
                     requireAvailable(code, operandStart, 2);
                     return 2 + code[operandStart + 1] * 2;
+
+                case LOWERED:
+                    throw new IllegalStateException("Lowered opcodes do not use the raw VMMethod stream");
 
                 default:
                     return operandCount;

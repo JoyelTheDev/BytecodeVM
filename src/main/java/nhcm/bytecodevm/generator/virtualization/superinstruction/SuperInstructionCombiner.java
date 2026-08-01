@@ -67,7 +67,16 @@ public class SuperInstructionCombiner
             SuperInstructionRegistry registry,
             OpcMutator mutator)
     {
-        List<VMInstruction> instructions = method.getInstructions();
+        return combine(method, method.getInstructions(), config, registry, mutator);
+    }
+
+    public static List<VMInstruction> combine(
+            VMMethod method,
+            List<VMInstruction> instructions,
+            BytecodeVMConfig config,
+            SuperInstructionRegistry registry,
+            OpcMutator mutator)
+    {
         if (!config.superInstruction || instructions.size() < config.superInstructionCombineMin)
         {
             return instructions;
@@ -282,7 +291,9 @@ public class SuperInstructionCombiner
 
     private static boolean isFusable(VMInstruction instruction)
     {
-        return true;
+        return instruction.opcode != Opcs.REGISTER_OP &&
+               instruction.opcode != Opcs.DATA_FLOW_REGION &&
+               instruction.opcode != Opcs.SUPER_INSTRUCTION;
 //        return switch (instruction.opcode)
 //        {
 //            case NOP, ACONST_NULL,

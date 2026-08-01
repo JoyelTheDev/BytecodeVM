@@ -63,6 +63,7 @@ public class CodePoolGenerator extends ClassObj
     private final Map<Integer, ProtectedVMMethod> protectedMethodById;
     private final VMProgramGenerator vmProgramGenerator;
     private final BytecodeVMConfig config;
+    private final GeneratedMemberNamer namer;
     private final VMObfProfile profile;
     private final SuperInstructionRegistry superInstructions;
 
@@ -115,6 +116,7 @@ public class CodePoolGenerator extends ClassObj
     {
         super(className);
         this.config = Objects.requireNonNull(config, "config");
+        this.namer = Objects.requireNonNull(namer, "namer");
         this.profile = Objects.requireNonNull(profile, "profile");
         this.superInstructions = Objects.requireNonNull(superInstructions, "superInstructions");
         this.vmProgramGenerator = vmProgramGenerator;
@@ -240,7 +242,7 @@ public class CodePoolGenerator extends ClassObj
 
     private void addClinitHelper(ClassNode classNode, AdvInsnBuilder clinit, int index, InsnList body)
     {
-        String name = "codePoolInit$" + index;
+        String name = namer.method(classNode.name, "codePoolInit$" + index, "()V");
         MethodNode helper = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, name, "()V");
         helper.instructions.add(body);
         AdvInsnBuilder helperEnd = new AdvInsnBuilder(0);

@@ -1,5 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization;
 
+import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.utils.builder.FieldRef;
 import nhcm.bytecodevm.utils.builder.MethodRef;
 import nhcm.bytecodevm.generator.GeneratedMemberNamer;
@@ -18,6 +19,11 @@ public class VMRuntimeLayout
     public final MethodRef constantString;
     public final MethodRef resolve;
     public final MethodRef interpret;
+    public final MethodRef interpretStep;
+    public final MethodRef registerRead;
+    public final MethodRef registerWrite;
+    public final MethodRef executeRegisterOp;
+    public final MethodRef executeDataFlow;
     public final MethodRef instructionIndex;
     public final MethodRef instructionIndexInBlock;
     public final MethodRef decodeOpcode;
@@ -68,6 +74,16 @@ public class VMRuntimeLayout
 
     public VMRuntimeLayout(String owner, String frameDescriptor, String programDescriptor, GeneratedMemberNamer namer)
     {
+        this(owner, frameDescriptor, programDescriptor, namer, null);
+    }
+
+    public VMRuntimeLayout(
+            String owner,
+            String frameDescriptor,
+            String programDescriptor,
+            GeneratedMemberNamer namer,
+            VMStructure structure)
+    {
         this.owner = owner;
         this.namer = namer;
 
@@ -79,7 +95,24 @@ public class VMRuntimeLayout
 
         this.constantString = method("constantString", "([Ljava/lang/Object;I)Ljava/lang/String;");
         this.resolve = programDescriptor == null ? null : method("resolve", "(I)" + programDescriptor);
-        this.interpret = programDescriptor == null ? null : method("interpret", "(" + programDescriptor + frameDescriptor + ")V");
+        this.interpret = programDescriptor == null ? null : method(
+                interpreterName(structure),
+                "(" + programDescriptor + frameDescriptor + ")V");
+        this.interpretStep = programDescriptor == null ? null : method(
+                kernelName(structure),
+                kernelDescriptor(programDescriptor, frameDescriptor, structure));
+        this.registerRead = programDescriptor == null ? null : method(
+                "registerRead",
+                "(" + programDescriptor + frameDescriptor + "II)Ljava/lang/Object;");
+        this.registerWrite = programDescriptor == null ? null : method(
+                "registerWrite",
+                "(" + programDescriptor + frameDescriptor + "IILjava/lang/Object;I)V");
+        this.executeRegisterOp = programDescriptor == null ? null : method(
+                "executeRegisterOp",
+                "(" + programDescriptor + frameDescriptor + "[Ljava/lang/Object;IIIIIII)V");
+        this.executeDataFlow = programDescriptor == null ? null : method(
+                "executeDataFlow",
+                "(" + programDescriptor + frameDescriptor + "[Ljava/lang/Object;[I)V");
         this.instructionIndex = programDescriptor == null ? null : method("instructionIndex", "(" + programDescriptor + frameDescriptor + "I)I");
         this.instructionIndexInBlock = programDescriptor == null ? null : method("instructionIndexInBlock", "(" + programDescriptor + "II)I");
         this.decodeOpcode = programDescriptor == null ? null : method("decodeOpcode", "(" + programDescriptor + frameDescriptor + "I)I");
@@ -160,5 +193,83 @@ public class VMRuntimeLayout
     private MethodRef method(String name, String descriptor)
     {
         return new MethodRef(owner, namer.method(owner, name, descriptor), descriptor);
+    }
+
+    private static String interpreterName(VMStructure structure)
+    {
+        if (structure == null)
+        {
+            return "interpret";
+        }
+        return switch (structure)
+        {
+            case SIMPLE_DISPATCH -> "interpret";
+            case DISTRIBUTED_DISPATCH -> "runDistributedDispatch";
+            case MULTIPLE_DISPATCH -> "runMultipleDispatch";
+            case THREADED_DIRECT -> "runDirectThread";
+            case THREADED_INDIRECT -> "runIndirectThread";
+            case CALL_THREADED -> "runCallThread";
+            case RECURSIVE -> "runRecursiveMachine";
+            case CONTINUATION_PASSING -> "runContinuations";
+            case OBJECT -> "runInstructionObjects";
+            case POLYMORPHIC -> "runPolymorphicMachine";
+            case SELF_MODIFYING -> "runMutableMachine";
+            case REGISTER_BASED -> "runRegisterMachine";
+            case DATA_FLOW -> "runDataFlowGraph";
+            case GRAPH -> "walkExecutionGraph";
+            case FSM -> "runFiniteStateMachine";
+            case EVENT -> "pumpVirtualEvents";
+            case COROUTINE -> "runCoroutineMachine";
+            case LOW, MEDIUM, HIGH -> throw new IllegalArgumentException("Automatic structure is unresolved");
+        };
+    }
+
+    private static String kernelName(VMStructure structure)
+    {
+        if (structure == null)
+        {
+            return "interpretStep";
+        }
+        return switch (structure)
+        {
+            case SIMPLE_DISPATCH -> "interpretStep";
+            case DISTRIBUTED_DISPATCH -> "routeDistributedShard";
+            case MULTIPLE_DISPATCH -> "selectDispatcherVariant";
+            case THREADED_DIRECT -> "advanceDirectHandler";
+            case THREADED_INDIRECT -> "resolveIndirectHandler";
+            case CALL_THREADED -> "invokeCallThreadHandler";
+            case RECURSIVE -> "recurseInstruction";
+            case CONTINUATION_PASSING -> "applyContinuation";
+            case OBJECT -> "executeInstructionObject";
+            case POLYMORPHIC -> "executeHandlerVariant";
+            case SELF_MODIFYING -> "decodeMutableInstruction";
+            case REGISTER_BASED -> "executeRegisterInstruction";
+            case DATA_FLOW -> "scheduleReadyNode";
+            case GRAPH -> "visitExecutionNode";
+            case FSM -> "transitionState";
+            case EVENT -> "deliverVirtualEvent";
+            case COROUTINE -> "resumeVirtualCoroutine";
+            case LOW, MEDIUM, HIGH -> throw new IllegalArgumentException("Automatic structure is unresolved");
+        };
+    }
+
+    private static String kernelDescriptor(
+            String programDescriptor,
+            String frameDescriptor,
+            VMStructure structure)
+    {
+        StringBuilder descriptor = new StringBuilder("(")
+                .append(programDescriptor)
+                .append(frameDescriptor)
+                .append("[I[Ljava/lang/Object;I");
+        if (structure != null && structure != VMStructure.SIMPLE_DISPATCH)
+        {
+            int shape = structure.ordinal();
+            for (int bit = 0; bit < 5; bit++)
+            {
+                descriptor.append((shape & 1 << bit) == 0 ? 'I' : 'J');
+            }
+        }
+        return descriptor.append(")I").toString();
     }
 }

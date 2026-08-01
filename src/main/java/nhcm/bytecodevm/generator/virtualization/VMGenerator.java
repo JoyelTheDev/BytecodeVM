@@ -5,14 +5,23 @@ import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
 import nhcm.bytecodevm.advInsn.Condition;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
-import nhcm.bytecodevm.advInsn.SwitchCase;
 import nhcm.bytecodevm.config.BytecodeVMConfig;
+import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.generator.abstracts.ClassObj;
 import nhcm.bytecodevm.generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.generator.globalclass.*;
 import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionRegistry;
+import nhcm.bytecodevm.generator.virtualization.structure.LoweredInstructionPlanner;
+import nhcm.bytecodevm.generator.virtualization.structure.VMStructurePlan;
+import nhcm.bytecodevm.generator.virtualization.structure.api.VMStructureGenerationContext;
+import nhcm.bytecodevm.generator.virtualization.structure.api.VMStructureGenerator;
+import nhcm.bytecodevm.generator.virtualization.structure.api.VMStructureGeneratorFactory;
+import nhcm.bytecodevm.generator.virtualization.structure.api.VMKernelShape;
+import nhcm.bytecodevm.generator.virtualization.structure.api.VMDispatchGenerationContext;
+import nhcm.bytecodevm.generator.virtualization.structure.api.VMDispatchGenerator;
+import nhcm.bytecodevm.generator.virtualization.structure.api.VMDispatchTarget;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array.ArrayLengthBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array.LoadArrayBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array.NewArrayBranch;
@@ -27,6 +36,8 @@ import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.invoke.InvokeNo
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.local.IncrementBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.local.LoadLocalBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.local.StoreLocalBranch;
+import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.lowered.DataFlowRegionBranch;
+import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.lowered.RegisterOperationBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.math.*;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.object.CastBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.object.NewObjectBranch;
@@ -36,6 +47,7 @@ import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.stack.SwapBranc
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.lock.MonitorBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretContext;
+import nhcm.bytecodevm.generator.virtualization.vminterpret.NumericType;
 import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.utils.ClassUtils;
 import nhcm.bytecodevm.utils.FileUtils;
@@ -47,6 +59,7 @@ import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 public class VMGenerator extends ClassObj
 {
@@ -106,6 +119,10 @@ public class VMGenerator extends ClassObj
                 new LoadLocalBranch(),
                 new StoreLocalBranch()
         );
+        List<InterpretBranch> lowered = List.of(
+                new RegisterOperationBranch(),
+                new DataFlowRegionBranch()
+        );
         List<InterpretBranch> math = List.of(
                 new AddBranch(),
                 new BitwiseAndBranch(),
@@ -136,6 +153,7 @@ public class VMGenerator extends ClassObj
         field.forEach(VMGenerator::register);
         invoke.forEach(VMGenerator::register);
         local.forEach(VMGenerator::register);
+        lowered.forEach(VMGenerator::register);
         math.forEach(VMGenerator::register);
         object.forEach(VMGenerator::register);
         stack.forEach(VMGenerator::register);
@@ -158,9 +176,15 @@ public class VMGenerator extends ClassObj
     private final GeneratedMemberNamer namer;
     private final VMObfProfile profile;
     private final SuperInstructionRegistry superInstructions;
+    private final int integrityCapability;
+    private final VMStructurePlan structurePlan;
+    private final VMStructureGenerator structureGenerator;
+    private final VMStructureGenerationContext structureGeneration;
     private final Map<Integer, String> interpretChunkNames = new HashMap<>();
     private final Map<Integer, String> superInstructionChunkNames = new HashMap<>();
     private List<SuperInstructionChunk> superInstructionChunks = List.of();
+    @Getter
+    private final List<ClassNode> auxiliaryClasses = new ArrayList<>();
 
     public VMGenerator(
             String className,
@@ -213,6 +237,33 @@ public class VMGenerator extends ClassObj
             VMObfProfile profile,
             SuperInstructionRegistry superInstructions)
     {
+        this(
+                className,
+                codePoolGenerators,
+                opcMutator,
+                methodFrameGenerator,
+                vmProgramGenerator,
+                vmCodePoolGenerator,
+                config,
+                namer,
+                profile,
+                superInstructions,
+                0);
+    }
+
+    public VMGenerator(
+            String className,
+            List<CodePoolGenerator> codePoolGenerators,
+            OpcMutator opcMutator,
+            MethodFrameGenerator methodFrameGenerator,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            GeneratedMemberNamer namer,
+            VMObfProfile profile,
+            SuperInstructionRegistry superInstructions,
+            int integrityCapability)
+    {
         super(className);
         this.codePoolGenerators = List.copyOf(codePoolGenerators);
         this.opcMutator = opcMutator;
@@ -221,31 +272,61 @@ public class VMGenerator extends ClassObj
         this.vmCodePoolGenerator = vmCodePoolGenerator;
         this.frameLayout = methodFrameGenerator.getLayout();
         this.programLayout = vmProgramGenerator.getLayout();
-        this.vmLayout = new VMRuntimeLayout(className, methodFrameGenerator.descriptor(), vmProgramGenerator.descriptor(), namer);
+        this.vmLayout = new VMRuntimeLayout(
+                className,
+                methodFrameGenerator.descriptor(),
+                vmProgramGenerator.descriptor(),
+                namer,
+                config.vmStructure);
         this.config = config;
         this.namer = namer;
         this.profile = Objects.requireNonNull(profile, "profile");
         this.superInstructions = Objects.requireNonNull(superInstructions, "superInstructions");
+        this.integrityCapability = integrityCapability;
+        this.structurePlan = VMStructurePlan.forStructure(config.vmStructure);
+        this.structureGenerator = VMStructureGeneratorFactory.create(config.vmStructure);
         ClassNode cn = ClassUtils.newClassNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, className);
         InsnUtils.addPrivateInit(cn);
         this.classNode = cn;
+        this.structureGeneration = new VMStructureGenerationContext(
+                className(),
+                cn,
+                frameLayout,
+                programLayout,
+                vmLayout,
+                profile,
+                structurePlan,
+                this::stepCall,
+                this::interpretContext,
+                this::structureClassName,
+                this::structureMethodName,
+                namer::field,
+                this::schedulerDescriptor,
+                ignored -> coroutineDescriptor(),
+                this::mixCall,
+                auxiliaryClasses);
         String vmCodePoolSign = vmCodePoolGenerator.descriptor();
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.codePools.name(), vmLayout.codePools.descriptor(), "Ljava/util/List<" + vmCodePoolSign + ">;"));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.fieldHandles.name(), vmLayout.fieldHandles.descriptor(), "Ljava/util/Map<Ljava/lang/String;Ljava/lang/invoke/MethodHandle;>;"));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.methodHandles.name(), vmLayout.methodHandles.descriptor(), "Ljava/util/Map<Ljava/lang/String;Ljava/lang/invoke/MethodHandle;>;"));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.methodTypes.name(), vmLayout.methodTypes.descriptor(), "Ljava/util/Map<Ljava/lang/String;Ljava/lang/invoke/MethodType;>;"));
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, vmLayout.monitors.name(), vmLayout.monitors.descriptor(), "Ljava/util/Map<Ljava/lang/Object;Ljava/util/concurrent/locks/ReentrantLock;>;"));
+        MethodNode interpretStepMethod = genInterpretStepMethod();
         cn.methods.add(genClInitMethod(codePoolGenerators));
         cn.methods.add(genExecuteMethod());
         cn.methods.add(genExecuteWithIntegrityMethod());
         cn.methods.add(genExecuteSegmentedMethod());
         cn.methods.add(genExecuteSegmentedWithIntegrityMethod());
+        cn.methods.add(interpretStepMethod);
         cn.methods.add(genInterpretMethod());
         cn.methods.add(genInstructionIndexMethod());
-        cn.methods.add(genDecodeOpcodeMethod());
-        cn.methods.add(genDecodeNextPcMethod());
-        cn.methods.add(genDecodeOriginalPcMethod());
-        cn.methods.add(genDecodeOperandMethod());
+        if (config.vmStructure == VMStructure.SIMPLE_DISPATCH)
+        {
+            cn.methods.add(genDecodeOpcodeMethod());
+            cn.methods.add(genDecodeNextPcMethod());
+            cn.methods.add(genDecodeOriginalPcMethod());
+            cn.methods.add(genDecodeOperandMethod());
+        }
         cn.methods.add(genMixMethod());
         cn.methods.add(genLayoutValueMethod());
         cn.methods.add(genBlockValueMethod());
@@ -280,15 +361,29 @@ public class VMGenerator extends ClassObj
         cn.methods.add(genMonitorEnterMethod());
         cn.methods.add(genMonitorExitMethod());
         cn.methods.add(genRethrowMethod());
+        if (structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.REGISTER ||
+            structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.DATA_FLOW)
+        {
+            cn.methods.add(genRegisterReadMethod());
+            cn.methods.add(genRegisterWriteMethod());
+            cn.methods.add(genExecuteRegisterOpMethod());
+            if (structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.DATA_FLOW)
+            {
+                cn.methods.add(genExecuteDataFlowMethod());
+            }
+        }
     }
 
-    private MethodNode genInterpretMethod()
+    private MethodNode genInterpretStepMethod()
     {
-        MethodNode methodNode = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, vmLayout.interpret.name(), vmLayout.interpret.descriptor());
-        LabelNode loopStart = new LabelNode();
-        LabelNode loopEnd = new LabelNode();
+        MethodNode methodNode = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.interpretStep.name(),
+                vmLayout.interpretStep.descriptor());
         LabelNode unknownOpcode = new LabelNode();
         LabelNode afterDispatch = new LabelNode();
+        LabelNode batchStart = new LabelNode();
+        LabelNode batchComplete = new LabelNode();
         LabelNode tryStart = new LabelNode();
         LabelNode tryEnd = new LabelNode();
         LabelNode exceptionHandler = new LabelNode();
@@ -299,37 +394,24 @@ public class VMGenerator extends ClassObj
                 exceptionHandler,
                 "java/lang/Throwable"));
         AdvInsnBuilder ib = new AdvInsnBuilder(methodNode);
-        InterpretContext context = new InterpretContext(
-                className(),
-                frameLayout,
-                programLayout,
-                vmLayout,
-                afterDispatch);
-
-        // int[] code = program.opcodeStream();
-        ib.set(context.code(), AdvInsnBuilder.callVirtual(
-                context.program(),
-                programLayout.owner,
-                programLayout.opcodeStream.name(),
-                "[I"));
-        // Object[] constants = program.constants();
-        ib.set(context.constants(), AdvInsnBuilder.callVirtual(
-                context.program(),
-                programLayout.owner,
-                programLayout.constants.name(),
-                "[Ljava/lang/Object;"));
-        // int[] exceptionHandlers = program.exceptionHandlers();
-        ib.set(context.exceptionHandlers(), AdvInsnBuilder.callVirtual(
-                context.program(),
-                programLayout.owner,
-                programLayout.exceptionHandlers.name(),
-                "[I"));
-
-        // while (!frame.returned)
-        ib.mark(loopStart, "loopStart");
-        ib.ifCondition(AdvInsnBuilder.isTrue(context.frameReturned()), b -> b.gotoLabel(loopEnd));
-
-        // int instructionPc = frame.programCounter;
+        InterpretContext context = interpretContext(afterDispatch);
+        VMKernelShape kernelShape = structureGenerator.kernelShape();
+        Local structureStateArgument = ib.getLocal("structureStateArgument", "I", 4);
+        Local batchCount = context.intLocal("batchCount", InterpretContext.DISPATCH_SELECTOR + 8);
+        ib.set(context.structureState(), structureStateArgument);
+        if (kernelShape.exceptionTableMode() == VMKernelShape.ExceptionTableMode.EAGER)
+        {
+            emitLoadExceptionHandlers(ib, context);
+        }
+        ib.set(batchCount, AdvInsnBuilder.constant(0));
+        ib.mark(batchStart, "batchStart");
+        if (kernelShape.exceptionTableMode() == VMKernelShape.ExceptionTableMode.PER_STEP)
+        {
+            emitLoadExceptionHandlers(ib, context);
+        }
+        ib.ifCondition(
+                AdvInsnBuilder.isTrue(context.frameReturned()),
+                b -> b.returnValue(AdvInsnBuilder.constant(1)));
         ib.set(context.instructionPc(), context.frameProgramCounter());
         ib.set(context.originalPc(), context.instructionPc());
 
@@ -343,29 +425,9 @@ public class VMGenerator extends ClassObj
                 context.instructionPc()));
         ib.ifCondition(
                 AdvInsnBuilder.equal(context.instructionIndex(), AdvInsnBuilder.constant(-1)),
-                b -> b.gotoLabel(loopEnd));
+                b -> b.returnValue(AdvInsnBuilder.constant(1)));
         ib.set(context.operandIndex(), AdvInsnBuilder.constant(0));
-        ib.set(context.opcode(), AdvInsnBuilder.callStatic(
-                vmLayout.owner,
-                vmLayout.decodeOpcode.name(),
-                "I",
-                context.program(),
-                context.frame(),
-                context.instructionIndex()));
-        ib.set(context.frameProgramCounter(), AdvInsnBuilder.callStatic(
-                vmLayout.owner,
-                vmLayout.decodeNextPc.name(),
-                "I",
-                context.program(),
-                context.frame(),
-                context.instructionIndex()));
-        ib.set(context.originalPc(), AdvInsnBuilder.callStatic(
-                vmLayout.owner,
-                vmLayout.decodeOriginalPc.name(),
-                "I",
-                context.program(),
-                context.frame(),
-                context.instructionIndex()));
+        emitKernelDecode(ib, context, kernelShape);
 
         generateDispatch(
                 ib,
@@ -373,6 +435,10 @@ public class VMGenerator extends ClassObj
                 unknownOpcode
         );
         ib.mark(afterDispatch, "afterDispatch");
+        if (structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.SELF_MODIFYING)
+        {
+            emitSelfMutation(ib, context);
+        }
         ib.ifCondition(
                 AdvInsnBuilder.isFalse(context.frameReturned()),
                 b -> b.directCall(AdvInsnBuilder.callStatic(
@@ -382,7 +448,7 @@ public class VMGenerator extends ClassObj
                         context.program(),
                         context.frame(),
                         context.frameProgramCounter())));
-        ib.gotoLabel(loopStart);
+        ib.gotoLabel(batchComplete);
         ib.mark(tryEnd, "tryEnd");
 
         ib.mark(unknownOpcode, "unknownOpcode");
@@ -390,6 +456,10 @@ public class VMGenerator extends ClassObj
 
         ib.mark(exceptionHandler, "exceptionHandler");
         ib.storeTop(context.thrown());
+        if (kernelShape.exceptionTableMode() == VMKernelShape.ExceptionTableMode.ON_THROW)
+        {
+            emitLoadExceptionHandlers(ib, context);
+        }
         ib.set(context.handlerPc(), AdvInsnBuilder.callStatic(
                 vmLayout.owner,
                 vmLayout.findExceptionHandler.name(),
@@ -415,7 +485,7 @@ public class VMGenerator extends ClassObj
                 context.program(),
                 context.frame(),
                 context.handlerPc()));
-        ib.gotoLabel(loopStart);
+        ib.gotoLabel(batchComplete);
 
         ib.mark(noHandler, "noHandler");
         ib.throwValue(AdvInsnBuilder.callStatic(
@@ -424,10 +494,795 @@ public class VMGenerator extends ClassObj
                 "java/lang/RuntimeException",
                 context.thrown()));
 
-        ib.mark(loopEnd, "loopEnd");
-        ib.returnVoid();
-
+        ib.mark(batchComplete, "batchComplete");
+        ib.ifCondition(
+                AdvInsnBuilder.isTrue(context.frameReturned()),
+                b -> b.returnValue(AdvInsnBuilder.constant(1)));
+        ib.increment(batchCount, 1);
+        ib.ifCondition(
+                AdvInsnBuilder.lessThan(batchCount, AdvInsnBuilder.constant(structureGenerator.stepBatchSize())),
+                b -> b.gotoLabel(batchStart));
+        ib.returnValue(AdvInsnBuilder.constant(0));
         return methodNode;
+    }
+
+    private void emitLoadExceptionHandlers(AdvInsnBuilder ib, InterpretContext context)
+    {
+        ib.set(context.exceptionHandlers(), AdvInsnBuilder.callVirtual(
+                context.program(),
+                programLayout.owner,
+                programLayout.exceptionHandlers.name(),
+                "[I"));
+    }
+
+    private void emitKernelDecode(
+            AdvInsnBuilder ib,
+            InterpretContext context,
+            VMKernelShape shape)
+    {
+        Local decodedNextPc = context.intLocal("decodedNextPc", 84);
+        Consumer<AdvInsnBuilder> opcode = code -> {
+            if (config.vmStructure == VMStructure.SIMPLE_DISPATCH)
+            {
+                code.set(context.opcode(), AdvInsnBuilder.callStatic(
+                        vmLayout.owner,
+                        vmLayout.decodeOpcode.name(),
+                        "I",
+                        context.program(),
+                        context.frame(),
+                        context.instructionIndex()));
+            }
+            else
+            {
+                emitDecodeOpcodeInline(code, context, context.opcode());
+            }
+        };
+        Consumer<AdvInsnBuilder> next = code -> {
+            if (config.vmStructure == VMStructure.SIMPLE_DISPATCH)
+            {
+                code.set(decodedNextPc, AdvInsnBuilder.callStatic(
+                        vmLayout.owner,
+                        vmLayout.decodeNextPc.name(),
+                        "I",
+                        context.program(),
+                        context.frame(),
+                        context.instructionIndex()));
+            }
+            else
+            {
+                emitLayoutValueInline(
+                        code,
+                        context,
+                        decodedNextPc,
+                        ProtectedVMMethod.LAYOUT_NEXT_PC,
+                        90);
+            }
+            code.set(context.frameProgramCounter(), decodedNextPc);
+        };
+        Consumer<AdvInsnBuilder> original = code -> {
+            if (config.vmStructure == VMStructure.SIMPLE_DISPATCH)
+            {
+                code.set(context.originalPc(), AdvInsnBuilder.callStatic(
+                        vmLayout.owner,
+                        vmLayout.decodeOriginalPc.name(),
+                        "I",
+                        context.program(),
+                        context.frame(),
+                        context.instructionIndex()));
+            }
+            else
+            {
+                emitLayoutValueInline(
+                        code,
+                        context,
+                        context.originalPc(),
+                        ProtectedVMMethod.LAYOUT_ORIGINAL_PC,
+                        94);
+            }
+        };
+
+        switch (shape.decodeOrder())
+        {
+            case OPCODE_NEXT_ORIGINAL -> emitDecodeOrder(ib, opcode, next, original);
+            case OPCODE_ORIGINAL_NEXT -> emitDecodeOrder(ib, opcode, original, next);
+            case NEXT_OPCODE_ORIGINAL -> emitDecodeOrder(ib, next, opcode, original);
+            case NEXT_ORIGINAL_OPCODE -> emitDecodeOrder(ib, next, original, opcode);
+            case ORIGINAL_OPCODE_NEXT -> emitDecodeOrder(ib, original, opcode, next);
+            case ORIGINAL_NEXT_OPCODE -> emitDecodeOrder(ib, original, next, opcode);
+        }
+    }
+
+    @SafeVarargs
+    private static void emitDecodeOrder(
+            AdvInsnBuilder ib,
+            Consumer<AdvInsnBuilder>... decoders)
+    {
+        for (Consumer<AdvInsnBuilder> decoder : decoders)
+        {
+            decoder.accept(ib);
+        }
+    }
+
+    private MethodNode genInterpretMethod()
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.interpret.name(),
+                vmLayout.interpret.descriptor());
+        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        InterpretContext context = interpretContext(null);
+        ib.set(context.code(), AdvInsnBuilder.callVirtual(
+                context.program(),
+                programLayout.owner,
+                programLayout.opcodeStream.name(),
+                "[I"));
+        ib.set(context.constants(), AdvInsnBuilder.callVirtual(
+                context.program(),
+                programLayout.owner,
+                programLayout.constants.name(),
+                "[Ljava/lang/Object;"));
+
+        if (structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.SELF_MODIFYING)
+        {
+            prepareMutableCode(ib, context);
+        }
+
+        structureGenerator.emitScheduler(structureGeneration, ib, context);
+        ib.returnVoid();
+        return method;
+    }
+
+    private MethodNode genRegisterReadMethod()
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.registerRead.name(),
+                vmLayout.registerRead.descriptor());
+        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        Local program = ib.getLocal("program", programLayout.owner, 0);
+        Local frame = ib.getLocal("frame", frameLayout.owner, 1);
+        Local baseStack = ib.getLocal("baseStack", "I", 2);
+        Local token = ib.getLocal("token", "I", 3);
+        Local encodedOffset = ib.getLocal("encodedOffset", "I", 4);
+        Local offset = ib.getLocal("offset", "I", 5);
+        Local slot = ib.getLocal("slot", "I", 6);
+        Local type = ib.getLocal("type", "I", 7);
+
+        ib.ifCondition(
+                AdvInsnBuilder.greaterOrEqual(token, AdvInsnBuilder.constant(0)),
+                local -> local.returnValue(AdvInsnBuilder.arrayAt(
+                        AdvInsnBuilder.field(frame, frameLayout.locals),
+                        token)));
+        ib.set(encodedOffset, AdvInsnBuilder.bitAnd(token, AdvInsnBuilder.constant(Integer.MAX_VALUE)));
+        ib.set(offset, AdvInsnBuilder.bitXor(
+                AdvInsnBuilder.unsignedShiftRight(encodedOffset, AdvInsnBuilder.constant(1)),
+                AdvInsnBuilder.minus(
+                        AdvInsnBuilder.constant(0),
+                        AdvInsnBuilder.bitAnd(encodedOffset, AdvInsnBuilder.constant(1)))));
+        ib.set(slot, AdvInsnBuilder.plus(baseStack, offset));
+        ib.set(type, AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.stackTypes), slot));
+
+        @SuppressWarnings("unchecked")
+        java.util.function.Consumer<AdvInsnBuilder>[] cases = new java.util.function.Consumer[5];
+        cases[0] = b -> b.returnValue(AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.stack), slot));
+        cases[1] = b -> b.returnValue(NumericType.INT.box(AdvInsnBuilder.cast(
+                AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.stackWords), slot), "I")));
+        cases[2] = b -> b.returnValue(NumericType.LONG.box(
+                AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.stackWords), slot)));
+        cases[3] = b -> b.returnValue(NumericType.FLOAT.box(AdvInsnBuilder.callStatic(
+                "java/lang/Float",
+                "intBitsToFloat",
+                "F",
+                AdvInsnBuilder.cast(
+                        AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.stackWords), slot),
+                        "I"))));
+        cases[4] = b -> b.returnValue(NumericType.DOUBLE.box(AdvInsnBuilder.callStatic(
+                "java/lang/Double",
+                "longBitsToDouble",
+                "D",
+                AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.stackWords), slot))));
+        ib.switchTable(
+                type,
+                0,
+                b -> b.returnValue(AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.stack), slot)),
+                cases);
+        ib.returnValue(AdvInsnBuilder.constant(null));
+        return method;
+    }
+
+    private MethodNode genRegisterWriteMethod()
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.registerWrite.name(),
+                vmLayout.registerWrite.descriptor());
+        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        Local frame = ib.getLocal("frame", frameLayout.owner, 1);
+        Local baseStack = ib.getLocal("baseStack", "I", 2);
+        Local token = ib.getLocal("token", "I", 3);
+        Local value = ib.getLocal("value", "java/lang/Object", 4);
+        Local width = ib.getLocal("width", "I", 5);
+        Local encodedOffset = ib.getLocal("encodedOffset", "I", 6);
+        Local offset = ib.getLocal("offset", "I", 7);
+        Local slot = ib.getLocal("slot", "I", 8);
+
+        ib.ifCondition(
+                AdvInsnBuilder.greaterOrEqual(token, AdvInsnBuilder.constant(0)),
+                local -> {
+                    local.setArray(AdvInsnBuilder.field(frame, frameLayout.locals), token, value);
+                    local.returnVoid();
+                });
+        ib.set(encodedOffset, AdvInsnBuilder.bitAnd(token, AdvInsnBuilder.constant(Integer.MAX_VALUE)));
+        ib.set(offset, AdvInsnBuilder.bitXor(
+                AdvInsnBuilder.unsignedShiftRight(encodedOffset, AdvInsnBuilder.constant(1)),
+                AdvInsnBuilder.minus(
+                        AdvInsnBuilder.constant(0),
+                        AdvInsnBuilder.bitAnd(encodedOffset, AdvInsnBuilder.constant(1)))));
+        ib.set(slot, AdvInsnBuilder.plus(baseStack, offset));
+        ib.setArray(AdvInsnBuilder.field(frame, frameLayout.stack), slot, value);
+        ib.setArray(AdvInsnBuilder.field(frame, frameLayout.stackTypes), slot, AdvInsnBuilder.constant(0));
+        ib.setArray(AdvInsnBuilder.field(frame, frameLayout.stackWidths), slot, width);
+        ib.returnVoid();
+        return method;
+    }
+
+    private MethodNode genExecuteRegisterOpMethod()
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.executeRegisterOp.name(),
+                vmLayout.executeRegisterOp.descriptor());
+        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        RegisterOperationContext operation = new RegisterOperationContext(
+                ib.getLocal("program", programLayout.owner, 0),
+                ib.getLocal("frame", frameLayout.owner, 1),
+                ib.getLocal("constants", "[Ljava/lang/Object;", 2),
+                ib.getLocal("semantic", "I", 3),
+                ib.getLocal("baseStack", "I", 4),
+                ib.getLocal("destination", "I", 5),
+                ib.getLocal("sourceA", "I", 6),
+                ib.getLocal("sourceB", "I", 7),
+                ib.getLocal("auxiliary", "I", 8),
+                ib.getLocal("width", "I", 9));
+
+        List<Opcs> operations = new ArrayList<>();
+        for (Opcs opcode : Opcs.values())
+        {
+            if (isLoweredRegisterOpcode(opcode))
+            {
+                operations.add(opcode);
+            }
+        }
+        emitRegisterDecisionTree(ib, operation, operations, 0, operations.size());
+        return method;
+    }
+
+    private void emitRegisterDecisionTree(
+            AdvInsnBuilder ib,
+            RegisterOperationContext operation,
+            List<Opcs> operations,
+            int from,
+            int to)
+    {
+        if (from >= to)
+        {
+            ib.throwValue(AdvInsnBuilder.newObject(
+                    "java/lang/IllegalStateException",
+                    stringConcat(
+                            AdvInsnBuilder.constant("Unknown register semantic "),
+                            operation.semantic)));
+            return;
+        }
+        int middle = (from + to) >>> 1;
+        Opcs opcode = operations.get(middle);
+        ib.ifElse(
+                AdvInsnBuilder.equal(
+                        operation.semantic,
+                        AdvInsnBuilder.constant(opcode.ordinal())),
+                match -> {
+                    emitRegisterOperation(match, operation, opcode);
+                    match.returnVoid();
+                },
+                mismatch -> mismatch.ifElse(
+                        AdvInsnBuilder.lessThan(
+                                operation.semantic,
+                                AdvInsnBuilder.constant(opcode.ordinal())),
+                        lower -> emitRegisterDecisionTree(
+                                lower,
+                                operation,
+                                operations,
+                                from,
+                                middle),
+                        higher -> emitRegisterDecisionTree(
+                                higher,
+                                operation,
+                                operations,
+                                middle + 1,
+                                to)));
+    }
+
+    private MethodNode genExecuteDataFlowMethod()
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.executeDataFlow.name(),
+                vmLayout.executeDataFlow.descriptor());
+        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        Local program = ib.getLocal("program", programLayout.owner, 0);
+        Local frame = ib.getLocal("frame", frameLayout.owner, 1);
+        Local constants = ib.getLocal("constants", "[Ljava/lang/Object;", 2);
+        Local payload = ib.getLocal("payload", "[I", 3);
+        Local nodeCount = ib.getLocal("nodeCount", "I", 4);
+        Local finalDelta = ib.getLocal("finalDelta", "I", 5);
+        Local baseStack = ib.getLocal("baseStack", "I", 6);
+        Local doneMask = ib.getLocal("doneMask", "I", 7);
+        Local targetMask = ib.getLocal("targetMask", "I", 8);
+        Local progress = ib.getLocal("progress", "I", 9);
+        Local node = ib.getLocal("node", "I", 10);
+        Local offset = ib.getLocal("nodeOffset", "I", 11);
+        Local dependencies = ib.getLocal("dependencies", "I", 12);
+        Local bit = ib.getLocal("nodeBit", "I", 13);
+
+        ib.set(nodeCount, AdvInsnBuilder.arrayAt(payload, AdvInsnBuilder.constant(0)));
+        ib.set(finalDelta, AdvInsnBuilder.arrayAt(payload, AdvInsnBuilder.constant(1)));
+        ib.set(baseStack, AdvInsnBuilder.field(frame, frameLayout.stackPointer));
+        ib.set(doneMask, AdvInsnBuilder.constant(0));
+        ib.set(targetMask, AdvInsnBuilder.minus(
+                AdvInsnBuilder.shiftLeft(AdvInsnBuilder.constant(1), nodeCount),
+                AdvInsnBuilder.constant(1)));
+        ib.whileLoop(
+                AdvInsnBuilder.notEqual(doneMask, targetMask),
+                schedule -> {
+                    schedule.set(progress, AdvInsnBuilder.constant(0));
+                    schedule.forLoop(
+                            b -> b.set(node, AdvInsnBuilder.constant(0)),
+                            AdvInsnBuilder.lessThan(node, nodeCount),
+                            b -> b.increment(node, 1),
+                            ready -> {
+                                ready.set(bit, AdvInsnBuilder.shiftLeft(AdvInsnBuilder.constant(1), node));
+                                ready.ifCondition(
+                                        AdvInsnBuilder.notEqual(
+                                                AdvInsnBuilder.bitAnd(doneMask, bit),
+                                                AdvInsnBuilder.constant(0)),
+                                        AdvInsnBuilder::continueLoop);
+                                ready.set(offset, AdvInsnBuilder.plus(
+                                        AdvInsnBuilder.constant(LoweredInstructionPlanner.DATA_FLOW_HEADER_SIZE),
+                                        AdvInsnBuilder.multiply(
+                                                node,
+                                                AdvInsnBuilder.constant(LoweredInstructionPlanner.DATA_FLOW_NODE_SIZE))));
+                                ready.set(
+                                        dependencies,
+                                        AdvInsnBuilder.arrayAt(
+                                                payload,
+                                                AdvInsnBuilder.plus(
+                                                        offset,
+                                                        AdvInsnBuilder.constant(LoweredInstructionPlanner.REGISTER_PLAN_SIZE))));
+                                ready.ifCondition(
+                                        AdvInsnBuilder.notEqual(
+                                                AdvInsnBuilder.bitAnd(
+                                                        dependencies,
+                                                        AdvInsnBuilder.bitXor(doneMask, AdvInsnBuilder.constant(-1))),
+                                                AdvInsnBuilder.constant(0)),
+                                        AdvInsnBuilder::continueLoop);
+                                ready.directCall(AdvInsnBuilder.callStatic(
+                                        vmLayout.owner,
+                                        vmLayout.executeRegisterOp.name(),
+                                        "V",
+                                        program,
+                                        frame,
+                                        constants,
+                                        AdvInsnBuilder.arrayAt(payload, offset),
+                                        AdvInsnBuilder.plus(
+                                                baseStack,
+                                                AdvInsnBuilder.arrayAt(
+                                                        payload,
+                                                        AdvInsnBuilder.plus(offset, AdvInsnBuilder.constant(7)))),
+                                        AdvInsnBuilder.arrayAt(payload, AdvInsnBuilder.plus(offset, AdvInsnBuilder.constant(1))),
+                                        AdvInsnBuilder.arrayAt(payload, AdvInsnBuilder.plus(offset, AdvInsnBuilder.constant(2))),
+                                        AdvInsnBuilder.arrayAt(payload, AdvInsnBuilder.plus(offset, AdvInsnBuilder.constant(3))),
+                                        AdvInsnBuilder.arrayAt(payload, AdvInsnBuilder.plus(offset, AdvInsnBuilder.constant(4))),
+                                        AdvInsnBuilder.arrayAt(payload, AdvInsnBuilder.plus(offset, AdvInsnBuilder.constant(6)))));
+                                ready.set(doneMask, AdvInsnBuilder.bitOr(doneMask, bit));
+                                ready.increment(progress, 1);
+                            });
+                    schedule.ifCondition(
+                            AdvInsnBuilder.equal(progress, AdvInsnBuilder.constant(0)),
+                            blocked -> blocked.throwValue(AdvInsnBuilder.newObject(
+                                    "java/lang/IllegalStateException",
+                                    AdvInsnBuilder.constant("Cyclic data-flow region"))));
+                });
+        ib.set(
+                AdvInsnBuilder.field(frame, frameLayout.stackPointer),
+                AdvInsnBuilder.plus(baseStack, finalDelta));
+        ib.returnVoid();
+        return method;
+    }
+
+    private boolean isLoweredRegisterOpcode(Opcs opcode)
+    {
+        return switch (opcode)
+        {
+            case NOP, ACONST_NULL,
+                 ICONST_M1, ICONST_0, ICONST_1, ICONST_2, ICONST_3, ICONST_4, ICONST_5,
+                 LCONST_0, LCONST_1, FCONST_0, FCONST_1, FCONST_2, DCONST_0, DCONST_1,
+                 BIPUSH, SIPUSH, LDC,
+                 ILOAD, LLOAD, FLOAD, DLOAD, ALOAD,
+                 ISTORE, LSTORE, FSTORE, DSTORE, ASTORE,
+                 POP,
+                 IADD, LADD, FADD, DADD, ISUB, LSUB, FSUB, DSUB,
+                 IMUL, LMUL, FMUL, DMUL, IDIV, LDIV, FDIV, DDIV,
+                 IREM, LREM, FREM, DREM,
+                 INEG, LNEG, FNEG, DNEG,
+                 ISHL, LSHL, ISHR, LSHR, IUSHR, LUSHR,
+                 IAND, LAND, IOR, LOR, IXOR, LXOR,
+                 IINC,
+                 I2L, I2F, I2D, L2I, L2F, L2D, F2I, F2L, F2D,
+                 D2I, D2L, D2F, I2B, I2C, I2S,
+                 LCMP, FCMPL, FCMPG, DCMPL, DCMPG -> true;
+            default -> false;
+        };
+    }
+
+    private void emitRegisterOperation(AdvInsnBuilder ib, RegisterOperationContext context, Opcs opcode)
+    {
+        switch (opcode)
+        {
+            case NOP, POP -> { }
+            case ACONST_NULL -> registerWrite(ib, context, AdvInsnBuilder.constant(null));
+            case ICONST_M1, ICONST_0, ICONST_1, ICONST_2, ICONST_3, ICONST_4, ICONST_5 ->
+                    registerWrite(ib, context, NumericType.INT.box(AdvInsnBuilder.constant(opcode.opcode - org.objectweb.asm.Opcodes.ICONST_0)));
+            case BIPUSH, SIPUSH -> registerWrite(ib, context, NumericType.INT.box(context.auxiliary));
+            case LCONST_0, LCONST_1 -> registerWrite(
+                    ib,
+                    context,
+                    NumericType.LONG.box(AdvInsnBuilder.constant((long) (opcode.opcode - org.objectweb.asm.Opcodes.LCONST_0))));
+            case FCONST_0, FCONST_1, FCONST_2 -> registerWrite(
+                    ib,
+                    context,
+                    NumericType.FLOAT.box(AdvInsnBuilder.constant((float) (opcode.opcode - org.objectweb.asm.Opcodes.FCONST_0))));
+            case DCONST_0, DCONST_1 -> registerWrite(
+                    ib,
+                    context,
+                    NumericType.DOUBLE.box(AdvInsnBuilder.constant((double) (opcode.opcode - org.objectweb.asm.Opcodes.DCONST_0))));
+            case LDC -> {
+                Local constant = ib.var("registerConstant", "java/lang/Object");
+                ib.set(constant, AdvInsnBuilder.callStatic(
+                        vmLayout.owner,
+                        vmLayout.resolveConstant.name(),
+                        "java/lang/Object",
+                        AdvInsnBuilder.arrayAt(context.constants, context.auxiliary),
+                        context.frame));
+                ib.ifElse(
+                        AdvInsnBuilder.or(
+                                AdvInsnBuilder.isInstanceOf(constant, "java/lang/Long"),
+                                AdvInsnBuilder.isInstanceOf(constant, "java/lang/Double")),
+                        category2 -> registerWrite(category2, context, constant, AdvInsnBuilder.constant(2)),
+                        category1 -> registerWrite(category1, context, constant, AdvInsnBuilder.constant(1)));
+            }
+            case ILOAD, LLOAD, FLOAD, DLOAD, ALOAD,
+                 ISTORE, LSTORE, FSTORE, DSTORE, ASTORE -> registerWrite(
+                    ib,
+                    context,
+                    registerRead(context, context.sourceA));
+            case IADD, LADD, FADD, DADD, ISUB, LSUB, FSUB, DSUB,
+                 IMUL, LMUL, FMUL, DMUL, IDIV, LDIV, FDIV, DDIV,
+                 IREM, LREM, FREM, DREM,
+                 IAND, LAND, IOR, LOR, IXOR, LXOR -> emitRegisterBinary(ib, context, opcode);
+            case ISHL, LSHL, ISHR, LSHR, IUSHR, LUSHR -> emitRegisterShift(ib, context, opcode);
+            case INEG, LNEG, FNEG, DNEG -> emitRegisterNegate(ib, context, opcode);
+            case IINC -> registerWrite(
+                    ib,
+                    context,
+                    NumericType.INT.box(AdvInsnBuilder.plus(
+                            NumericType.INT.unbox(registerRead(context, context.sourceA)),
+                            context.auxiliary)));
+            case I2L, I2F, I2D, L2I, L2F, L2D, F2I, F2L, F2D,
+                 D2I, D2L, D2F, I2B, I2C, I2S -> emitRegisterConversion(ib, context, opcode);
+            case LCMP, FCMPL, FCMPG, DCMPL, DCMPG -> emitRegisterCompare(ib, context, opcode);
+            default -> throw new IllegalArgumentException("Not a lowered register opcode: " + opcode);
+        }
+    }
+
+    private void emitRegisterBinary(AdvInsnBuilder ib, RegisterOperationContext context, Opcs opcode)
+    {
+        NumericType type = NumericType.fromOpcode(opcode);
+        Local left = ib.var("registerLeft" + opcode, type.descriptor());
+        Local right = ib.var("registerRight" + opcode, type.descriptor());
+        ib.set(left, type.unbox(registerRead(context, context.sourceA)));
+        ib.set(right, type.unbox(registerRead(context, context.sourceB)));
+        Expr value = switch (opcode)
+        {
+            case IADD, LADD, FADD, DADD -> AdvInsnBuilder.plus(left, right);
+            case ISUB, LSUB, FSUB, DSUB -> AdvInsnBuilder.minus(left, right);
+            case IMUL, LMUL, FMUL, DMUL -> AdvInsnBuilder.multiply(left, right);
+            case IDIV, LDIV, FDIV, DDIV -> AdvInsnBuilder.divide(left, right);
+            case IREM, LREM, FREM, DREM -> AdvInsnBuilder.remainder(left, right);
+            case IAND, LAND -> AdvInsnBuilder.bitAnd(left, right);
+            case IOR, LOR -> AdvInsnBuilder.bitOr(left, right);
+            case IXOR, LXOR -> AdvInsnBuilder.bitXor(left, right);
+            default -> throw new IllegalArgumentException("Not a register binary opcode: " + opcode);
+        };
+        registerWrite(ib, context, type.box(value));
+    }
+
+    private void emitRegisterShift(AdvInsnBuilder ib, RegisterOperationContext context, Opcs opcode)
+    {
+        NumericType type = opcode.name().charAt(0) == 'L' ? NumericType.LONG : NumericType.INT;
+        Local left = ib.var("registerShiftLeft" + opcode, type.descriptor());
+        Local right = ib.var("registerShiftRight" + opcode, "I");
+        ib.set(left, type.unbox(registerRead(context, context.sourceA)));
+        ib.set(right, NumericType.INT.unbox(registerRead(context, context.sourceB)));
+        Expr value = switch (opcode)
+        {
+            case ISHL, LSHL -> AdvInsnBuilder.shiftLeft(left, right);
+            case ISHR, LSHR -> AdvInsnBuilder.shiftRight(left, right);
+            case IUSHR, LUSHR -> AdvInsnBuilder.unsignedShiftRight(left, right);
+            default -> throw new IllegalArgumentException("Not a register shift opcode: " + opcode);
+        };
+        registerWrite(ib, context, type.box(value));
+    }
+
+    private void emitRegisterNegate(AdvInsnBuilder ib, RegisterOperationContext context, Opcs opcode)
+    {
+        NumericType type = NumericType.fromOpcode(opcode);
+        registerWrite(
+                ib,
+                context,
+                type.box(AdvInsnBuilder.minus(
+                        AdvInsnBuilder.constant(switch (type)
+                        {
+                            case INT -> 0;
+                            case LONG -> 0L;
+                            case FLOAT -> 0.0F;
+                            case DOUBLE -> 0.0D;
+                        }),
+                        type.unbox(registerRead(context, context.sourceA)))));
+    }
+
+    private void emitRegisterConversion(AdvInsnBuilder ib, RegisterOperationContext context, Opcs opcode)
+    {
+        NumericType source = switch (opcode.name().charAt(0))
+        {
+            case 'I' -> NumericType.INT;
+            case 'L' -> NumericType.LONG;
+            case 'F' -> NumericType.FLOAT;
+            case 'D' -> NumericType.DOUBLE;
+            default -> throw new IllegalArgumentException("Not a conversion opcode: " + opcode);
+        };
+        NumericType target = switch (opcode.name().charAt(2))
+        {
+            case 'L' -> NumericType.LONG;
+            case 'F' -> NumericType.FLOAT;
+            case 'D' -> NumericType.DOUBLE;
+            default -> NumericType.INT;
+        };
+        Expr sourceValue = source.unbox(registerRead(context, context.sourceA));
+        Expr converted = switch (opcode)
+        {
+            case I2L, F2L, D2L -> AdvInsnBuilder.toLong(sourceValue);
+            case I2F, L2F, D2F -> AdvInsnBuilder.toFloat(sourceValue);
+            case I2D, L2D, F2D -> AdvInsnBuilder.toDouble(sourceValue);
+            case L2I, F2I, D2I -> AdvInsnBuilder.toInt(sourceValue);
+            case I2B -> AdvInsnBuilder.shiftRight(
+                    AdvInsnBuilder.shiftLeft(sourceValue, AdvInsnBuilder.constant(24)),
+                    AdvInsnBuilder.constant(24));
+            case I2C -> AdvInsnBuilder.bitAnd(sourceValue, AdvInsnBuilder.constant(0xffff));
+            case I2S -> AdvInsnBuilder.shiftRight(
+                    AdvInsnBuilder.shiftLeft(sourceValue, AdvInsnBuilder.constant(16)),
+                    AdvInsnBuilder.constant(16));
+            default -> throw new IllegalArgumentException("Not a conversion opcode: " + opcode);
+        };
+        registerWrite(
+                ib,
+                context,
+                target.box(target == NumericType.INT ? AdvInsnBuilder.cast(converted, "I") : converted));
+    }
+
+    private void emitRegisterCompare(AdvInsnBuilder ib, RegisterOperationContext context, Opcs opcode)
+    {
+        NumericType type = NumericType.fromOpcode(opcode);
+        Local left = ib.var("registerCompareLeft" + opcode, type.descriptor());
+        Local right = ib.var("registerCompareRight" + opcode, type.descriptor());
+        Local result = ib.var("registerCompareResult" + opcode, "I");
+        ib.set(left, type.unbox(registerRead(context, context.sourceA)));
+        ib.set(right, type.unbox(registerRead(context, context.sourceB)));
+        if (opcode == Opcs.LCMP)
+        {
+            emitOrderedRegisterCompare(ib, left, right, result);
+        }
+        else
+        {
+            boolean greaterOnNaN = opcode == Opcs.FCMPG || opcode == Opcs.DCMPG;
+            Expr leftNaN = AdvInsnBuilder.callStatic(
+                    type == NumericType.FLOAT ? "java/lang/Float" : "java/lang/Double",
+                    "isNaN",
+                    "Z",
+                    left);
+            Expr rightNaN = AdvInsnBuilder.callStatic(
+                    type == NumericType.FLOAT ? "java/lang/Float" : "java/lang/Double",
+                    "isNaN",
+                    "Z",
+                    right);
+            ib.ifElse(
+                    AdvInsnBuilder.or(AdvInsnBuilder.isTrue(leftNaN), AdvInsnBuilder.isTrue(rightNaN)),
+                    nan -> nan.set(result, AdvInsnBuilder.constant(greaterOnNaN ? 1 : -1)),
+                    ordered -> emitOrderedRegisterCompare(ordered, left, right, result));
+        }
+        registerWrite(ib, context, NumericType.INT.box(result));
+    }
+
+    private void emitOrderedRegisterCompare(AdvInsnBuilder ib, Expr left, Expr right, Local result)
+    {
+        ib.ifElse(
+                AdvInsnBuilder.greaterThan(left, right),
+                greater -> greater.set(result, AdvInsnBuilder.constant(1)),
+                other -> other.ifElse(
+                        AdvInsnBuilder.equal(left, right),
+                        equal -> equal.set(result, AdvInsnBuilder.constant(0)),
+                        less -> less.set(result, AdvInsnBuilder.constant(-1))));
+    }
+
+    private Expr registerRead(RegisterOperationContext context, Expr token)
+    {
+        return AdvInsnBuilder.callStatic(
+                vmLayout.owner,
+                vmLayout.registerRead.name(),
+                "java/lang/Object",
+                context.program,
+                context.frame,
+                context.baseStack,
+                token);
+    }
+
+    private void registerWrite(AdvInsnBuilder ib, RegisterOperationContext context, Expr value)
+    {
+        registerWrite(ib, context, value, context.width);
+    }
+
+    private void registerWrite(AdvInsnBuilder ib, RegisterOperationContext context, Expr value, Expr width)
+    {
+        ib.directCall(AdvInsnBuilder.callStatic(
+                vmLayout.owner,
+                vmLayout.registerWrite.name(),
+                "V",
+                context.program,
+                context.frame,
+                context.baseStack,
+                context.destination,
+                AdvInsnBuilder.cast(value, "java/lang/Object"),
+                width));
+    }
+
+    private record RegisterOperationContext(
+            Local program,
+            Local frame,
+            Local constants,
+            Local semantic,
+            Local baseStack,
+            Local destination,
+            Local sourceA,
+            Local sourceB,
+            Local auxiliary,
+            Local width)
+    {
+    }
+
+    private void prepareMutableCode(AdvInsnBuilder ib, InterpretContext context)
+    {
+        ib.ifCondition(
+                AdvInsnBuilder.notEqual(
+                        context.frameField(frameLayout.mutableProgram),
+                        context.program()),
+                initialize -> {
+                    initialize.set(
+                            context.frameField(frameLayout.mutableCode),
+                            AdvInsnBuilder.callStatic(
+                                    "java/util/Arrays",
+                                    "copyOf",
+                                    "[I",
+                                    context.code(),
+                                    AdvInsnBuilder.arrayLength(context.code())));
+                    initialize.set(
+                            context.frameField(frameLayout.mutableMasks),
+                            AdvInsnBuilder.newArray("int", AdvInsnBuilder.arrayLength(context.code())));
+                    initialize.set(context.frameField(frameLayout.mutableProgram), context.program());
+                });
+    }
+
+    private void emitSelfMutation(AdvInsnBuilder ib, InterpretContext context)
+    {
+        Local mutation = context.intLocal("mutation", InterpretContext.DISPATCH_SELECTOR + 5);
+        ib.set(mutation, mixCall(
+                context.frameStateKey(),
+                context.instructionIndex(),
+                context.opcode(),
+                AdvInsnBuilder.constant(profile.saltHandler)));
+        ib.setArray(
+                context.frameField(frameLayout.mutableCode),
+                context.instructionIndex(),
+                AdvInsnBuilder.bitXor(
+                        AdvInsnBuilder.arrayAt(context.frameField(frameLayout.mutableCode), context.instructionIndex()),
+                        mutation));
+        ib.setArray(
+                context.frameField(frameLayout.mutableMasks),
+                context.instructionIndex(),
+                AdvInsnBuilder.bitXor(
+                        AdvInsnBuilder.arrayAt(context.frameField(frameLayout.mutableMasks), context.instructionIndex()),
+                        mutation));
+    }
+
+    private Expr stepCall(InterpretContext context, Expr structureState)
+    {
+        List<Expr> arguments = new ArrayList<>();
+        arguments.add(context.program());
+        arguments.add(context.frame());
+        arguments.add(context.code());
+        arguments.add(context.constants());
+        arguments.add(structureState);
+        if (config.vmStructure != VMStructure.SIMPLE_DISPATCH)
+        {
+            int shape = structurePlan.structure().ordinal();
+            for (int bit = 0; bit < 5; bit++)
+            {
+                arguments.add((shape & 1 << bit) == 0
+                        ? AdvInsnBuilder.constant(profile.decodeVariant + bit)
+                        : AdvInsnBuilder.constant(
+                                ((long) profile.decodeVariant << 32) ^
+                                (0x94D049BB133111EBL + bit)));
+            }
+        }
+        return AdvInsnBuilder.callStatic(
+                className(),
+                vmLayout.interpretStep.name(),
+                "I",
+                arguments.toArray(Expr[]::new));
+    }
+
+    private Expr graphNode(InterpretContext context)
+    {
+        return mixCall(
+                context.frameProgramCounter(),
+                context.frameField(frameLayout.blockIndex),
+                context.frameStateKey(),
+                AdvInsnBuilder.constant(profile.saltBlock));
+    }
+
+    private Expr fsmState(InterpretContext context, Expr previousState)
+    {
+        return AdvInsnBuilder.bitXor(
+                mixCall(
+                        context.frameProgramCounter(),
+                        context.frameField(frameLayout.blockIndex),
+                        previousState,
+                        AdvInsnBuilder.constant(profile.saltState)),
+                AdvInsnBuilder.constant(profile.saltState));
+    }
+
+    private Expr eventToken(InterpretContext context)
+    {
+        return mixCall(
+                context.frameStateKey(),
+                context.frameProgramCounter(),
+                context.frameField(frameLayout.blockIndex),
+                AdvInsnBuilder.constant(profile.saltHandler));
+    }
+
+    private String schedulerDescriptor(boolean depth)
+    {
+        return "(" +
+                vmProgramGenerator.descriptor() +
+                methodFrameGenerator.descriptor() +
+                "[I[Ljava/lang/Object;" +
+                (depth ? "I" : "") +
+                ")I";
+    }
+
+    private String coroutineDescriptor()
+    {
+        return "(" +
+                vmProgramGenerator.descriptor() +
+                methodFrameGenerator.descriptor() +
+                "[I[Ljava/lang/Object;[I)I";
     }
 
     private MethodNode genInstructionIndexMethod()
@@ -500,8 +1355,17 @@ public class VMGenerator extends ClassObj
 
         ib.set(key, callProgramInt(program, programLayout.methodKey.name()));
         ib.set(stateKey, AdvInsnBuilder.field(frame, frameLayout.stateKey));
-        ib.set(virtualPc, layoutValue(program, index, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_PC), stateKey));
-        ib.set(virtualOpcode, AdvInsnBuilder.arrayAt(callProgramArray(program, programLayout.opcodeStream.name()), index));
+        ib.set(virtualPc, layoutValue(program, index, ProtectedVMMethod.LAYOUT_PC, stateKey));
+        if (structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.SELF_MODIFYING)
+        {
+            ib.set(virtualOpcode, AdvInsnBuilder.bitXor(
+                    AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.mutableCode), index),
+                    AdvInsnBuilder.arrayAt(AdvInsnBuilder.field(frame, frameLayout.mutableMasks), index)));
+        }
+        else
+        {
+            ib.set(virtualOpcode, AdvInsnBuilder.arrayAt(callProgramArray(program, programLayout.opcodeStream.name()), index));
+        }
         ib.ifCondition(
                 AdvInsnBuilder.and(
                         AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
@@ -549,7 +1413,7 @@ public class VMGenerator extends ClassObj
         ib.returnValue(layoutValue(
                 program,
                 index,
-                AdvInsnBuilder.constant(field),
+                field,
                 AdvInsnBuilder.field(frame, frameLayout.stateKey)));
         return method;
     }
@@ -574,9 +1438,9 @@ public class VMGenerator extends ClassObj
 
         ib.set(key, callProgramInt(program, programLayout.methodKey.name()));
         ib.set(stateKey, AdvInsnBuilder.field(frame, frameLayout.stateKey));
-        ib.set(virtualPc, layoutValue(program, instructionIndex, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_PC), stateKey));
-        ib.set(operandStart, layoutValue(program, instructionIndex, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_OPERAND_START), stateKey));
-        ib.set(operandCount, layoutValue(program, instructionIndex, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_OPERAND_COUNT), stateKey));
+        ib.set(virtualPc, layoutValue(program, instructionIndex, ProtectedVMMethod.LAYOUT_PC, stateKey));
+        ib.set(operandStart, layoutValue(program, instructionIndex, ProtectedVMMethod.LAYOUT_OPERAND_START, stateKey));
+        ib.set(operandCount, layoutValue(program, instructionIndex, ProtectedVMMethod.LAYOUT_OPERAND_COUNT, stateKey));
         ib.ifCondition(
                 AdvInsnBuilder.greaterOrEqual(operandIndex, operandCount),
                 b -> b.throwValue(AdvInsnBuilder.newObject(
@@ -603,7 +1467,7 @@ public class VMGenerator extends ClassObj
                     b.set(constantMask, layoutValue(
                             program,
                             instructionIndex,
-                            AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_CONSTANT_MASK),
+                            ProtectedVMMethod.LAYOUT_CONSTANT_MASK,
                             stateKey));
                     b.ifCondition(
                             AdvInsnBuilder.notEqual(
@@ -621,6 +1485,218 @@ public class VMGenerator extends ClassObj
         return method;
     }
 
+    private void emitDecodeOpcodeInline(AdvInsnBuilder ib, InterpretContext context, Local target)
+    {
+        Local key = context.intLocal("opcodeMethodKey", 100);
+        Local stateKey = context.intLocal("opcodeStateKey", 101);
+        Local virtualPc = context.intLocal("opcodeVirtualPc", 102);
+        Local virtualOpcode = context.intLocal("encodedOpcode", 103);
+        Local mappedOpcode = context.intLocal("mappedOpcode", 104);
+
+        ib.set(key, callProgramInt(context.program(), programLayout.methodKey.name()));
+        ib.set(stateKey, context.frameStateKey());
+        emitLayoutValueInline(
+                ib,
+                context,
+                virtualPc,
+                ProtectedVMMethod.LAYOUT_PC,
+                105);
+        if (structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.SELF_MODIFYING)
+        {
+            ib.set(virtualOpcode, AdvInsnBuilder.bitXor(
+                    AdvInsnBuilder.arrayAt(
+                            AdvInsnBuilder.field(context.frame(), frameLayout.mutableCode),
+                            context.instructionIndex()),
+                    AdvInsnBuilder.arrayAt(
+                            AdvInsnBuilder.field(context.frame(), frameLayout.mutableMasks),
+                            context.instructionIndex())));
+        }
+        else
+        {
+            ib.set(virtualOpcode, AdvInsnBuilder.arrayAt(
+                    callProgramArray(context.program(), programLayout.opcodeStream.name()),
+                    context.instructionIndex()));
+        }
+        ib.ifCondition(
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                        featureEnabled(context.program(), ProtectedVMMethod.FEATURE_PER_METHOD_OPCODE_MAP)),
+                decode -> decode.set(virtualOpcode, structureXorDecode(
+                        virtualOpcode,
+                        mixCall(
+                                AdvInsnBuilder.bitXor(key, stateKey),
+                                virtualPc,
+                                context.instructionIndex(),
+                                AdvInsnBuilder.constant(profile.saltOpcode)),
+                        profile.saltOpcode)));
+        ib.set(mappedOpcode, AdvInsnBuilder.arrayAt(
+                callProgramArray(context.program(), programLayout.opcodeMap.name()),
+                virtualOpcode));
+        ib.ifCondition(
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                        featureEnabled(context.program(), ProtectedVMMethod.FEATURE_PER_METHOD_OPCODE_MAP)),
+                decode -> decode.set(mappedOpcode, structureXorDecode(
+                        mappedOpcode,
+                        mixCall(
+                                key,
+                                virtualOpcode,
+                                AdvInsnBuilder.constant(profile.saltOpcodeMap),
+                                AdvInsnBuilder.constant(0)),
+                        profile.saltOpcodeMap)));
+        ib.set(target, mappedOpcode);
+    }
+
+    private void emitDecodeOperandInline(
+            AdvInsnBuilder ib,
+            InterpretContext context,
+            Local target)
+    {
+        emitDecodeOperandInline(ib, context, target, 0);
+    }
+
+    private void emitDecodeOperandInline(
+            AdvInsnBuilder ib,
+            InterpretContext context,
+            Local target,
+            int decoderSite)
+    {
+        Local key = context.intLocal("operandMethodKey", 120);
+        Local stateKey = context.intLocal("operandStateKey", 121);
+        Local virtualPc = context.intLocal("operandVirtualPc", 122);
+        Local operandStart = context.intLocal("operandStart", 123);
+        Local operandCount = context.intLocal("operandCount", 124);
+        Local operandPosition = context.intLocal("operandPosition", 125);
+        Local constantMask = context.intLocal("operandConstantMask", 126);
+        Local value = context.intLocal("encodedOperand", 127);
+
+        ib.set(key, callProgramInt(context.program(), programLayout.methodKey.name()));
+        ib.set(stateKey, context.frameStateKey());
+        emitLayoutValueInline(
+                ib,
+                context,
+                virtualPc,
+                ProtectedVMMethod.LAYOUT_PC,
+                128);
+        emitLayoutValueInline(
+                ib,
+                context,
+                operandStart,
+                ProtectedVMMethod.LAYOUT_OPERAND_START,
+                132);
+        emitLayoutValueInline(
+                ib,
+                context,
+                operandCount,
+                ProtectedVMMethod.LAYOUT_OPERAND_COUNT,
+                136);
+        ib.ifCondition(
+                AdvInsnBuilder.greaterOrEqual(context.operandIndex(), operandCount),
+                outOfRange -> outOfRange.throwValue(AdvInsnBuilder.newObject(
+                        "java/lang/IllegalStateException",
+                        stringConcat(
+                                AdvInsnBuilder.constant("Operand out of range "),
+                                context.operandIndex()))));
+        ib.set(operandPosition, AdvInsnBuilder.plus(operandStart, context.operandIndex()));
+        ib.set(value, AdvInsnBuilder.arrayAt(
+                callProgramArray(context.program(), programLayout.operandStream.name()),
+                operandPosition));
+        ib.ifCondition(
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                        featureEnabled(context.program(), ProtectedVMMethod.FEATURE_ENCRYPT_OPERANDS)),
+                decode -> decode.set(value, structureXorDecode(
+                        value,
+                        mixCall(
+                                AdvInsnBuilder.bitXor(
+                                        AdvInsnBuilder.bitXor(key, stateKey),
+                                        context.opcode()),
+                                virtualPc,
+                                context.operandIndex(),
+                                AdvInsnBuilder.bitXor(
+                                        AdvInsnBuilder.constant(profile.saltOperand),
+                                        operandPosition)),
+                        profile.saltOperand ^ decoderSite)));
+        ib.ifCondition(
+                AdvInsnBuilder.and(
+                        AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                        featureEnabled(context.program(), ProtectedVMMethod.FEATURE_BIND_CONSTANTS)),
+                bound -> {
+                    emitLayoutValueInline(
+                            bound,
+                            context,
+                            constantMask,
+                            ProtectedVMMethod.LAYOUT_CONSTANT_MASK,
+                            140);
+                    bound.ifCondition(
+                            AdvInsnBuilder.notEqual(
+                                    AdvInsnBuilder.bitAnd(
+                                            constantMask,
+                                            AdvInsnBuilder.shiftLeft(
+                                                    AdvInsnBuilder.constant(1),
+                                                    context.operandIndex())),
+                                    AdvInsnBuilder.constant(0)),
+                            decode -> decode.set(value, structureXorDecode(
+                                    value,
+                                    mixCall(
+                                            AdvInsnBuilder.bitXor(
+                                                    AdvInsnBuilder.bitXor(key, stateKey),
+                                                    context.opcode()),
+                                            virtualPc,
+                                            context.operandIndex(),
+                                            AdvInsnBuilder.constant(profile.saltConstant)),
+                                    profile.saltConstant ^ decoderSite)));
+                });
+        ib.set(target, value);
+    }
+
+    private void emitLayoutValueInline(
+            AdvInsnBuilder ib,
+            InterpretContext context,
+            Local target,
+            int field,
+            int scratchBase)
+    {
+        Local key = context.intLocal("layoutKey" + scratchBase, scratchBase);
+        Local raw = context.intLocal("layoutRaw" + scratchBase, scratchBase + 1);
+        ib.set(key, callProgramInt(context.program(), programLayout.methodKey.name()));
+        ib.set(raw, AdvInsnBuilder.arrayAt(
+                callProgramArray(context.program(), programLayout.layoutStream.name()),
+                AdvInsnBuilder.plus(
+                        AdvInsnBuilder.multiply(
+                                context.instructionIndex(),
+                                AdvInsnBuilder.constant(ProtectedVMMethod.RECORD_SIZE)),
+                        AdvInsnBuilder.constant(profile.layoutSlot(field)))));
+        ib.set(target, raw);
+        ib.ifCondition(
+                AdvInsnBuilder.notEqual(key, AdvInsnBuilder.constant(0)),
+                decode -> decode.set(target, structureXorDecode(
+                        raw,
+                        mixCall(
+                                AdvInsnBuilder.bitXor(key, context.frameStateKey()),
+                                context.instructionIndex(),
+                                AdvInsnBuilder.constant(profile.layoutSlot(field)),
+                                AdvInsnBuilder.constant(profile.saltLayout)),
+                        profile.saltLayout ^ profile.layoutSlot(field))));
+    }
+
+    private Expr structureXorDecode(Expr value, Expr mask, int siteSalt)
+    {
+        return switch ((profile.decodeVariant ^ structurePlan.structure().ordinal() ^ siteSalt) & 3)
+        {
+            case 0 -> AdvInsnBuilder.bitXor(value, mask);
+            case 1 -> AdvInsnBuilder.bitXor(
+                    AdvInsnBuilder.bitXor(value, AdvInsnBuilder.constant(siteSalt)),
+                    AdvInsnBuilder.bitXor(mask, AdvInsnBuilder.constant(siteSalt)));
+            case 2 -> AdvInsnBuilder.bitNot(AdvInsnBuilder.bitXor(
+                    AdvInsnBuilder.bitNot(value),
+                    mask));
+            default -> AdvInsnBuilder.bitNot(AdvInsnBuilder.bitXor(
+                    value,
+                    AdvInsnBuilder.bitNot(mask)));
+        };
+    }
+
     private MethodNode genLayoutValueMethod()
     {
         MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, vmLayout.layoutValue.name(), vmLayout.layoutValue.descriptor());
@@ -634,7 +1710,9 @@ public class VMGenerator extends ClassObj
 
         ib.set(key, callProgramInt(program, programLayout.methodKey.name()));
         ib.ifCondition(
-                AdvInsnBuilder.equal(field, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_STATE_KEY)),
+                AdvInsnBuilder.equal(
+                        field,
+                        AdvInsnBuilder.constant(profile.layoutSlot(ProtectedVMMethod.LAYOUT_STATE_KEY))),
                 b -> b.returnValue(AdvInsnBuilder.callStatic(
                         vmLayout.owner,
                         vmLayout.stateKey.name(),
@@ -692,22 +1770,82 @@ public class VMGenerator extends ClassObj
         Local instructionIndex = ib.getLocal("instructionIndex", "I", 1);
         Local key = ib.getLocal("methodKey", "I", 2);
         Local raw = ib.getLocal("raw", "I", 3);
+        Local blockCount = ib.getLocal("blockCount", "I", 4);
+        Local blockIndex = ib.getLocal("blockIndex", "I", 5);
+        Local firstSlot = ib.getLocal("firstSlot", "I", 6);
+        Local slotCount = ib.getLocal("slotCount", "I", 7);
+        Local slot = ib.getLocal("stateSlot", "I", 8);
+        Local current = ib.getLocal("currentStateKey", "I", 9);
 
-        ib.set(raw, AdvInsnBuilder.arrayAt(
+        ib.set(key, callProgramInt(program, programLayout.methodKey.name()));
+        ib.set(raw, stateKeyCipherAt(program, instructionIndex));
+        ib.ifCondition(
+                AdvInsnBuilder.equal(key, AdvInsnBuilder.constant(0)),
+                plain -> plain.returnValue(raw));
+        ib.set(blockCount, AdvInsnBuilder.divide(
+                AdvInsnBuilder.arrayLength(callProgramArray(program, programLayout.blockStream.name())),
+                AdvInsnBuilder.constant(ProtectedVMMethod.BLOCK_SIZE)));
+        ib.forLoop(
+                loop -> loop.set(blockIndex, AdvInsnBuilder.constant(0)),
+                AdvInsnBuilder.lessThan(blockIndex, blockCount),
+                loop -> loop.increment(blockIndex, 1),
+                loop -> {
+                    loop.set(firstSlot, blockValue(
+                            program,
+                            blockIndex,
+                            AdvInsnBuilder.constant(ProtectedVMMethod.BLOCK_START_SLOT)));
+                    loop.set(slotCount, blockValue(
+                            program,
+                            blockIndex,
+                            AdvInsnBuilder.constant(ProtectedVMMethod.BLOCK_SLOT_COUNT)));
+                    loop.ifCondition(
+                            AdvInsnBuilder.and(
+                                    AdvInsnBuilder.greaterOrEqual(instructionIndex, firstSlot),
+                                    AdvInsnBuilder.lessThan(
+                                            instructionIndex,
+                                            AdvInsnBuilder.plus(firstSlot, slotCount))),
+                            containing -> {
+                                containing.set(current, AdvInsnBuilder.constant(0));
+                                containing.forLoop(
+                                        chain -> chain.set(slot, firstSlot),
+                                        AdvInsnBuilder.lessOrEqual(slot, instructionIndex),
+                                        chain -> chain.increment(slot, 1),
+                                        chain -> {
+                                            chain.set(raw, stateKeyCipherAt(program, slot));
+                                            chain.ifElse(
+                                                    AdvInsnBuilder.equal(slot, firstSlot),
+                                                    entry -> entry.set(current, AdvInsnBuilder.bitXor(
+                                                            raw,
+                                                            mixCall(
+                                                                    key,
+                                                                    slot,
+                                                                    AdvInsnBuilder.constant(profile.saltState),
+                                                                    AdvInsnBuilder.constant(0)))),
+                                                    linked -> linked.set(current, AdvInsnBuilder.bitXor(
+                                                            raw,
+                                                            mixCall(
+                                                                    AdvInsnBuilder.bitXor(key, current),
+                                                                    slot,
+                                                                    blockIndex,
+                                                                    AdvInsnBuilder.constant(profile.saltState)))));
+                                        });
+                                containing.returnValue(current);
+                            });
+                });
+        ib.returnValue(AdvInsnBuilder.constant(0));
+        return method;
+    }
+
+    private Expr stateKeyCipherAt(Expr program, Expr instructionIndex)
+    {
+        return AdvInsnBuilder.arrayAt(
                 callProgramArray(program, programLayout.layoutStream.name()),
                 AdvInsnBuilder.plus(
-                        AdvInsnBuilder.multiply(instructionIndex, AdvInsnBuilder.constant(ProtectedVMMethod.RECORD_SIZE)),
-                        AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_STATE_KEY))));
-        ib.set(key, callProgramInt(program, programLayout.methodKey.name()));
-        ib.ifCondition(AdvInsnBuilder.equal(key, AdvInsnBuilder.constant(0)), b -> b.returnValue(raw));
-        ib.returnValue(AdvInsnBuilder.bitXor(
-                raw,
-                mixCall(
-                        key,
-                        instructionIndex,
-                        AdvInsnBuilder.constant(profile.saltState),
-                        AdvInsnBuilder.constant(0))));
-        return method;
+                        AdvInsnBuilder.multiply(
+                                instructionIndex,
+                                AdvInsnBuilder.constant(ProtectedVMMethod.RECORD_SIZE)),
+                        AdvInsnBuilder.constant(
+                                profile.layoutSlot(ProtectedVMMethod.LAYOUT_STATE_KEY))));
     }
 
     private MethodNode genInstructionIndexInBlockMethod()
@@ -723,6 +1861,8 @@ public class VMGenerator extends ClassObj
         Local offset = ib.getLocal("offset", "I", 6);
         Local slot = ib.getLocal("slot", "I", 7);
         Local stateKey = ib.getLocal("stateKey", "I", 8);
+        Local key = ib.getLocal("methodKey", "I", 9);
+        Local rawStateKey = ib.getLocal("rawStateKey", "I", 10);
 
         ib.set(blockCount, AdvInsnBuilder.divide(
                 AdvInsnBuilder.arrayLength(callProgramArray(program, programLayout.blockStream.name())),
@@ -734,26 +1874,42 @@ public class VMGenerator extends ClassObj
                 b -> b.returnValue(AdvInsnBuilder.constant(-1)));
         ib.set(firstSlot, blockValue(program, blockIndex, AdvInsnBuilder.constant(ProtectedVMMethod.BLOCK_START_SLOT)));
         ib.set(slotCount, blockValue(program, blockIndex, AdvInsnBuilder.constant(ProtectedVMMethod.BLOCK_SLOT_COUNT)));
+        ib.set(key, callProgramInt(program, programLayout.methodKey.name()));
+        ib.set(stateKey, AdvInsnBuilder.constant(0));
         ib.forLoop(
                 b -> b.set(offset, AdvInsnBuilder.constant(0)),
                 AdvInsnBuilder.lessThan(offset, slotCount),
                 b -> b.increment(offset, 1),
                 b -> {
                     b.set(slot, AdvInsnBuilder.plus(firstSlot, offset));
-                    b.set(stateKey, AdvInsnBuilder.callStatic(
-                            vmLayout.owner,
-                            vmLayout.stateKey.name(),
-                            "I",
-                            program,
-                            slot));
+                    b.set(rawStateKey, stateKeyCipherAt(program, slot));
+                    b.ifElse(
+                            AdvInsnBuilder.equal(key, AdvInsnBuilder.constant(0)),
+                            plain -> plain.set(stateKey, rawStateKey),
+                            protectedState -> protectedState.ifElse(
+                                    AdvInsnBuilder.equal(offset, AdvInsnBuilder.constant(0)),
+                                    entry -> entry.set(stateKey, AdvInsnBuilder.bitXor(
+                                            rawStateKey,
+                                            mixCall(
+                                                    key,
+                                                    slot,
+                                                    AdvInsnBuilder.constant(profile.saltState),
+                                                    AdvInsnBuilder.constant(0)))),
+                                    linked -> linked.set(stateKey, AdvInsnBuilder.bitXor(
+                                            rawStateKey,
+                                            mixCall(
+                                                    AdvInsnBuilder.bitXor(key, stateKey),
+                                                    slot,
+                                                    blockIndex,
+                                                    AdvInsnBuilder.constant(profile.saltState))))));
                     b.ifCondition(
                             AdvInsnBuilder.equal(
-                                    layoutValue(program, slot, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_PC), stateKey),
+                                    layoutValue(program, slot, ProtectedVMMethod.LAYOUT_PC, stateKey),
                                     pc),
                             found -> found.returnValue(slot));
                     b.ifCondition(
                             AdvInsnBuilder.equal(
-                                    layoutValue(program, slot, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_ORIGINAL_PC), stateKey),
+                                    layoutValue(program, slot, ProtectedVMMethod.LAYOUT_ORIGINAL_PC, stateKey),
                                     pc),
                             found -> found.returnValue(slot));
                 });
@@ -793,7 +1949,7 @@ public class VMGenerator extends ClassObj
                 program,
                 index));
         ib.set(stateKey, AdvInsnBuilder.bitXor(stateKey, AdvInsnBuilder.field(frame, frameLayout.integrityKey)));
-        ib.set(blockIndex, layoutValue(program, index, AdvInsnBuilder.constant(ProtectedVMMethod.LAYOUT_BLOCK_INDEX), stateKey));
+        ib.set(blockIndex, layoutValue(program, index, ProtectedVMMethod.LAYOUT_BLOCK_INDEX, stateKey));
         ib.set(AdvInsnBuilder.field(frame, frameLayout.stateKey), stateKey);
         ib.set(AdvInsnBuilder.field(frame, frameLayout.blockIndex), blockIndex);
         ib.returnVoid();
@@ -881,6 +2037,22 @@ public class VMGenerator extends ClassObj
                 }
             }
         }
+        if (structurePlan.schedulerKind() != VMStructurePlan.SchedulerKind.REGISTER)
+        {
+            opcodeSet.remove(Opcs.REGISTER_OP);
+        }
+        if (structurePlan.schedulerKind() != VMStructurePlan.SchedulerKind.DATA_FLOW)
+        {
+            opcodeSet.remove(Opcs.DATA_FLOW_REGION);
+        }
+        if (structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.REGISTER)
+        {
+            opcodeSet.add(Opcs.REGISTER_OP);
+        }
+        if (structurePlan.schedulerKind() == VMStructurePlan.SchedulerKind.DATA_FLOW)
+        {
+            opcodeSet.add(Opcs.DATA_FLOW_REGION);
+        }
         if (!superInstructions.recipes().isEmpty())
         {
             opcodeSet.add(Opcs.SUPER_INSTRUCTION);
@@ -893,8 +2065,8 @@ public class VMGenerator extends ClassObj
 
         List<Opcs> opcodes = new ArrayList<>(opcodeSet);
         opcodes.sort((left, right) -> Integer.compare(
-                opcMutator.toMutated(left),
-                opcMutator.toMutated(right)
+                dispatchOpcode(left),
+                dispatchOpcode(right)
         ));
 
         List<InterpretChunk> chunks = createInterpretChunks(opcodes);
@@ -908,53 +2080,150 @@ public class VMGenerator extends ClassObj
             }
         }
 
-        InterpretContext context = new InterpretContext(
-                className(),
-                frameLayout,
-                programLayout,
-                vmLayout,
-                afterDispatch);
-        List<SwitchCase> cases = new ArrayList<>();
-        for (int i = 0; i < opcodes.size(); i++)
+        List<DispatchEntry> entries = createDispatchEntries(opcodes, slotByOpcode);
+        if (structureGenerator instanceof VMDispatchGenerator dispatchGenerator)
         {
-            Opcs opcode = opcodes.get(i);
+            List<VMDispatchTarget> targets = entries.stream()
+                    .map(entry -> new VMDispatchTarget(
+                            entry.key,
+                            entry.primaryKey,
+                            entry.opcode,
+                            entry.slot.chunkIndex,
+                            entry.slot.opcodeIndex,
+                            interpretChunkName(entry.slot.chunkIndex),
+                            interpretChunkDescriptor()))
+                    .toList();
+            dispatchGenerator.emitDispatch(new VMDispatchGenerationContext(
+                    structureGeneration,
+                    ib,
+                    interpretContext(afterDispatch),
+                    targets,
+                    afterDispatch,
+                    unknownOpcode,
+                    (instructions, runtime, target, instructionIndex) -> emitChunkCall(
+                            instructions,
+                            runtime,
+                            new InterpretChunkSlot(target.handlerGroup(), target.handlerIndex()),
+                            instructionIndex),
+                    this::setDispatchSelector,
+                    dispatchDescriptor()));
+            return;
+        }
+        throw new IllegalStateException(
+                "VM structure has no dedicated dispatch generator: " + structureGenerator.structure());
+    }
+
+    private List<DispatchEntry> createDispatchEntries(
+            List<Opcs> opcodes,
+            Map<Opcs, InterpretChunkSlot> slotByOpcode)
+    {
+        List<DispatchEntry> entries = new ArrayList<>();
+        for (Opcs opcode : opcodes)
+        {
             InterpretChunkSlot slot = slotByOpcode.get(opcode);
             if (slot == null)
             {
                 throw new IllegalStateException("Opcode has no interpret chunk slot: " + opcode);
             }
-            int mutatedOpcode = opcMutator.toMutated(opcode);
-            java.util.function.Consumer<AdvInsnBuilder> dispatchBody = b -> {
-                b.directCall(AdvInsnBuilder.callStatic(
-                        className(),
-                        interpretChunkName(slot.chunkIndex),
-                        "V",
-                        context.program(),
-                        context.frame(),
-                        context.code(),
-                        context.constants(),
-                        context.opcode(),
-                        AdvInsnBuilder.constant(slot.opcodeIndex),
-                        context.instructionIndex()));
-                b.gotoLabel(afterDispatch);
-            };
-            cases.add(AdvInsnBuilder.switchCase(mutatedOpcode, dispatchBody));
-            int dispatchKey = dispatchKey(mutatedOpcode);
-            if (dispatchKey != mutatedOpcode)
+            int primaryKey = dispatchOpcode(opcode);
+            entries.add(new DispatchEntry(primaryKey, primaryKey, opcode, slot));
+            int alternateKey = dispatchKey(primaryKey);
+            if (alternateKey != primaryKey)
             {
-                cases.add(AdvInsnBuilder.switchCase(dispatchKey, dispatchBody));
+                entries.add(new DispatchEntry(alternateKey, primaryKey, opcode, slot));
             }
         }
-        Local selector = context.intLocal("dispatchSelector", InterpretContext.DISPATCH_SELECTOR);
+        return List.copyOf(entries);
+    }
+
+    private void setDispatchSelector(AdvInsnBuilder ib, InterpretContext context, Local selector)
+    {
         ib.set(selector, context.opcode());
         ib.ifCondition(
                 featureEnabled(context.program(), ProtectedVMMethod.FEATURE_OBFUSCATE_DISPATCH),
-                b -> b.set(selector, AdvInsnBuilder.callStatic(className(), vmLayout.dispatchKey.name(), "I", context.opcode())));
-        ib.switchLookup(selector, b -> b.gotoLabel(unknownOpcode), cases.toArray(SwitchCase[]::new));
+                b -> b.set(selector, AdvInsnBuilder.callStatic(
+                        className(),
+                        vmLayout.dispatchKey.name(),
+                        "I",
+                        context.opcode())));
+    }
+
+    private void emitChunkCall(
+            AdvInsnBuilder ib,
+            InterpretContext context,
+            InterpretChunkSlot slot,
+            Expr instructionIndex)
+    {
+        ib.directCall(AdvInsnBuilder.callStatic(
+                className(),
+                interpretChunkName(slot.chunkIndex),
+                "V",
+                semanticHandlerArguments(
+                        context,
+                        AdvInsnBuilder.constant(slot.opcodeIndex),
+                        instructionIndex)));
+    }
+
+    private InterpretContext interpretContext(LabelNode loopStart)
+    {
+        return new InterpretContext(
+                className(),
+                frameLayout,
+                programLayout,
+                vmLayout,
+                loopStart,
+                config.vmStructure == VMStructure.SIMPLE_DISPATCH ? null : this::emitDecodeOperandInline);
+    }
+
+    private int dispatchOpcode(Opcs opcode)
+    {
+        int mutated = opcMutator.toMutated(opcode);
+        return structurePlan.usesDirectTokens() ? profile.directHandlerToken(mutated) : mutated;
+    }
+
+    private String structureMethodName(String baseName, String descriptor)
+    {
+        return namer.method(className(), baseName, descriptor);
+    }
+
+    private String structureClassName(String baseName)
+    {
+        return namer.className(
+                classPackage(className()),
+                classSimpleName(className()) + '$' + baseName);
+    }
+
+    private static String classPackage(String className)
+    {
+        int slash = className.lastIndexOf('/');
+        return slash < 0 ? "" : className.substring(0, slash);
+    }
+
+    private static String classSimpleName(String className)
+    {
+        int slash = className.lastIndexOf('/');
+        return slash < 0 ? className : className.substring(slash + 1);
+    }
+
+    private String dispatchDescriptor()
+    {
+        return "(" +
+                vmProgramGenerator.descriptor() +
+                methodFrameGenerator.descriptor() +
+                "[I[Ljava/lang/Object;II)I";
     }
 
     private List<InterpretChunk> createInterpretChunks(List<Opcs> opcodes)
     {
+        if (config.vmStructure != VMStructure.SIMPLE_DISPATCH)
+        {
+            List<InterpretChunk> handlers = new ArrayList<>(opcodes.size());
+            for (int index = 0; index < opcodes.size(); index++)
+            {
+                handlers.add(newInterpretChunk(index, List.of(opcodes.get(index))));
+            }
+            return List.copyOf(handlers);
+        }
         List<InterpretChunk> chunks = new ArrayList<>();
         List<Opcs> current = new ArrayList<>();
         int chunkIndex = 0;
@@ -1041,20 +2310,54 @@ public class VMGenerator extends ClassObj
     private MethodNode genInterpretChunkMethod(int chunkIndex, List<Opcs> opcodes)
     {
         MethodNode method = MethodUtils.newMethodNode(
-                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                config.vmStructure == VMStructure.SIMPLE_DISPATCH
+                        ? new Acc[]{Acc.PRIVATE, Acc.STATIC}
+                        : new Acc[]{Acc.STATIC},
                 interpretChunkName(chunkIndex),
                 interpretChunkDescriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        if (config.vmStructure != VMStructure.SIMPLE_DISPATCH)
+        {
+            normalizeSemanticHandlerParameters(ib);
+        }
         Local opcodeIndex = ib.getLocal("opcodeIndex", "I", InterpretContext.RIGHT_VALUE);
         Local passedInstructionIndex = ib.getLocal("passedInstructionIndex", "I", 6);
+        int decoderSite = profile.decodeVariant ^ chunkIndex * 0x45D9F3B ^
+                (opcodes.isEmpty() ? 0 : opcodes.getFirst().ordinal());
         InterpretContext context = new InterpretContext(
                 className(),
                 frameLayout,
                 programLayout,
                 vmLayout,
-                null);
+                null,
+                config.vmStructure == VMStructure.SIMPLE_DISPATCH
+                        ? null
+                        : (instructions, runtime, target) -> emitDecodeOperandInline(
+                                instructions,
+                                runtime,
+                                target,
+                                decoderSite));
         ib.set(context.instructionIndex(), passedInstructionIndex);
         ib.set(context.operandIndex(), AdvInsnBuilder.constant(0));
+        if (opcodes.size() == 1)
+        {
+            Opcs opcode = opcodes.getFirst();
+            if (opcode == Opcs.SUPER_INSTRUCTION)
+            {
+                generateSuperInstruction(ib, context);
+            }
+            else
+            {
+                InterpretBranch branch = branches.get(opcode);
+                if (branch == null)
+                {
+                    throw new IllegalStateException("Missing interpret branch: " + opcode);
+                }
+                branch.generate(ib, context, opcode);
+            }
+            ib.returnVoid();
+            return method;
+        }
         @SuppressWarnings("unchecked")
         java.util.function.Consumer<AdvInsnBuilder>[] cases = new java.util.function.Consumer[opcodes.size()];
         for (int i = 0; i < opcodes.size(); i++)
@@ -1120,16 +2423,24 @@ public class VMGenerator extends ClassObj
         MethodNode method = MethodUtils.newMethodNode(
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
                 superInstructionChunkName(chunkIndex),
-                interpretChunkDescriptor());
+                superInstructionChunkDescriptor());
         AdvInsnBuilder ib = new AdvInsnBuilder(method);
         Local recipeIndex = ib.getLocal("recipeIndex", "I", InterpretContext.RIGHT_VALUE);
         Local passedInstructionIndex = ib.getLocal("passedInstructionIndex", "I", 6);
+        int decoderSite = profile.decodeVariant ^ chunkIndex * 0x27D4EB2D;
         InterpretContext context = new InterpretContext(
                 className(),
                 frameLayout,
                 programLayout,
                 vmLayout,
-                null);
+                null,
+                config.vmStructure == VMStructure.SIMPLE_DISPATCH
+                        ? null
+                        : (instructions, runtime, target) -> emitDecodeOperandInline(
+                                instructions,
+                                runtime,
+                                target,
+                                decoderSite));
         ib.set(context.instructionIndex(), passedInstructionIndex);
         ib.set(context.operandIndex(), AdvInsnBuilder.constant(1));
 
@@ -1160,14 +2471,19 @@ public class VMGenerator extends ClassObj
     {
         return interpretChunkNames.computeIfAbsent(
                 chunkIndex,
-                index -> namer.method(className(), "interpretChunk$" + index, interpretChunkDescriptor()));
+                index -> namer.method(
+                        className(),
+                        config.vmStructure == VMStructure.SIMPLE_DISPATCH
+                                ? "interpretChunk$" + index
+                                : "handler$" + config.vmStructure.name().toLowerCase(Locale.ROOT) + '$' + index,
+                        interpretChunkDescriptor()));
     }
 
     private String superInstructionChunkName(int chunkIndex)
     {
         return superInstructionChunkNames.computeIfAbsent(
                 chunkIndex,
-                index -> namer.method(className(), "superInstructionChunk$" + index, interpretChunkDescriptor()));
+                index -> namer.method(className(), "superInstructionChunk$" + index, superInstructionChunkDescriptor()));
     }
 
     private String interpretHandlerDescriptor()
@@ -1180,10 +2496,139 @@ public class VMGenerator extends ClassObj
 
     private String interpretChunkDescriptor()
     {
+        if (config.vmStructure == VMStructure.SIMPLE_DISPATCH)
+        {
+            return superInstructionChunkDescriptor();
+        }
+        int shape = structurePlan.structure().ordinal();
+        StringBuilder descriptor = new StringBuilder("(");
+        for (SemanticArgument argument : semanticCoreOrder(shape))
+        {
+            descriptor.append(semanticArgumentDescriptor(argument));
+        }
+        for (int bit = 0; bit < 5; bit++)
+        {
+            descriptor.append((shape & 1 << bit) == 0 ? 'I' : 'J');
+        }
+        return descriptor.append(")V").toString();
+    }
+
+    private String superInstructionChunkDescriptor()
+    {
         return "(" +
                 vmProgramGenerator.descriptor() +
                 methodFrameGenerator.descriptor() +
                 "[I[Ljava/lang/Object;III)V";
+    }
+
+    private Expr[] semanticHandlerArguments(
+            InterpretContext context,
+            Expr opcodeIndex,
+            Expr instructionIndex)
+    {
+        if (config.vmStructure == VMStructure.SIMPLE_DISPATCH)
+        {
+            return new Expr[]{
+                    context.program(),
+                    context.frame(),
+                    context.code(),
+                    context.constants(),
+                    context.opcode(),
+                    opcodeIndex,
+                    instructionIndex
+            };
+        }
+        int shape = structurePlan.structure().ordinal();
+        Map<SemanticArgument, Expr> core = new EnumMap<>(SemanticArgument.class);
+        core.put(SemanticArgument.PROGRAM, context.program());
+        core.put(SemanticArgument.FRAME, context.frame());
+        core.put(SemanticArgument.CODE, context.code());
+        core.put(SemanticArgument.CONSTANTS, context.constants());
+        core.put(SemanticArgument.OPCODE, context.opcode());
+        core.put(SemanticArgument.OPCODE_INDEX, opcodeIndex);
+        core.put(SemanticArgument.INSTRUCTION_INDEX, instructionIndex);
+        List<Expr> arguments = new ArrayList<>();
+        for (SemanticArgument argument : semanticCoreOrder(shape))
+        {
+            arguments.add(core.get(argument));
+        }
+        for (int bit = 0; bit < 5; bit++)
+        {
+            arguments.add((shape & 1 << bit) == 0
+                    ? AdvInsnBuilder.constant(profile.decodeVariant ^ bit)
+                    : AdvInsnBuilder.constant(
+                            ((long) profile.decodeVariant << 32) ^
+                            (0xD1B54A32D192ED03L + bit)));
+        }
+        return arguments.toArray(Expr[]::new);
+    }
+
+    private void normalizeSemanticHandlerParameters(AdvInsnBuilder ib)
+    {
+        int shape = structurePlan.structure().ordinal();
+        List<SemanticArgument> order = semanticCoreOrder(shape);
+        Map<SemanticArgument, Local> copies = new EnumMap<>(SemanticArgument.class);
+        for (int slot = 0; slot < order.size(); slot++)
+        {
+            SemanticArgument argument = order.get(slot);
+            Local source = ib.getLocal(
+                    "encoded" + argument,
+                    semanticArgumentType(argument),
+                    slot);
+            Local copy = ib.getLocal(
+                    "semantic" + argument,
+                    semanticArgumentType(argument),
+                    160 + argument.ordinal());
+            ib.set(copy, source);
+            copies.put(argument, copy);
+        }
+        for (SemanticArgument argument : SemanticArgument.values())
+        {
+            ib.set(
+                    ib.getLocal(
+                            "canonical" + argument,
+                            semanticArgumentType(argument),
+                            argument.ordinal()),
+                    copies.get(argument));
+        }
+    }
+
+    private String semanticArgumentDescriptor(SemanticArgument argument)
+    {
+        return switch (argument)
+        {
+            case PROGRAM -> vmProgramGenerator.descriptor();
+            case FRAME -> methodFrameGenerator.descriptor();
+            case CODE -> "[I";
+            case CONSTANTS -> "[Ljava/lang/Object;";
+            case OPCODE, OPCODE_INDEX, INSTRUCTION_INDEX -> "I";
+        };
+    }
+
+    private String semanticArgumentType(SemanticArgument argument)
+    {
+        return switch (argument)
+        {
+            case PROGRAM -> programLayout.owner;
+            case FRAME -> frameLayout.owner;
+            case CODE -> "[I";
+            case CONSTANTS -> "[Ljava/lang/Object;";
+            case OPCODE, OPCODE_INDEX, INSTRUCTION_INDEX -> "I";
+        };
+    }
+
+    private static List<SemanticArgument> semanticCoreOrder(int structureShape)
+    {
+        List<SemanticArgument> remaining = new ArrayList<>(List.of(SemanticArgument.values()));
+        List<SemanticArgument> order = new ArrayList<>(remaining.size());
+        int rank = structureShape;
+        while (!remaining.isEmpty())
+        {
+            int selected = Math.floorMod(rank, remaining.size());
+            rank /= remaining.size();
+            order.add(remaining.remove(selected));
+        }
+        return order;
     }
 
     private void generateUnknownOpcode(AdvInsnBuilder ib)
@@ -1218,7 +2663,7 @@ public class VMGenerator extends ClassObj
                 codeId,
                 receiver,
                 arguments,
-                AdvInsnBuilder.constant(0)));
+                AdvInsnBuilder.constant(integrityCapability)));
         return methodNode;
     }
 
@@ -1251,7 +2696,9 @@ public class VMGenerator extends ClassObj
                 frameLayout.owner,
                 AdvInsnBuilder.callVirtual(program, programLayout.owner, programLayout.maxLocals.name(), "I"),
                 AdvInsnBuilder.callVirtual(program, programLayout.owner, programLayout.maxStack.name(), "I")));
-        ib.set(AdvInsnBuilder.field(frame, frameLayout.integrityKey), integrityKey);
+        ib.set(
+                AdvInsnBuilder.field(frame, frameLayout.integrityKey),
+                AdvInsnBuilder.bitXor(integrityKey, AdvInsnBuilder.constant(integrityCapability)));
 
         // Instance methods reserve locals[0] for the receiver.
         ib.ifElse(
@@ -1319,7 +2766,7 @@ public class VMGenerator extends ClassObj
                 codeIds,
                 receiver,
                 arguments,
-                AdvInsnBuilder.constant(0)));
+                AdvInsnBuilder.constant(integrityCapability)));
         return methodNode;
     }
 
@@ -1352,7 +2799,9 @@ public class VMGenerator extends ClassObj
                 frameLayout.owner,
                 AdvInsnBuilder.callVirtual(firstProgram, programLayout.owner, programLayout.maxLocals.name(), "I"),
                 AdvInsnBuilder.callVirtual(firstProgram, programLayout.owner, programLayout.maxStack.name(), "I")));
-        ib.set(AdvInsnBuilder.field(frame, frameLayout.integrityKey), integrityKey);
+        ib.set(
+                AdvInsnBuilder.field(frame, frameLayout.integrityKey),
+                AdvInsnBuilder.bitXor(integrityKey, AdvInsnBuilder.constant(integrityCapability)));
 
         ib.ifElse(
                 AdvInsnBuilder.notNull(receiver),
@@ -2646,6 +4095,7 @@ public class VMGenerator extends ClassObj
                 "synchronizedMap",
                 "java/util/Map",
                 AdvInsnBuilder.cast(AdvInsnBuilder.newObject("java/util/WeakHashMap"), "java/util/Map")));
+        structureGeneration.emitClassInitializers(ib);
         ib.returnVoid();
         return initMethod;
     }
@@ -2703,7 +4153,7 @@ public class VMGenerator extends ClassObj
                 AdvInsnBuilder.constant(0));
     }
 
-    private Expr layoutValue(Expr program, Expr instructionIndex, Expr field, Expr stateKey)
+    private Expr layoutValue(Expr program, Expr instructionIndex, int logicalField, Expr stateKey)
     {
         return AdvInsnBuilder.callStatic(
                 className(),
@@ -2711,7 +4161,7 @@ public class VMGenerator extends ClassObj
                 "I",
                 program,
                 instructionIndex,
-                field,
+                AdvInsnBuilder.constant(profile.layoutSlot(logicalField)),
                 stateKey);
     }
 
@@ -3076,11 +4526,30 @@ public class VMGenerator extends ClassObj
         }
     }
 
+    private enum SemanticArgument
+    {
+        PROGRAM,
+        FRAME,
+        CODE,
+        CONSTANTS,
+        OPCODE,
+        OPCODE_INDEX,
+        INSTRUCTION_INDEX
+    }
+
     private record InterpretChunk(int index, List<Opcs> opcodes, MethodNode method)
     {
     }
 
     private record InterpretChunkSlot(int chunkIndex, int opcodeIndex)
+    {
+    }
+
+    private record DispatchEntry(
+            int key,
+            int primaryKey,
+            Opcs opcode,
+            InterpretChunkSlot slot)
     {
     }
 

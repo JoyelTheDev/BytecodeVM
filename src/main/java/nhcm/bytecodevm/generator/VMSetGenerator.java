@@ -2,12 +2,14 @@ package nhcm.bytecodevm.generator;
 
 import lombok.Getter;
 import nhcm.bytecodevm.config.BytecodeVMConfig;
+import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.data.CompiledMethod;
 import nhcm.bytecodevm.data.VMIntegrityPlan;
 import nhcm.bytecodevm.data.vminsn.VMInstruction;
 import nhcm.bytecodevm.data.vminsn.VMMethod;
 import nhcm.bytecodevm.data.VirtualizationResult;
 import nhcm.bytecodevm.generator.integrity.VMIntegrityGenerator;
+import nhcm.bytecodevm.generator.integrity.IntegrityEntryTransformer;
 import nhcm.bytecodevm.generator.globalclass.MethodFrameGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
@@ -16,6 +18,7 @@ import nhcm.bytecodevm.generator.transformer.MethodsReplacer;
 import nhcm.bytecodevm.generator.virtualization.CodePoolGenerator;
 import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionRegistry;
 import nhcm.bytecodevm.generator.virtualization.VMGenerator;
+import nhcm.bytecodevm.generator.virtualization.VMMethodSegmenter;
 import nhcm.bytecodevm.generator.virtualization.VMObfProfile;
 import nhcm.bytecodevm.tools.JarTransformer;
 import nhcm.bytecodevm.tools.OpcMutator;
@@ -50,15 +53,17 @@ public class VMSetGenerator
     @Getter
     private final VMCodePoolGenerator vmCodePoolGenerator;
     private final VMMethodCompiler compiler;
-    private final InvocationBridgeGenerator invocationBridgeGenerator = new InvocationBridgeGenerator();
+    private final InvocationBridgeGenerator invocationBridgeGenerator;
     private final List<CompiledMethod> compiledMethods = new ArrayList<>();
     private final List<CompiledMethod> codePoolMethods = new ArrayList<>();
     @Getter
     private final List<CodePoolGenerator> codePoolGenerators = new ArrayList<>();
     private final BytecodeVMConfig config;
+    public final VMStructure vmStructure;
     private final GeneratedMemberNamer namer;
     private final VMObfProfile protectionProfile;
     private final SuperInstructionRegistry superInstructions;
+    private final int integrityCapability;
 
     public VMSetGenerator(
             String name, String location,
@@ -86,10 +91,13 @@ public class VMSetGenerator
         this.methodFrameGenerator = methodFrameGenerator;
         this.vmProgramGenerator = vmProgramGenerator;
         this.vmCodePoolGenerator = vmCodePoolGenerator;
-        this.config = config;
+        this.config = config.resolveVMStructure();
+        this.vmStructure = this.config.vmStructure;
+        this.integrityCapability = nonZeroRandom();
         this.namer = namer;
+        this.invocationBridgeGenerator = new InvocationBridgeGenerator(namer);
         this.protectionProfile = VMObfProfile.random();
-        this.superInstructions = new SuperInstructionRegistry(config.superInstructionMaxHandlers);
+        this.superInstructions = new SuperInstructionRegistry(this.config.superInstructionMaxHandlers);
         this.compiler = new VMMethodCompiler(opcMutator);
     }
 
@@ -155,7 +163,7 @@ public class VMSetGenerator
         reportProgress(progress, completedSteps, totalSteps, "Built code pools");
 
         reportProgress(progress, completedSteps, totalSteps, "Generating VM");
-        ClassNode vmClass = new VMGenerator(
+        VMGenerator vmGenerator = new VMGenerator(
                 vmClassName,
                 codePoolGenerators,
                 opcMutator,
@@ -165,7 +173,10 @@ public class VMSetGenerator
                 config,
                 namer,
                 protectionProfile,
-                superInstructions).getClassNode();
+                superInstructions,
+                integrityCapability);
+        ClassNode vmClass = vmGenerator.getClassNode();
+        List<ClassNode> vmAuxiliaryClasses = vmGenerator.getAuxiliaryClasses();
         completedSteps++;
         reportProgress(progress, completedSteps, totalSteps, "Generated VM");
 
@@ -175,14 +186,25 @@ public class VMSetGenerator
             codePoolClasses.add(codePoolGenerator.getClassNode());
         }
 
-        IntegrityBuild integrityBuild = buildIntegrity(serializationContext, vmClass, codePoolClasses);
+        IntegrityBuild integrityBuild = buildIntegrity(
+                serializationContext,
+                vmClass,
+                codePoolClasses,
+                vmAuxiliaryClasses);
 
         reportProgress(progress, completedSteps, totalSteps, "Replacing methods");
+        Set<MethodNode> integrityProtectedMethods = selectIntegrityProtectedMethods(integrityBuild.plan());
         Map<String, ClassNode> transformedTargets = new MethodsReplacer(
                 compiledMethods,
                 vmClassName,
-                integrityBuild.plan()).transform();
-        VirtualizationResult integrityResult = virtualizeIntegrityWrappers(integrityBuild);
+                integrityBuild.plan(),
+                integrityProtectedMethods).transform();
+        IntegrityEntryTransformer.Result integrityEntries = prepareIntegrityEntries(
+                integrityBuild,
+                integrityProtectedMethods);
+        VirtualizationResult integrityResult = virtualizeIntegrityDerivation(
+                integrityBuild,
+                integrityEntries);
         if (integrityResult != null)
         {
             transformedTargets.putAll(integrityResult.transformedTarget);
@@ -191,6 +213,10 @@ public class VMSetGenerator
         reportProgress(progress, completedSteps, totalSteps, "Replaced methods");
 
         List<ClassNode> generatedClasses = new ArrayList<>(codePoolClasses);
+        generatedClasses.add(methodFrameGenerator.getClassNode());
+        generatedClasses.add(vmProgramGenerator.getClassNode());
+        generatedClasses.add(vmCodePoolGenerator.getClassNode());
+        generatedClasses.addAll(vmAuxiliaryClasses);
         if (integrityResult != null)
         {
             generatedClasses.add(integrityResult.vmClass);
@@ -202,12 +228,14 @@ public class VMSetGenerator
     private IntegrityBuild buildIntegrity(
             JarTransformer.JarContext serializationContext,
             ClassNode vmClass,
-            List<ClassNode> codePoolClasses)
+            List<ClassNode> codePoolClasses,
+            List<ClassNode> vmAuxiliaryClasses)
     {
-        if (!config.vmIntegrityCheck ||
-            config.vmIntegrityCheckRatio <= 0.0D ||
-            serializationContext == null ||
-            compiledMethods.isEmpty())
+        boolean hasProtectedMethod = compiledMethods.stream().anyMatch(method ->
+                method.config != null &&
+                method.config.vmIntegrityCheck &&
+                method.config.vmIntegrityCheckRatio > 0.0D);
+        if (!hasProtectedMethod || serializationContext == null || compiledMethods.isEmpty())
         {
             return IntegrityBuild.empty();
         }
@@ -217,6 +245,10 @@ public class VMSetGenerator
         addHashClass(hashClassesByName, vmProgramGenerator.getClassNode());
         addHashClass(hashClassesByName, vmCodePoolGenerator.getClassNode());
         addHashClass(hashClassesByName, vmClass);
+        for (ClassNode auxiliaryClass : vmAuxiliaryClasses)
+        {
+            addHashClass(hashClassesByName, auxiliaryClass);
+        }
         for (ClassNode codePoolClass : codePoolClasses)
         {
             addHashClass(hashClassesByName, codePoolClass);
@@ -245,13 +277,51 @@ public class VMSetGenerator
         VMIntegrityGenerator generator = new VMIntegrityGenerator(
                 carrierName,
                 targets,
+                integrityCapability,
                 config.vmIntegrityCheckRatio,
+                config.vmIntegrityRecheckInterval,
                 namer);
 
-        return new IntegrityBuild(generator.plan(), generator.classNode(), generator.deriveMethod());
+        return new IntegrityBuild(generator.plan(), generator.classNode(), generator.derivationMethods());
     }
 
-    private VirtualizationResult virtualizeIntegrityWrappers(IntegrityBuild integrityBuild)
+    private Set<MethodNode> selectIntegrityProtectedMethods(VMIntegrityPlan plan)
+    {
+        Set<MethodNode> selected = Collections.newSetFromMap(new IdentityHashMap<>());
+        if (plan == null)
+        {
+            return selected;
+        }
+        for (CompiledMethod method : compiledMethods)
+        {
+            BytecodeVMConfig methodConfig = method.config == null ? config : method.config;
+            if (methodConfig.vmIntegrityCheck &&
+                RandomUtils.randomDouble() <= methodConfig.vmIntegrityCheckRatio)
+            {
+                selected.add(method.source);
+            }
+        }
+        return selected;
+    }
+
+    private IntegrityEntryTransformer.Result prepareIntegrityEntries(
+            IntegrityBuild integrityBuild,
+            Set<MethodNode> protectedMethods)
+    {
+        if (integrityBuild.plan() == null || protectedMethods.isEmpty())
+        {
+            return IntegrityEntryTransformer.Result.empty();
+        }
+        return new IntegrityEntryTransformer(
+                integrityBuild.carrierClass(),
+                integrityBuild.plan(),
+                vmClassName,
+                namer).transform(compiledMethods, protectedMethods);
+    }
+
+    private VirtualizationResult virtualizeIntegrityDerivation(
+            IntegrityBuild integrityBuild,
+            IntegrityEntryTransformer.Result integrityEntries)
     {
         if (integrityBuild.plan() == null)
         {
@@ -267,11 +337,14 @@ public class VMSetGenerator
                 vmCodePoolGenerator,
                 config.integrityConfig(),
                 namer);
-        for (CompiledMethod compiledMethod : compiledMethods)
+        for (IntegrityEntryTransformer.GeneratedColdEntry coldEntry : integrityEntries.coldEntries())
         {
-            integrityVm.addMethod(compiledMethod.source, compiledMethod.owner);
+            integrityVm.addMethod(coldEntry.method(), coldEntry.owner());
         }
-        integrityVm.addMethod(integrityBuild.deriveMethod(), integrityBuild.carrierClass());
+        for (MethodNode derivationMethod : integrityBuild.derivationMethods())
+        {
+            integrityVm.addMethod(derivationMethod, integrityBuild.carrierClass());
+        }
         return integrityVm.compile();
     }
 
@@ -457,19 +530,11 @@ public class VMSetGenerator
             int from,
             int to)
     {
-        int startPc = instructions.get(from).programCounter;
-        int endPc = instructions.get(to - 1).nextProgramCounter;
-        int codeStart = startPc - method.vmMethod.pcBase;
-        int codeEnd = endPc - method.vmMethod.pcBase;
-        VMMethod segmentMethod = new VMMethod(
-                Arrays.copyOfRange(method.vmMethod.code, codeStart, codeEnd),
-                method.vmMethod.constants,
-                method.vmMethod.exceptionHandlers,
-                method.vmMethod.maxLocals,
-                method.vmMethod.maxStack,
-                method.vmMethod.getOpcMutator(),
-                startPc,
-                method.vmMethod.methodEndPc);
+        VMMethod segmentMethod = VMMethodSegmenter.segment(
+                method.vmMethod,
+                instructions,
+                from,
+                to);
         int codeId = generateUniqueCodeId();
         return new CompiledMethod(
                 method.owner,
@@ -527,11 +592,11 @@ public class VMSetGenerator
         return !methodsToObfuscate.isEmpty();
     }
 
-    private record IntegrityBuild(VMIntegrityPlan plan, ClassNode carrierClass, MethodNode deriveMethod)
+    private record IntegrityBuild(VMIntegrityPlan plan, ClassNode carrierClass, List<MethodNode> derivationMethods)
     {
         private static IntegrityBuild empty()
         {
-            return new IntegrityBuild(null, null, null);
+            return new IntegrityBuild(null, null, List.of());
         }
     }
 

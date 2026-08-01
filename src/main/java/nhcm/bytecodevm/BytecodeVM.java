@@ -17,48 +17,79 @@ public class BytecodeVM
     private static final Logger logger = LoggerFactory.getLogger(BytecodeVM.class);
     private static final AtomicBoolean terminating = new AtomicBoolean(false);
 
-    private static final String version = "1.4.0";
+    private static final String version = "2.0.0";
 
     private static final String defaultConfig = """
-            {
-              "input": "./input.jar",
-              "output": "./output.jar",
-              "createMode": "ONE_FOR_ALL", // ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
-              "location": "ONE_PACKAGE", // SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
-              "mutateMode": "ALL_RANDOM_INT", // ALL_RANDOM_INT, ALL_RESORT, ALL_AUTO_CHOOSE, NO_CHANGE
-              "renameMode": "DISABLE", // ENABLE, DISABLE
-              "interpretMode": "SAVE_ONLY_REQUIRED_INSTRUCTION", // SAVE_ALL_INSTRUCTION, SAVE_ONLY_REQUIRED_INSTRUCTION
-              "protectCodePool": true,
-              "virtualizeInstructionAddresses": true,
-              "encryptOperands": true,
-              "perMethodOpcodeMap": true,
-              "shuffleConstants": true,
-              "bindConstantsToOperands": true,
-              "splitCodeStreams": true,
-              "shuffleInstructionBlocks": true,
-              "obfuscateDispatch": true,
-              "dynamicCodePoolBuild": true,
-              "dynamicStateKey": true,
-              "virtualControlFlowGraph": true,
-              "constantFix": true,
-              "includeMethodsCalledWithin": false,
-              "excludeMethodsCalledWithin": false,
-              "virtualizeInvocationBridges": true,
-              "vmIntegrityCheck": true,
-              "vmIntegrityCheckRatio": 1.0,
-              "superInstruction": true,
-              "superInstructionCombineRange": [2, 5],
-              "superInstructionMode": "HYBRID", // RANDOM, PATTERN, HYBRID
-              "superInstructionMaxHandlers": 128,
-              "superInstructionMinFrequency": 2,
-              "vmCount": 4,
-              "includes": {
-                "all": ["*", "* *(*)*"]
-              },
-              "exclusions": {
-                "all": ["* <init>(*)V"]
-              }
-            }
+            # Relative paths are resolved from the current working directory.
+            input: ./input.jar
+            output: ./output.jar
+
+            # VM allocation and placement.
+            # createMode: ONE_FOR_ALL, PER_METHOD, PER_CLASS, PER_PACKAGE
+            createMode: ONE_FOR_ALL
+            # location: SAME_PACKAGE_AS_TARGET, NEW_PACKAGE, ONE_PACKAGE
+            location: ONE_PACKAGE
+            # renameMode renames generated VM artifacts only.
+            renameMode: DISABLE
+            # interpretMode: SAVE_ALL_INSTRUCTION, SAVE_ONLY_REQUIRED_INSTRUCTION
+            interpretMode: SAVE_ONLY_REQUIRED_INSTRUCTION
+            # Automatic tiers:
+            #   LOW    -> SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH
+            #   MEDIUM -> THREADED_DIRECT, THREADED_INDIRECT, CALL_THREADED, RECURSIVE,
+            #             CONTINUATION_PASSING, OBJECT, REGISTER_BASED
+            #   HIGH   -> POLYMORPHIC, SELF_MODIFYING, DATA_FLOW, GRAPH, FSM, EVENT, COROUTINE
+            # Concrete VM structures:
+            #   SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
+            #   THREADED_DIRECT, THREADED_INDIRECT, CALL_THREADED, RECURSIVE,
+            #   CONTINUATION_PASSING, OBJECT, POLYMORPHIC, SELF_MODIFYING,
+            #   REGISTER_BASED, DATA_FLOW, GRAPH, FSM, EVENT, COROUTINE
+            vmStructure: HIGH
+            vmCount: 4
+
+            # CodePool, bytecode encoding, and virtual control flow protection.
+            protectCodePool: true
+            virtualizeInstructionAddresses: true
+            encryptOperands: true
+            perMethodOpcodeMap: true
+            shuffleConstants: true
+            bindConstantsToOperands: true
+            splitCodeStreams: true
+            shuffleInstructionBlocks: true
+            obfuscateDispatch: true
+            dynamicCodePoolBuild: true
+            dynamicStateKey: true
+            virtualControlFlowGraph: true
+
+            # Input transformations and call-graph expansion.
+            constantFix: true
+            # Removes BytecodeVM SDK annotations from the output JAR.
+            removeAnnotations: true
+            includeMethodsCalledWithin: false
+            excludeMethodsCalledWithin: false
+            virtualizeInvocationBridges: true
+
+            # Integrity protection. Set recheck interval to 0 to disable runtime sampling.
+            vmIntegrityCheck: true
+            vmIntegrityCheckRatio: 1.0
+            vmIntegrityRecheckInterval: 65536
+
+            # SuperInstruction fusion.
+            superInstruction: true
+            superInstructionCombineRange: [2, 5]
+            # superInstructionMode: RANDOM, PATTERN, HYBRID
+            superInstructionMode: HYBRID
+            superInstructionMaxHandlers: 128
+            superInstructionMinFrequency: 2
+
+            # all selects virtualization targets. Additional groups scope matching boolean options.
+            # Matcher strings containing '*' should stay quoted because '*' is YAML alias syntax.
+            includes:
+              all:
+                - "*"
+                - "* *(*)*"
+            exclusions:
+              all:
+                - "* <init>(*)V"
             """;
 
     private static final String usage = """
@@ -105,8 +136,8 @@ public class BytecodeVM
             {
                 if(args[0].equals("--defaultconfig"))
                 {
-                    Files.writeString(Path.of("defaultconfig.json"), defaultConfig);
-                    logger.info("{}", LogColors.success("Default config saved to ./defaultconfig.json"));
+                    Files.writeString(Path.of("defaultconfig.yml"), defaultConfig);
+                    logger.info("{}", LogColors.success("Default config saved to ./defaultconfig.yml"));
                     return 0;
                 } else
                 {

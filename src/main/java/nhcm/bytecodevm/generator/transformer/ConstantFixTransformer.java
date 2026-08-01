@@ -2,6 +2,7 @@ package nhcm.bytecodevm.generator.transformer;
 
 import nhcm.bytecodevm.config.BytecodeVMConfig;
 import nhcm.bytecodevm.config.TargetMatcher;
+import nhcm.bytecodevm.config.sdk.SdkAnnotationReader;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
@@ -30,17 +31,18 @@ public class ConstantFixTransformer
 
     public int transform(Collection<ClassNode> classes)
     {
-        if (!config.constantFix)
-        {
-            return 0;
-        }
-
         int changed = 0;
         for (ClassNode classNode : classes)
         {
+            Boolean sdkOverride = SdkAnnotationReader.classDirectives(classNode).constantFix();
+            boolean enabled = sdkOverride == null ? config.constantFix : sdkOverride;
+            if (!enabled)
+            {
+                continue;
+            }
             for (FieldNode field : classNode.fields)
             {
-                if (!shouldFix(classNode, field))
+                if (!shouldFix(classNode, field, sdkOverride))
                 {
                     continue;
                 }
@@ -54,12 +56,12 @@ public class ConstantFixTransformer
         return changed;
     }
 
-    private boolean shouldFix(ClassNode owner, FieldNode field)
+    private boolean shouldFix(ClassNode owner, FieldNode field, Boolean sdkOverride)
     {
         return field.value != null &&
                (field.access & Opcodes.ACC_STATIC) != 0 &&
                (field.access & Opcodes.ACC_FINAL) != 0 &&
-               includeMatches(owner, field) &&
+               (Boolean.TRUE.equals(sdkOverride) || includeMatches(owner, field)) &&
                !exclude.isClassMatched(owner) &&
                !exclude.isFieldMatched(owner, field);
     }

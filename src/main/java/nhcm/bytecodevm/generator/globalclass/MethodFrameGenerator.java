@@ -6,6 +6,7 @@ import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.FieldAccess;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Acc;
+import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.generator.abstracts.ClassObj;
 import nhcm.bytecodevm.generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.utils.builder.FieldRef;
@@ -18,6 +19,8 @@ import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Collections;
 
 public class MethodFrameGenerator extends ClassObj
 {
@@ -32,22 +35,39 @@ public class MethodFrameGenerator extends ClassObj
     }
 
     public MethodFrameGenerator(String className, GeneratedMemberNamer namer) {
+        this(className, namer, null);
+    }
+
+    public MethodFrameGenerator(String className, GeneratedMemberNamer namer, VMStructure structure) {
         super(className);
         this.layout = new MethodFrameLayout(className, namer);
         ClassNode cn = ClassUtils.newClassNode(new Acc[]{Acc.PUBLIC}, className);
         List<FieldNode> fields = cn.fields;
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.locals.name(), layout.locals.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stack.name(), layout.stack.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stackWords.name(), layout.stackWords.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stackTypes.name(), layout.stackTypes.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stackWidths.name(), layout.stackWidths.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.programCounter.name(), layout.programCounter.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.stateKey.name(), layout.stateKey.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.integrityKey.name(), layout.integrityKey.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.blockIndex.name(), layout.blockIndex.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.stackPointer.name(), layout.stackPointer.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.returnValue.name(), layout.returnValue.descriptor()));
-        fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.returned.name(), layout.returned.descriptor()));
+        List<FieldNode> layoutFields = new ArrayList<>();
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.locals.name(), layout.locals.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stack.name(), layout.stack.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stackWords.name(), layout.stackWords.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stackTypes.name(), layout.stackTypes.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, layout.stackWidths.name(), layout.stackWidths.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.programCounter.name(), layout.programCounter.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.stateKey.name(), layout.stateKey.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.integrityKey.name(), layout.integrityKey.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.blockIndex.name(), layout.blockIndex.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.stackPointer.name(), layout.stackPointer.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.returnValue.name(), layout.returnValue.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.returned.name(), layout.returned.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.mutableCode.name(), layout.mutableCode.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.mutableMasks.name(), layout.mutableMasks.descriptor()));
+        layoutFields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PUBLIC}, layout.mutableProgram.name(), layout.mutableProgram.descriptor()));
+        if (structure != null)
+        {
+            Collections.rotate(layoutFields, structure.ordinal() % layoutFields.size());
+            if ((structure.ordinal() & 1) != 0)
+            {
+                Collections.reverse(layoutFields);
+            }
+        }
+        fields.addAll(layoutFields);
         cn.methods.add(this.genConstructor());
         cn.methods.add(this.genPushMethod());
         cn.methods.add(this.genPushWithWidthMethod());

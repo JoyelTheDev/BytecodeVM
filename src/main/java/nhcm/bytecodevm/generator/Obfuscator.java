@@ -2,7 +2,11 @@ package nhcm.bytecodevm.generator;
 
 import nhcm.bytecodevm.config.BytecodeVMConfig;
 import nhcm.bytecodevm.config.TargetMatcher;
+import nhcm.bytecodevm.config.sdk.SdkAnnotationOptions.SdkCallPolicy;
+import nhcm.bytecodevm.config.sdk.SdkAnnotationReader;
+import nhcm.bytecodevm.config.sdk.SdkAnnotationRemover;
 import nhcm.bytecodevm.data.VirtualizationResult;
+import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.generator.transformer.ConstantFixTransformer;
 import nhcm.bytecodevm.generator.globalclass.MethodFrameGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
@@ -12,7 +16,6 @@ import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.utils.ClassUtils;
 import nhcm.bytecodevm.utils.LogColors;
 import nhcm.bytecodevm.utils.MethodUtils;
-import nhcm.bytecodevm.utils.RandomUtils;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodInsnNode;
@@ -35,13 +38,6 @@ public class Obfuscator
     private final List<VMSetGenerator> VMSetGenerators = new ArrayList<>();
     private final GeneratedMemberNamer namer;
 
-    private final MethodFrameGenerator methodFrameGenerator;
-    private final ClassNode methodFrameClassNode;
-    private final VMProgramGenerator vmProgramGenerator;
-    private final ClassNode vmProgramClassNode;
-    private final VMCodePoolGenerator vmCodePoolGenerator;
-    private final ClassNode vmCodePoolClassNode;
-
     public Obfuscator(BytecodeVMConfig config)
     {
         this.config = config;
@@ -56,15 +52,6 @@ public class Obfuscator
         {
             targetInclude.add(include);
         }
-        this.methodFrameGenerator = new MethodFrameGenerator(namer.className("BytecodeVM", "MethodFrame"), namer);
-        this.methodFrameClassNode = methodFrameGenerator.getClassNode();
-        this.vmProgramGenerator = new VMProgramGenerator(namer.className("BytecodeVM", "VMProgram"), namer);
-        this.vmProgramClassNode = vmProgramGenerator.getClassNode();
-        this.vmCodePoolGenerator = new VMCodePoolGenerator(
-                namer.className("BytecodeVM", "VMCodePool"),
-                vmProgramGenerator,
-                namer);
-        this.vmCodePoolClassNode = vmCodePoolGenerator.getClassNode();
     }
 
     public void obfuscate()
@@ -93,16 +80,14 @@ public class Obfuscator
         namer.reserveClassNames(context.classes.keySet());
         processJar(context);
         logger.info("{}", LogColors.lifecycle("Adding required VM support classes"));
-        context.addClass(methodFrameClassNode);
-        context.addClass(vmProgramClassNode);
-        context.addClass(vmCodePoolClassNode);
-        logger.debug("{}", LogColors.success("Added required VM support classes"));
+        logger.debug("{}", LogColors.success("VM support classes are isolated per VM set"));
         List<VMSetGenerator> generators = new ArrayList<>(this.VMSetGenerators);
         for(VMSetGenerator generator : generators)
         {
             logger.info("{}", LogColors.virtualize(
                     "Virtualizing VM: " +
                             LogColors.strong(generator.vmClassName) +
+                            " [" + generator.vmStructure + "]" +
                             " (" + generator.methodCount() + " method(s))"));
             VirtualizationResult result;
             try (CliProgress progress = new CliProgress(generator.vmClassName))
@@ -118,31 +103,39 @@ public class Obfuscator
             logger.info("{}", LogColors.success("Done virtualizing VM: " + LogColors.strong(generator.vmClassName)));
         }
         logger.info("{}", LogColors.success("Done virtualizing all classes"));
+        if (config.removeAnnotations)
+        {
+            int removed = SdkAnnotationRemover.remove(context.classes.values());
+            logger.debug("Removed {} BytecodeVM SDK annotation(s)", removed);
+        }
     }
 
     private void processJar(JarTransformer.JarContext context)
     {
         logger.info("{}", LogColors.scan("Scanning input file for methods to obfuscate"));
-        if (config.constantFix)
+        int fixedConstants = new ConstantFixTransformer(config).transform(context.classes.values());
+        if (fixedConstants != 0)
         {
-            int fixedConstants = new ConstantFixTransformer(config).transform(context.classes.values());
             logger.info("{}", LogColors.scan("Moved " + LogColors.strong(fixedConstants) + " static final constant(s) into <clinit>"));
         }
 
         String globalLocation = "BytecodeVM";
 
-        List<VMSetGenerator> allInOneVms = newVMSetGenerators("BytecodeVM", "BytecodeVM");
+        Map<GeneratorProfile, List<VMSetGenerator>> allInOneVms = new LinkedHashMap<>();
         List<VMSetGenerator> perClasses = new ArrayList<>();
         List<VMSetGenerator> perMethods = new ArrayList<>();
-        Map<String, List<VMSetGenerator>> perPackage = new LinkedHashMap<>();
-        Map<String, Integer> packageMethodCounts = new HashMap<>();
+        Map<String, Map<GeneratorProfile, List<VMSetGenerator>>> perPackage = new LinkedHashMap<>();
+        Map<GeneratorGroupKey, Integer> generatorOrdinals = new HashMap<>();
 
         Set<String> securityManagerClasses = securityManagerClasses(context.classes.values());
         List<MethodCandidate> candidates = collectMethodCandidates(context.classes.values(), securityManagerClasses);
         Map<MethodId, MethodCandidate> candidateById = indexCandidates(candidates);
         Map<MethodId, Set<MethodId>> callsByMethod = collectInternalCalls(candidates, candidateById);
         Set<MethodId> rootMethods = rootMethods(candidates);
-        Set<MethodId> calledWithin = collectCalledWithin(rootMethods, callsByMethod, candidateById);
+        Set<MethodId> includeRoots = rootsWithPolicy(rootMethods, candidateById, SdkCallPolicy.INCLUDE);
+        Set<MethodId> excludeRoots = rootsWithPolicy(rootMethods, candidateById, SdkCallPolicy.EXCLUDE);
+        Set<MethodId> includedCalls = collectCalledWithin(includeRoots, callsByMethod, candidateById);
+        Set<MethodId> excludedCalls = collectCalledWithin(excludeRoots, callsByMethod, candidateById);
 
         int matchedMethods = 0;
         int calledMethodsIncluded = 0;
@@ -153,16 +146,12 @@ public class Obfuscator
             String classPackage = ClassUtils.getPackageName(classNode);
             String vmLocation = getVMLocation(globalLocation, classPackage, classNode);
 
-            List<VMSetGenerator> perClass = null;
+            Map<GeneratorProfile, List<VMSetGenerator>> perClass = null;
 
             if(config.createMode == BytecodeVMConfig.VMCreateMode.PER_CLASS)
             {
-                perClass = newVMSetGenerators(
-                        ClassUtils.getSimpleName(classNode) + "$VM",
-                        vmLocation
-                );
+                perClass = new LinkedHashMap<>();
             }
-            int perClassMethodCount = 0;
 
             for(MethodNode methodNode : classNode.methods)
             {
@@ -171,9 +160,8 @@ public class Obfuscator
                 {
                     continue;
                 }
-                boolean called = calledWithin.contains(candidate.id);
-                boolean includedByCall = config.includeMethodsCalledWithin && called && !candidate.explicitIncluded;
-                boolean excludedByCall = config.excludeMethodsCalledWithin && called && !rootMethods.contains(candidate.id);
+                boolean includedByCall = includedCalls.contains(candidate.id) && !candidate.explicitIncluded;
+                boolean excludedByCall = excludedCalls.contains(candidate.id) && !rootMethods.contains(candidate.id);
                 if(!selected(candidate, includedByCall, excludedByCall))
                 {
                     if (excludedByCall && candidate.eligible && !candidate.explicitExcluded)
@@ -188,19 +176,29 @@ public class Obfuscator
                 }
 
                 matchedMethods++;
+                GeneratorProfile profile = GeneratorProfile.of(candidate.methodConfig);
 
                 switch(config.createMode)
                 {
                     case PER_CLASS ->
                     {
-                        pickGenerator(perClass, perClassMethodCount++).addMethod(methodNode, classNode);
+                        List<VMSetGenerator> generators = perClass.computeIfAbsent(
+                                profile,
+                                ignored -> newVMSetGenerators(
+                                        profileName(ClassUtils.getSimpleName(classNode) + "$VM", profile),
+                                        vmLocation,
+                                        profile.apply(config)));
+                        GeneratorGroupKey key = new GeneratorGroupKey(classNode.name, profile);
+                        int ordinal = generatorOrdinals.merge(key, 1, Integer::sum) - 1;
+                        pickGenerator(generators, ordinal).addMethod(methodNode, classNode);
                     }
 
                     case PER_METHOD ->
                     {
                         VMSetGenerator perMethod = newVMSetGenerator(
                                 ClassUtils.getSimpleName(classNode) + "$" + methodNode.name + "$VM",
-                                vmLocation
+                                vmLocation,
+                                profile.apply(config)
                         );
 
                         perMethod.addMethod(methodNode, classNode);
@@ -209,26 +207,37 @@ public class Obfuscator
 
                     case PER_PACKAGE ->
                     {
-                        List<VMSetGenerator> generators = perPackage.computeIfAbsent(
-                                classPackage,
-                                ignored -> newVMSetGenerators(classPackage + "$VM", classPackage)
-                        );
-
-                        int packageMethodCount = packageMethodCounts.getOrDefault(classPackage, 0);
-                        pickGenerator(generators, packageMethodCount).addMethod(methodNode, classNode);
-                        packageMethodCounts.put(classPackage, packageMethodCount + 1);
+                        Map<GeneratorProfile, List<VMSetGenerator>> packageProfiles =
+                                perPackage.computeIfAbsent(classPackage, ignored -> new LinkedHashMap<>());
+                        List<VMSetGenerator> generators = packageProfiles.computeIfAbsent(
+                                profile,
+                                ignored -> newVMSetGenerators(
+                                        profileName(classPackage + "$VM", profile),
+                                        classPackage,
+                                        profile.apply(config)));
+                        GeneratorGroupKey key = new GeneratorGroupKey(classPackage, profile);
+                        int ordinal = generatorOrdinals.merge(key, 1, Integer::sum) - 1;
+                        pickGenerator(generators, ordinal).addMethod(methodNode, classNode);
                     }
 
                     case ONE_FOR_ALL ->
                     {
-                        pickGenerator(allInOneVms, matchedMethods - 1).addMethod(methodNode, classNode);
+                        List<VMSetGenerator> generators = allInOneVms.computeIfAbsent(
+                                profile,
+                                ignored -> newVMSetGenerators(
+                                        profileName("BytecodeVM", profile),
+                                        "BytecodeVM",
+                                        profile.apply(config)));
+                        GeneratorGroupKey key = new GeneratorGroupKey("", profile);
+                        int ordinal = generatorOrdinals.merge(key, 1, Integer::sum) - 1;
+                        pickGenerator(generators, ordinal).addMethod(methodNode, classNode);
                     }
                 }
             }
 
             if(config.createMode == BytecodeVMConfig.VMCreateMode.PER_CLASS && perClass != null)
             {
-                addNonEmpty(perClasses, perClass);
+                perClass.values().forEach(generators -> addNonEmpty(perClasses, generators));
             }
         }
 
@@ -236,10 +245,11 @@ public class Obfuscator
         {
             case PER_CLASS -> VMSetGenerators.addAll(perClasses);
             case PER_METHOD -> VMSetGenerators.addAll(perMethods);
-            case PER_PACKAGE -> perPackage.values().forEach(generators -> addNonEmpty(VMSetGenerators, generators));
+            case PER_PACKAGE -> perPackage.values().forEach(profiles ->
+                    profiles.values().forEach(generators -> addNonEmpty(VMSetGenerators, generators)));
             case ONE_FOR_ALL ->
             {
-                addNonEmpty(VMSetGenerators, allInOneVms);
+                allInOneVms.values().forEach(generators -> addNonEmpty(VMSetGenerators, generators));
             }
         }
 
@@ -250,7 +260,7 @@ public class Obfuscator
                 LogColors.strong(VMSetGenerators.size()) +
                 " VM set(s)"
         ));
-        if (config.includeMethodsCalledWithin || config.excludeMethodsCalledWithin)
+        if (!includeRoots.isEmpty() || !excludeRoots.isEmpty())
         {
             logger.info("{}", LogColors.scan(
                     "Call expansion included " +
@@ -261,52 +271,47 @@ public class Obfuscator
         }
     }
 
-    private OpcMutator chooseMutator()
+    private VMSetGenerator newVMSetGenerator(
+            String name,
+            String location,
+            BytecodeVMConfig generatorConfig)
     {
-        switch (config.mutateMode)
-        {
-            case ALL_RANDOM_INT:
-            {
-                return OpcMutator.MutateStrategy.RANDOM_INT.getMutator();
-            }
-            case ALL_RESORT:
-            {
-                return OpcMutator.MutateStrategy.RESORT.getMutator();
-            }
-            case ALL_AUTO_CHOOSE:
-            {
-                return OpcMutator.fromStrategy(RandomUtils.randomBoolean() ? OpcMutator.MutateStrategy.RANDOM_INT : OpcMutator.MutateStrategy.RESORT);
-            }
-            default:
-            {
-                return OpcMutator.MutateStrategy.NONE.getMutator();
-            }
-        }
-    }
-
-    private VMSetGenerator newVMSetGenerator(String name, String location)
-    {
+        BytecodeVMConfig resolvedConfig = generatorConfig.resolveVMStructure();
+        MethodFrameGenerator methodFrameGenerator = new MethodFrameGenerator(
+                namer.className(location, name + "$Frame"),
+                namer,
+                resolvedConfig.vmStructure);
+        VMProgramGenerator vmProgramGenerator = new VMProgramGenerator(
+                namer.className(location, name + "$Program"),
+                namer);
+        VMCodePoolGenerator vmCodePoolGenerator = new VMCodePoolGenerator(
+                namer.className(location, name + "$PoolRecord"),
+                vmProgramGenerator,
+                namer);
         return new VMSetGenerator(
                 name,
                 location,
-                chooseMutator(),
+                OpcMutator.MutateStrategy.RANDOM_INT.getMutator(),
                 methodFrameGenerator,
                 vmProgramGenerator,
                 vmCodePoolGenerator,
-                config,
+                resolvedConfig,
                 namer);
     }
 
-    private List<VMSetGenerator> newVMSetGenerators(String name, String location)
+    private List<VMSetGenerator> newVMSetGenerators(
+            String name,
+            String location,
+            BytecodeVMConfig generatorConfig)
     {
-        int count = config.createMode == BytecodeVMConfig.VMCreateMode.PER_METHOD
+        int count = generatorConfig.createMode == BytecodeVMConfig.VMCreateMode.PER_METHOD
                 ? 1
-                : config.vmCount;
+                : generatorConfig.vmCount;
         List<VMSetGenerator> generators = new ArrayList<>(count);
         for (int index = 0; index < count; index++)
         {
             String vmName = count == 1 ? name : name + "$" + index;
-            generators.add(newVMSetGenerator(vmName, location));
+            generators.add(newVMSetGenerator(vmName, location, generatorConfig));
         }
         return generators;
     }
@@ -318,6 +323,11 @@ public class Obfuscator
             throw new IllegalArgumentException("No VM generator is available");
         }
         return generators.get(Math.floorMod(ordinal, generators.size()));
+    }
+
+    private static String profileName(String base, GeneratorProfile profile)
+    {
+        return base + "$P" + Integer.toUnsignedString(profile.hashCode(), 36);
     }
 
     private static void addNonEmpty(List<VMSetGenerator> target, List<VMSetGenerator> candidates)
@@ -339,23 +349,33 @@ public class Obfuscator
         for (ClassNode classNode : classes)
         {
             Set<String> stackTraceSensitiveMethods = stackTraceSensitiveMethods(classNode);
-            boolean classIncluded = targetInclude.isClassMatched(classNode);
-            boolean classExcluded = targetExclude.isClassMatched(classNode);
+            SdkAnnotationReader.ClassDirectives classDirectives =
+                    SdkAnnotationReader.classDirectives(classNode);
+            boolean classIncluded = targetInclude.isClassMatched(classNode) || classDirectives.included();
+            boolean classExcluded = targetExclude.isClassMatched(classNode) || classDirectives.excluded();
             boolean securityManagerClass = securityManagerClasses.contains(classNode.name);
             for (MethodNode methodNode : classNode.methods)
             {
+                SdkAnnotationReader.MethodDirectives sdkMethod =
+                        SdkAnnotationReader.methodDirectives(classNode, methodNode);
                 boolean ignored = securityManagerClass ||
                                   shouldIgnoreMethod(methodNode) ||
                                   stackTraceSensitiveMethods.contains(methodKey(methodNode));
-                boolean explicitIncluded = classIncluded && targetInclude.isMethodMatched(classNode, methodNode);
-                boolean explicitExcluded = classExcluded || targetExclude.isMethodMatched(classNode, methodNode);
+                boolean explicitIncluded = sdkMethod.selected() ||
+                        (classIncluded && targetInclude.isMethodMatched(classNode, methodNode));
+                boolean explicitExcluded = classExcluded ||
+                        sdkMethod.excluded() ||
+                        targetExclude.isMethodMatched(classNode, methodNode);
+                BytecodeVMConfig methodConfig = config.forMethod(classNode, methodNode);
                 candidates.add(new MethodCandidate(
                         classNode,
                         methodNode,
                         MethodId.of(classNode, methodNode),
                         !ignored,
                         explicitIncluded,
-                        explicitExcluded));
+                        explicitExcluded,
+                        methodConfig,
+                        callPolicy(methodConfig)));
             }
         }
         return candidates;
@@ -382,6 +402,36 @@ public class Obfuscator
             }
         }
         return roots;
+    }
+
+    private static Set<MethodId> rootsWithPolicy(
+            Set<MethodId> roots,
+            Map<MethodId, MethodCandidate> candidates,
+            SdkCallPolicy policy)
+    {
+        Set<MethodId> selected = new LinkedHashSet<>();
+        for (MethodId root : roots)
+        {
+            MethodCandidate candidate = candidates.get(root);
+            if (candidate != null && candidate.callPolicy == policy)
+            {
+                selected.add(root);
+            }
+        }
+        return Set.copyOf(selected);
+    }
+
+    private static SdkCallPolicy callPolicy(BytecodeVMConfig methodConfig)
+    {
+        if (methodConfig.excludeMethodsCalledWithin)
+        {
+            return SdkCallPolicy.EXCLUDE;
+        }
+        if (methodConfig.includeMethodsCalledWithin)
+        {
+            return SdkCallPolicy.INCLUDE;
+        }
+        return SdkCallPolicy.NONE;
     }
 
     private static Map<MethodId, Set<MethodId>> collectInternalCalls(
@@ -614,7 +664,36 @@ public class Obfuscator
             MethodId id,
             boolean eligible,
             boolean explicitIncluded,
-            boolean explicitExcluded)
+            boolean explicitExcluded,
+            BytecodeVMConfig methodConfig,
+            SdkCallPolicy callPolicy)
+    {
+    }
+
+    private record GeneratorProfile(
+            VMStructure structure,
+            int superInstructionMaxHandlers,
+            int superInstructionMinFrequency)
+    {
+        private static GeneratorProfile of(BytecodeVMConfig methodConfig)
+        {
+            return new GeneratorProfile(
+                    methodConfig.vmStructure,
+                    methodConfig.superInstructionMaxHandlers,
+                    methodConfig.superInstructionMinFrequency);
+        }
+
+        private BytecodeVMConfig apply(BytecodeVMConfig base)
+        {
+            return base.toBuilder()
+                    .vmStructure(structure)
+                    .superInstructionMaxHandlers(superInstructionMaxHandlers)
+                    .superInstructionMinFrequency(superInstructionMinFrequency)
+                    .build();
+        }
+    }
+
+    private record GeneratorGroupKey(String scope, GeneratorProfile profile)
     {
     }
 

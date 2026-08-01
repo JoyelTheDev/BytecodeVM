@@ -12,6 +12,12 @@ import org.objectweb.asm.tree.LabelNode;
 
 public final class InterpretContext
 {
+    @FunctionalInterface
+    public interface OperandDecoder
+    {
+        void emit(AdvInsnBuilder instructions, InterpretContext context, Local target);
+    }
+
     public static final int PROGRAM = 0;
     public static final int FRAME = 1;
     public static final int CODE = 2;
@@ -49,6 +55,7 @@ public final class InterpretContext
     public static final int ORIGINAL_PC = 50;
     public static final int OPERAND_INDEX = 51;
     public static final int DISPATCH_SELECTOR = 52;
+    public static final int STRUCTURE_STATE = 62;
     public static final int JUMP_TARGET = 9;
     public static final int SWITCH_KEY = 10;
     public static final int SWITCH_MIN = 11;
@@ -71,6 +78,7 @@ public final class InterpretContext
     public final MethodFrameLayout frame;
     public final VMRuntimeLayout vm;
     public final LabelNode loopStart;
+    private final OperandDecoder operandDecoder;
 
     public InterpretContext(String vmClassName, String frameClassName, LabelNode loopStart)
     {
@@ -97,12 +105,24 @@ public final class InterpretContext
             VMRuntimeLayout vm,
             LabelNode loopStart)
     {
+        this(vmClassName, frame, program, vm, loopStart, null);
+    }
+
+    public InterpretContext(
+            String vmClassName,
+            MethodFrameLayout frame,
+            VMProgramLayout program,
+            VMRuntimeLayout vm,
+            LabelNode loopStart,
+            OperandDecoder operandDecoder)
+    {
         this.vmClassName = vmClassName;
         this.frameClassName = frame.owner;
         this.programClassName = program == null ? null : program.owner;
         this.frame = frame;
         this.vm = vm;
         this.loopStart = loopStart;
+        this.operandDecoder = operandDecoder;
     }
 
     public Local program()
@@ -147,6 +167,11 @@ public final class InterpretContext
     public Local operandIndex()
     {
         return intLocal("operandIndex", OPERAND_INDEX);
+    }
+
+    public Local structureState()
+    {
+        return intLocal("structureState", STRUCTURE_STATE);
     }
 
     public Local rightValue(NumericType type)
@@ -327,15 +352,22 @@ public final class InterpretContext
 
     public void nextOperand(AdvInsnBuilder ib, Local target)
     {
-        ib.set(target, AdvInsnBuilder.callStatic(
-                vm.owner,
-                vm.decodeOperand.name(),
-                "I",
-                program(),
-                frame(),
-                instructionIndex(),
-                operandIndex(),
-                opcode()));
+        if (operandDecoder == null)
+        {
+            ib.set(target, AdvInsnBuilder.callStatic(
+                    vm.owner,
+                    vm.decodeOperand.name(),
+                    "I",
+                    program(),
+                    frame(),
+                    instructionIndex(),
+                    operandIndex(),
+                    opcode()));
+        }
+        else
+        {
+            operandDecoder.emit(ib, this, target);
+        }
         ib.increment(operandIndex(), 1);
     }
 }

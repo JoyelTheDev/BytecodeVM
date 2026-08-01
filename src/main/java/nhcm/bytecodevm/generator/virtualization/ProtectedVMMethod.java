@@ -1,6 +1,7 @@
 package nhcm.bytecodevm.generator.virtualization;
 
 import nhcm.bytecodevm.config.BytecodeVMConfig;
+import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.data.CompiledMethod;
 import nhcm.bytecodevm.data.vminsn.VMInstruction;
 import nhcm.bytecodevm.data.vminsn.VMMethod;
@@ -8,6 +9,8 @@ import nhcm.bytecodevm.data.vminsn.VMOperand;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionCombiner;
 import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructionRegistry;
+import nhcm.bytecodevm.generator.virtualization.structure.LoweredInstructionPlanner;
+import nhcm.bytecodevm.generator.virtualization.structure.VMStructurePlan;
 import nhcm.bytecodevm.utils.RandomUtils;
 
 import java.util.*;
@@ -92,8 +95,20 @@ public class ProtectedVMMethod
             SuperInstructionRegistry superInstructions)
     {
         VMMethod method = compiledMethod.vmMethod;
+        List<VMInstruction> loweredInstructions = switch (config.vmStructure)
+        {
+            case REGISTER_BASED -> LoweredInstructionPlanner.lowerRegister(
+                    method,
+                    method.getOpcMutator());
+            case DATA_FLOW -> LoweredInstructionPlanner.lowerDataFlow(
+                    method,
+                    method.getOpcMutator(),
+                    VMStructurePlan.forStructure(config.vmStructure).laneCount());
+            default -> method.getInstructions();
+        };
         List<VMInstruction> instructions = SuperInstructionCombiner.combine(
                 method,
+                loweredInstructions,
                 config,
                 superInstructions,
                 method.getOpcMutator());
@@ -139,6 +154,13 @@ public class ProtectedVMMethod
         int[] operandStream = new int[totalOperands];
         int[] layoutStream = new int[records.size() * RECORD_SIZE];
         int[] blockStream = createBlockStream(blocks, methodKey, protect, profile);
+        int[] firstSlotByBlock = new int[blocks.size()];
+        int firstSlotCursor = 0;
+        for (int blockIndex = 0; blockIndex < blocks.size(); blockIndex++)
+        {
+            firstSlotByBlock[blockIndex] = firstSlotCursor;
+            firstSlotCursor += blocks.get(blockIndex).instructions.size();
+        }
 
         for (VMInstruction instruction : records)
         {
@@ -155,7 +177,8 @@ public class ProtectedVMMethod
                     ? constantMask(instruction)
                     : 0;
 
-            int virtualOpcode = opcodeLayout.virtualByRealOpcode.get(instruction.mutatedOpcode);
+            int dispatchOpcode = dispatchOpcode(instruction.mutatedOpcode, config, profile);
+            int virtualOpcode = opcodeLayout.virtualByRealOpcode.get(dispatchOpcode);
             opcodeStream[slot] = protect && config.perMethodOpcodeMap
                     ? virtualOpcode ^ profile.opcodeMix(methodKey, stateKey, virtualPc, slot)
                     : virtualOpcode;
@@ -166,7 +189,20 @@ public class ProtectedVMMethod
             setLayout(layoutStream, slot, LAYOUT_OPERAND_START, operandStart, methodKey, stateKey, protect, profile);
             setLayout(layoutStream, slot, LAYOUT_OPERAND_COUNT, operandCount, methodKey, stateKey, protect, profile);
             setLayout(layoutStream, slot, LAYOUT_CONSTANT_MASK, constantMask, methodKey, stateKey, protect, profile);
-            setLayoutStateKey(layoutStream, slot, stateKey, methodKey, protect, profile);
+            int firstSlot = firstSlotByBlock[blockIndex];
+            int previousStateKey = slot == firstSlot
+                    ? 0
+                    : stateKeyByInstruction.get(records.get(slot - 1));
+            setLayoutStateKey(
+                    layoutStream,
+                    slot,
+                    stateKey,
+                    previousStateKey,
+                    blockIndex,
+                    slot == firstSlot,
+                    methodKey,
+                    protect,
+                    profile);
             setLayout(layoutStream, slot, LAYOUT_BLOCK_INDEX, blockIndex, methodKey, stateKey, protect, profile);
 
             for (int operandIndex = 0; operandIndex < operandCount; operandIndex++)
@@ -182,11 +218,11 @@ public class ProtectedVMMethod
                         virtualizeInstructionAddresses);
                 if (protect && config.bindConstantsToOperands && operand.constantReference)
                 {
-                    value ^= profile.constantMix(methodKey, stateKey, instruction.mutatedOpcode, virtualPc, operandIndex);
+                    value ^= profile.constantMix(methodKey, stateKey, dispatchOpcode, virtualPc, operandIndex);
                 }
                 if (protect && config.encryptOperands)
                 {
-                    value ^= profile.operandMix(methodKey, stateKey, instruction.mutatedOpcode, virtualPc, operandIndex, operandStart + operandIndex);
+                    value ^= profile.operandMix(methodKey, stateKey, dispatchOpcode, virtualPc, operandIndex, operandStart + operandIndex);
                 }
                 operandStream[operandStart + operandIndex] = value;
             }
@@ -346,9 +382,10 @@ public class ProtectedVMMethod
         List<Integer> realOpcodes = new ArrayList<>();
         for (VMInstruction instruction : instructions)
         {
-            if (!realOpcodes.contains(instruction.mutatedOpcode))
+            int dispatchOpcode = dispatchOpcode(instruction.mutatedOpcode, config, profile);
+            if (!realOpcodes.contains(dispatchOpcode))
             {
-                realOpcodes.add(instruction.mutatedOpcode);
+                realOpcodes.add(dispatchOpcode);
             }
         }
 
@@ -374,6 +411,13 @@ public class ProtectedVMMethod
                     : realOpcode;
         }
         return new OpcodeLayout(virtualByReal, opcodeMap);
+    }
+
+    private static int dispatchOpcode(int opcode, BytecodeVMConfig config, VMObfProfile profile)
+    {
+        return config.vmStructure == VMStructure.THREADED_DIRECT
+                ? profile.directHandlerToken(opcode)
+                : opcode;
     }
 
     private static List<BasicBlock> createBlocks(
@@ -618,19 +662,28 @@ public class ProtectedVMMethod
             boolean protect,
             VMObfProfile profile)
     {
-        layout[slot * RECORD_SIZE + field] = protect ? value ^ profile.layoutMix(methodKey, stateKey, slot, field) : value;
+        int physicalField = profile.layoutSlot(field);
+        layout[slot * RECORD_SIZE + physicalField] = protect
+                ? value ^ profile.layoutMix(methodKey, stateKey, slot, physicalField)
+                : value;
     }
 
     private static void setLayoutStateKey(
             int[] layout,
             int slot,
             int stateKey,
+            int previousStateKey,
+            int blockIndex,
+            boolean blockEntry,
             int methodKey,
             boolean protect,
             VMObfProfile profile)
     {
-        layout[slot * RECORD_SIZE + LAYOUT_STATE_KEY] = protect
-                ? stateKey ^ profile.stateMix(methodKey, slot)
+        int physicalField = profile.layoutSlot(LAYOUT_STATE_KEY);
+        layout[slot * RECORD_SIZE + physicalField] = protect
+                ? stateKey ^ (blockEntry
+                        ? profile.stateMix(methodKey, slot)
+                        : profile.chainedStateMix(methodKey, previousStateKey, slot, blockIndex))
                 : stateKey;
     }
 

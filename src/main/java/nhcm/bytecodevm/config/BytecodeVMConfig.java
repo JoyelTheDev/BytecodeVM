@@ -1,10 +1,8 @@
 package nhcm.bytecodevm.config;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import lombok.Builder;
+import nhcm.bytecodevm.config.sdk.SdkAnnotationReader;
+import nhcm.bytecodevm.enums.VMStructure;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
@@ -12,18 +10,19 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-@Builder
+@Builder(toBuilder = true)
 public class BytecodeVMConfig
 {
     public final Path inputFile;
     public final Path outputFile;
     public final VMCreateMode createMode;
     public final VMLocation location;
-    public final MutateMode mutateMode;
     public final RenameMode renameMode;
     public final InterpretMode interpretMode;
+    public final VMStructure vmStructure;
     public final boolean protectCodePool;
     public final boolean virtualizeInstructionAddresses;
     public final boolean encryptOperands;
@@ -37,11 +36,13 @@ public class BytecodeVMConfig
     public final boolean dynamicStateKey;
     public final boolean virtualControlFlowGraph;
     public final boolean constantFix;
+    public final boolean removeAnnotations;
     public final boolean includeMethodsCalledWithin;
     public final boolean excludeMethodsCalledWithin;
     public final boolean virtualizeInvocationBridges;
     public final boolean vmIntegrityCheck;
     public final double vmIntegrityCheckRatio;
+    public final int vmIntegrityRecheckInterval;
     public final boolean superInstruction;
     public final int superInstructionCombineMin;
     public final int superInstructionCombineMax;
@@ -68,14 +69,6 @@ public class BytecodeVMConfig
         ONE_PACKAGE
     }
 
-    public enum MutateMode
-    {
-        ALL_RANDOM_INT,
-        ALL_RESORT,
-        ALL_AUTO_CHOOSE,
-        NO_CHANGE
-    }
-
     public enum RenameMode
     {
         ENABLE,
@@ -98,23 +91,28 @@ public class BytecodeVMConfig
     public static BytecodeVMConfig parse(Path file) throws IOException
     {
         String fileStr = Files.readString(file);
-        return parse(fileStr);
+        Map<String, Object> yaml = ConfigDocumentParser.parse(fileStr, file);
+        return parse(yaml, requiredString(yaml, "input"), requiredString(yaml, "output"));
     }
 
     public static BytecodeVMConfig parse(String config)
     {
-        JsonObject json = new Gson().fromJson(config, JsonObject.class);
-        return parse(config, requiredString(json, "input"), requiredString(json, "output"));
+        Map<String, Object> yaml = ConfigDocumentParser.parse(config);
+        return parse(yaml, requiredString(yaml, "input"), requiredString(yaml, "output"));
     }
 
     public static BytecodeVMConfig parse(String config, String input, String output)
     {
-        JsonObject json = new Gson().fromJson(config, JsonObject.class);
-        MatchRules matchRules = MatchRules.parse(json);
+        return parse(ConfigDocumentParser.parse(config), input, output);
+    }
+
+    private static BytecodeVMConfig parse(Map<String, Object> yaml, String input, String output)
+    {
+        MatchRules matchRules = MatchRules.parse(yaml);
         String[] includes = matchRules.includes("all");
         String[] exclusions = matchRules.exclusions("all");
         int[] superInstructionRange = optionalIntRange(
-                json,
+                yaml,
                 "superInstructionCombineRange",
                 "superinstrcutioncombinerange",
                 2,
@@ -125,36 +123,43 @@ public class BytecodeVMConfig
                 .builder()
                 .inputFile(Path.of(input))
                 .outputFile(Path.of(output))
-                .createMode(VMCreateMode.valueOf(requiredString(json, "createMode")))
-                .location(VMLocation.valueOf(requiredString(json, "location")))
-                .mutateMode(MutateMode.valueOf(requiredString(json, "mutateMode")))
-                .interpretMode(InterpretMode.valueOf(requiredString(json, "interpretMode")))
-                .renameMode(RenameMode.valueOf(requiredString(json, "renameMode")))
-                .protectCodePool(optionalBoolean(json, "protectCodePool", true))
-                .virtualizeInstructionAddresses(optionalBoolean(json, "virtualizeInstructionAddresses", true))
-                .encryptOperands(optionalBoolean(json, "encryptOperands", true))
-                .perMethodOpcodeMap(optionalBoolean(json, "perMethodOpcodeMap", true))
-                .shuffleConstants(optionalBoolean(json, "shuffleConstants", true))
-                .bindConstantsToOperands(optionalBoolean(json, "bindConstantsToOperands", true))
-                .splitCodeStreams(optionalBoolean(json, "splitCodeStreams", true))
-                .shuffleInstructionBlocks(optionalBoolean(json, "shuffleInstructionBlocks", true))
-                .obfuscateDispatch(optionalBoolean(json, "obfuscateDispatch", true))
-                .dynamicCodePoolBuild(optionalBoolean(json, "dynamicCodePoolBuild", true))
-                .dynamicStateKey(optionalBoolean(json, "dynamicStateKey", true))
-                .virtualControlFlowGraph(optionalBoolean(json, "virtualControlFlowGraph", true))
-                .constantFix(optionalBoolean(json, "constantFix", false, "fixConstants"))
-                .includeMethodsCalledWithin(optionalBoolean(json, "includeMethodsCalledWithin", false))
-                .excludeMethodsCalledWithin(optionalBoolean(json, "excludeMethodsCalledWithin", false))
-                .virtualizeInvocationBridges(optionalBoolean(json, "virtualizeInvocationBridges", false))
-                .vmIntegrityCheck(optionalBoolean(json, "vmIntegrityCheck", false))
-                .vmIntegrityCheckRatio(optionalDouble(json, "vmIntegrityCheckRatio", 1.0D, 0.0D, 1.0D))
-                .superInstruction(optionalBoolean(json, "superInstruction", false, "superinstrcution"))
+                .createMode(VMCreateMode.valueOf(requiredString(yaml, "createMode")))
+                .location(VMLocation.valueOf(requiredString(yaml, "location")))
+                .interpretMode(InterpretMode.valueOf(requiredString(yaml, "interpretMode")))
+                .vmStructure(optionalVMStructure(yaml, "vmStructure", VMStructure.MEDIUM))
+                .renameMode(RenameMode.valueOf(requiredString(yaml, "renameMode")))
+                .protectCodePool(optionalBoolean(yaml, "protectCodePool", true))
+                .virtualizeInstructionAddresses(optionalBoolean(yaml, "virtualizeInstructionAddresses", true))
+                .encryptOperands(optionalBoolean(yaml, "encryptOperands", true))
+                .perMethodOpcodeMap(optionalBoolean(yaml, "perMethodOpcodeMap", true))
+                .shuffleConstants(optionalBoolean(yaml, "shuffleConstants", true))
+                .bindConstantsToOperands(optionalBoolean(yaml, "bindConstantsToOperands", true))
+                .splitCodeStreams(optionalBoolean(yaml, "splitCodeStreams", true))
+                .shuffleInstructionBlocks(optionalBoolean(yaml, "shuffleInstructionBlocks", true))
+                .obfuscateDispatch(optionalBoolean(yaml, "obfuscateDispatch", true))
+                .dynamicCodePoolBuild(optionalBoolean(yaml, "dynamicCodePoolBuild", true))
+                .dynamicStateKey(optionalBoolean(yaml, "dynamicStateKey", true))
+                .virtualControlFlowGraph(optionalBoolean(yaml, "virtualControlFlowGraph", true))
+                .constantFix(optionalBoolean(yaml, "constantFix", false, "fixConstants"))
+                .removeAnnotations(optionalBoolean(yaml, "removeAnnotations", true))
+                .includeMethodsCalledWithin(optionalBoolean(yaml, "includeMethodsCalledWithin", false))
+                .excludeMethodsCalledWithin(optionalBoolean(yaml, "excludeMethodsCalledWithin", false))
+                .virtualizeInvocationBridges(optionalBoolean(yaml, "virtualizeInvocationBridges", false))
+                .vmIntegrityCheck(optionalBoolean(yaml, "vmIntegrityCheck", false))
+                .vmIntegrityCheckRatio(optionalDouble(yaml, "vmIntegrityCheckRatio", 1.0D, 0.0D, 1.0D))
+                .vmIntegrityRecheckInterval(optionalInt(
+                        yaml,
+                        "vmIntegrityRecheckInterval",
+                        65_536,
+                        0,
+                        16_777_216))
+                .superInstruction(optionalBoolean(yaml, "superInstruction", false, "superinstrcution"))
                 .superInstructionCombineMin(superInstructionRange[0])
                 .superInstructionCombineMax(superInstructionRange[1])
-                .superInstructionMode(optionalEnum(json, "superInstructionMode", SuperInstructionMode.HYBRID))
-                .superInstructionMaxHandlers(optionalInt(json, "superInstructionMaxHandlers", 128, 1, 4096))
-                .superInstructionMinFrequency(optionalInt(json, "superInstructionMinFrequency", 2, 1, 1_000_000))
-                .vmCount(optionalInt(json, "vmCount", 1, 1, 1024))
+                .superInstructionMode(optionalEnum(yaml, "superInstructionMode", SuperInstructionMode.HYBRID))
+                .superInstructionMaxHandlers(optionalInt(yaml, "superInstructionMaxHandlers", 128, 1, 4096))
+                .superInstructionMinFrequency(optionalInt(yaml, "superInstructionMinFrequency", 2, 1, 1_000_000))
+                .vmCount(optionalInt(yaml, "vmCount", 1, 1, 1024))
                 .includes(includes)
                 .exclusions(exclusions)
                 .matchRules(matchRules)
@@ -163,14 +168,14 @@ public class BytecodeVMConfig
 
     public BytecodeVMConfig forMethod(ClassNode owner, MethodNode method)
     {
-        return BytecodeVMConfig
+        BytecodeVMConfig yamlConfig = BytecodeVMConfig
                 .builder()
                 .inputFile(inputFile)
                 .outputFile(outputFile)
                 .createMode(createMode)
                 .location(location)
-                .mutateMode(mutateMode)
                 .interpretMode(interpretMode)
+                .vmStructure(vmStructure)
                 .renameMode(renameMode)
                 .protectCodePool(statementEnabled("protectCodePool", protectCodePool, owner, method))
                 .virtualizeInstructionAddresses(statementEnabled("virtualizeInstructionAddresses", virtualizeInstructionAddresses, owner, method))
@@ -185,11 +190,13 @@ public class BytecodeVMConfig
                 .dynamicStateKey(statementEnabled("dynamicStateKey", dynamicStateKey, owner, method))
                 .virtualControlFlowGraph(statementEnabled("virtualControlFlowGraph", virtualControlFlowGraph, owner, method))
                 .constantFix(constantFix)
+                .removeAnnotations(removeAnnotations)
                 .includeMethodsCalledWithin(includeMethodsCalledWithin)
                 .excludeMethodsCalledWithin(excludeMethodsCalledWithin)
                 .virtualizeInvocationBridges(virtualizeInvocationBridges)
                 .vmIntegrityCheck(vmIntegrityCheck)
                 .vmIntegrityCheckRatio(vmIntegrityCheckRatio)
+                .vmIntegrityRecheckInterval(vmIntegrityRecheckInterval)
                 .superInstruction(statementEnabled("superInstruction", superInstruction, owner, method))
                 .superInstructionCombineMin(superInstructionCombineMin)
                 .superInstructionCombineMax(superInstructionCombineMax)
@@ -201,6 +208,7 @@ public class BytecodeVMConfig
                 .exclusions(exclusions)
                 .matchRules(matchRules)
                 .build();
+        return SdkAnnotationReader.applyMethodOverrides(yamlConfig, owner, method);
     }
 
     public BytecodeVMConfig integrityConfig()
@@ -211,8 +219,8 @@ public class BytecodeVMConfig
                 .outputFile(outputFile)
                 .createMode(VMCreateMode.PER_METHOD)
                 .location(location)
-                .mutateMode(MutateMode.ALL_RANDOM_INT)
                 .interpretMode(InterpretMode.SAVE_ALL_INSTRUCTION)
+                .vmStructure(VMStructure.HIGH)
                 .renameMode(renameMode)
                 .protectCodePool(true)
                 .virtualizeInstructionAddresses(true)
@@ -227,11 +235,13 @@ public class BytecodeVMConfig
                 .dynamicStateKey(true)
                 .virtualControlFlowGraph(true)
                 .constantFix(false)
+                .removeAnnotations(removeAnnotations)
                 .includeMethodsCalledWithin(false)
                 .excludeMethodsCalledWithin(false)
                 .virtualizeInvocationBridges(false)
                 .vmIntegrityCheck(false)
                 .vmIntegrityCheckRatio(0.0D)
+                .vmIntegrityRecheckInterval(0)
                 .superInstruction(superInstruction)
                 .superInstructionCombineMin(superInstructionCombineMin)
                 .superInstructionCombineMax(superInstructionCombineMax)
@@ -245,45 +255,65 @@ public class BytecodeVMConfig
                 .build();
     }
 
+    public BytecodeVMConfig resolveVMStructure()
+    {
+        return vmStructure.isAutomatic()
+                ? toBuilder().vmStructure(vmStructure.resolveAuto()).build()
+                : this;
+    }
+
     private boolean statementEnabled(String key, boolean baseValue, ClassNode owner, MethodNode method)
     {
         return baseValue && matchRules.statementMatches(key, owner, method);
     }
 
-    private static boolean optionalBoolean(JsonObject json, String key, boolean defaultValue)
+    private static boolean optionalBoolean(Map<String, Object> yaml, String key, boolean defaultValue)
     {
-        return optionalBoolean(json, key, defaultValue, new String[0]);
+        return optionalBoolean(yaml, key, defaultValue, new String[0]);
     }
 
-    private static boolean optionalBoolean(JsonObject json, String key, boolean defaultValue, String... aliases)
+    private static boolean optionalBoolean(
+            Map<String, Object> yaml,
+            String key,
+            boolean defaultValue,
+            String... aliases)
     {
-        JsonElement value = json.get(key);
-        if(value == null || value.isJsonNull())
+        Object value = yaml.get(key);
+        if (value == null)
         {
             for (String alias : aliases)
             {
-                value = json.get(alias);
-                if(value != null && !value.isJsonNull())
+                value = yaml.get(alias);
+                if (value != null)
                 {
                     break;
                 }
             }
         }
-        if(value == null || value.isJsonNull())
+        if (value == null)
         {
             return defaultValue;
         }
-        return value.getAsBoolean();
+        if (!(value instanceof Boolean result))
+        {
+            throw typeError(key, "a boolean");
+        }
+        return result;
     }
 
-    private static int optionalInt(JsonObject json, String key, int defaultValue, int minValue, int maxValue)
+    private static int optionalInt(
+            Map<String, Object> yaml,
+            String key,
+            int defaultValue,
+            int minValue,
+            int maxValue)
     {
-        JsonElement value = json.get(key);
-        if(value == null || value.isJsonNull())
+        Object value = yaml.get(key);
+        if (value == null)
         {
             return defaultValue;
         }
-        int result = value.getAsInt();
+        int result = integer(value, key);
         if(result < minValue || result > maxValue)
         {
             throw new IllegalArgumentException(
@@ -292,14 +322,23 @@ public class BytecodeVMConfig
         return result;
     }
 
-    private static double optionalDouble(JsonObject json, String key, double defaultValue, double minValue, double maxValue)
+    private static double optionalDouble(
+            Map<String, Object> yaml,
+            String key,
+            double defaultValue,
+            double minValue,
+            double maxValue)
     {
-        JsonElement value = json.get(key);
-        if(value == null || value.isJsonNull())
+        Object value = yaml.get(key);
+        if (value == null)
         {
             return defaultValue;
         }
-        double result = value.getAsDouble();
+        if (!(value instanceof Number number))
+        {
+            throw typeError(key, "a number");
+        }
+        double result = number.doubleValue();
         if(result < minValue || result > maxValue)
         {
             throw new IllegalArgumentException(
@@ -308,18 +347,42 @@ public class BytecodeVMConfig
         return result;
     }
 
-    private static <T extends Enum<T>> T optionalEnum(JsonObject json, String key, T defaultValue)
+    private static <T extends Enum<T>> T optionalEnum(
+            Map<String, Object> yaml,
+            String key,
+            T defaultValue)
     {
-        JsonElement value = json.get(key);
-        if(value == null || value.isJsonNull())
+        Object value = yaml.get(key);
+        if (value == null)
         {
             return defaultValue;
         }
-        return Enum.valueOf(defaultValue.getDeclaringClass(), value.getAsString());
+        if (!(value instanceof String text))
+        {
+            throw typeError(key, "a string");
+        }
+        return Enum.valueOf(defaultValue.getDeclaringClass(), text);
+    }
+
+    private static VMStructure optionalVMStructure(
+            Map<String, Object> yaml,
+            String key,
+            VMStructure defaultValue)
+    {
+        Object value = yaml.get(key);
+        if (value == null)
+        {
+            return defaultValue;
+        }
+        if (!(value instanceof String text))
+        {
+            throw typeError(key, "a string");
+        }
+        return VMStructure.parse(text);
     }
 
     private static int[] optionalIntRange(
-            JsonObject json,
+            Map<String, Object> yaml,
             String key,
             String alias,
             int defaultMin,
@@ -327,21 +390,21 @@ public class BytecodeVMConfig
             int minValue,
             int maxValue)
     {
-        JsonElement value = json.get(key);
-        if(value == null || value.isJsonNull())
+        Object value = yaml.get(key);
+        if (value == null)
         {
-            value = json.get(alias);
+            value = yaml.get(alias);
         }
-        if(value == null || value.isJsonNull())
+        if (value == null)
         {
             return new int[]{defaultMin, defaultMax};
         }
-        if(!value.isJsonArray() || value.getAsJsonArray().size() != 2)
+        if (!(value instanceof List<?> range) || range.size() != 2)
         {
             throw new IllegalArgumentException("Config value must be a two-item array: " + key);
         }
-        int min = value.getAsJsonArray().get(0).getAsInt();
-        int max = value.getAsJsonArray().get(1).getAsInt();
+        int min = integer(range.get(0), key + "[0]");
+        int max = integer(range.get(1), key + "[1]");
         if(min < minValue || max > maxValue || min > max)
         {
             throw new IllegalArgumentException(
@@ -350,28 +413,37 @@ public class BytecodeVMConfig
         return new int[]{min, max};
     }
 
-    private static String requiredString(JsonObject json, String key)
+    private static String requiredString(Map<String, Object> yaml, String key)
     {
-        JsonElement value = json.get(key);
-        if(value == null || value.isJsonNull())
+        Object value = yaml.get(key);
+        if (value == null)
         {
             throw new IllegalArgumentException("Missing required config value: " + key);
         }
-        return value.getAsString();
+        if (!(value instanceof String result))
+        {
+            throw typeError(key, "a string");
+        }
+        return result;
     }
 
-    private static JsonArray requiredArray(JsonObject json, String key)
+    private static int integer(Object value, String key)
     {
-        JsonElement value = json.get(key);
-        if(value == null || value.isJsonNull())
+        if (!(value instanceof Number number))
         {
-            throw new IllegalArgumentException("Missing required config array: " + key);
+            throw typeError(key, "an integer");
         }
-        if(!value.isJsonArray())
+        long result = number.longValue();
+        if (number.doubleValue() != result || result < Integer.MIN_VALUE || result > Integer.MAX_VALUE)
         {
-            throw new IllegalArgumentException("Config value must be an array: " + key);
+            throw typeError(key, "a 32-bit integer");
         }
-        return value.getAsJsonArray();
+        return (int) result;
+    }
+
+    private static IllegalArgumentException typeError(String key, String expected)
+    {
+        return new IllegalArgumentException("Config value " + key + " must be " + expected);
     }
 
     public static final class MatchRules
@@ -389,11 +461,11 @@ public class BytecodeVMConfig
             this.excludeMatchers = createMatchers(exclusions);
         }
 
-        private static MatchRules parse(JsonObject json)
+        private static MatchRules parse(Map<String, Object> yaml)
         {
             return new MatchRules(
-                    parseRuleGroups(json, "includes"),
-                    parseRuleGroups(json, "exclusions"));
+                    parseRuleGroups(yaml, "includes"),
+                    parseRuleGroups(yaml, "exclusions"));
         }
 
         private static MatchRules empty()
@@ -439,42 +511,50 @@ public class BytecodeVMConfig
             return Map.copyOf(result);
         }
 
-        private static Map<String, String[]> parseRuleGroups(JsonObject json, String key)
+        private static Map<String, String[]> parseRuleGroups(Map<String, Object> yaml, String key)
         {
-            JsonElement value = json.get(key);
-            if(value == null || value.isJsonNull())
+            Object value = yaml.get(key);
+            if (value == null)
             {
                 throw new IllegalArgumentException("Missing required match rules: " + key);
             }
             Map<String, String[]> result = new HashMap<>();
-            if(value.isJsonArray())
+            if (value instanceof List<?> rules)
             {
-                result.put("all", readRuleArray(value.getAsJsonArray()));
+                result.put("all", readRuleArray(rules, key));
                 return Map.copyOf(result);
             }
-            if(!value.isJsonObject())
+            if (!(value instanceof Map<?, ?> groups))
             {
-                throw new IllegalArgumentException("Config value must be an array or object: " + key);
+                throw new IllegalArgumentException("Config value must be a list or map: " + key);
             }
-            JsonObject groups = value.getAsJsonObject();
-            for (Map.Entry<String, JsonElement> entry : groups.entrySet())
+            for (Map.Entry<?, ?> entry : groups.entrySet())
             {
-                if(!entry.getValue().isJsonArray())
+                if (!(entry.getKey() instanceof String groupName))
                 {
-                    throw new IllegalArgumentException("Match group must be an array: " + key + "." + entry.getKey());
+                    throw new IllegalArgumentException("Match group names must be strings: " + key);
                 }
-                result.put(entry.getKey(), readRuleArray(entry.getValue().getAsJsonArray()));
+                if (!(entry.getValue() instanceof List<?> groupRules))
+                {
+                    throw new IllegalArgumentException("Match group must be a list: " + key + "." + groupName);
+                }
+                result.put(groupName, readRuleArray(groupRules, key + "." + groupName));
             }
             result.putIfAbsent("all", new String[0]);
             return Map.copyOf(result);
         }
 
-        private static String[] readRuleArray(JsonArray array)
+        private static String[] readRuleArray(List<?> rules, String key)
         {
-            String[] values = new String[array.size()];
-            for(int i = 0; i < array.size(); i++)
+            String[] values = new String[rules.size()];
+            for(int index = 0; index < rules.size(); index++)
             {
-                values[i] = array.get(i).getAsString();
+                Object value = rules.get(index);
+                if (!(value instanceof String rule))
+                {
+                    throw typeError(key + '[' + index + ']', "a string");
+                }
+                values[index] = rule;
             }
             return values;
         }

@@ -1,0 +1,65 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+group = 'dev.nhcm.bytecodevm'
+version = '2.0.0'
+description = 'Compile-time annotations for configuring BytecodeVM protection'
+
+base {
+    archivesName = 'bytecodevm-sdk'
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 8
+    options.compilerArgs.add('-Xlint:-options')
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+    options.charSet = 'UTF-8'
+    options.docEncoding = 'UTF-8'
+    options.addBooleanOption('Xdoclint:all,-missing', true)
+}
+
+tasks.register('verifySdkApi', JavaExec) {
+    group = 'verification'
+    description = 'Verifies annotation targets, retention, and inheritance-safe defaults.'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'nhcm.bytecodevm.sdk.SdkApiContractTest'
+}
+
+check.dependsOn verifySdkApi
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            artifactId = 'bytecodevm-sdk'
+            pom {
+                name = 'BytecodeVM SDK'
+                description = project.description
+                url = 'https://github.com/NHCM-dev/BytecodeVM'
+                developers {
+                    developer {
+                        id = 'NHCM-dev'
+                        name = 'NHCM'
+                    }
+                }
+                scm {
+                    url = 'https://github.com/NHCM-dev/BytecodeVM'
+                    connection = 'scm:git:https://github.com/NHCM-dev/BytecodeVM.git'
+                    developerConnection = 'scm:git:ssh://git@github.com/NHCM-dev/BytecodeVM.git'
+                }
+            }
+        }
+    }
+}
