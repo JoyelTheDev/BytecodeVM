@@ -149,7 +149,7 @@ public class JarTransformer
                     continue;
                 }
 
-                jos.putNextEntry(new JarEntry(entryName));
+                jos.putNextEntry(reproducibleEntry(entryName));
 
                 jos.write(toBytes(cn, context));
                 jos.closeEntry();
@@ -165,7 +165,7 @@ public class JarTransformer
                     continue;
                 }
 
-                jos.putNextEntry(new JarEntry(name));
+                jos.putNextEntry(reproducibleEntry(name));
                 jos.write(resource.getValue());
                 jos.closeEntry();
                 resourceCount++;
@@ -205,6 +205,13 @@ public class JarTransformer
         }
 
         return baos.toByteArray();
+    }
+
+    private static JarEntry reproducibleEntry(String name)
+    {
+        JarEntry entry = new JarEntry(name);
+        entry.setTime(0L);
+        return entry;
     }
 
     private static class ContextClassWriter extends ClassWriter

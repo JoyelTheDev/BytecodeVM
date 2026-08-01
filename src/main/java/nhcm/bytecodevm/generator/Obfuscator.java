@@ -11,6 +11,8 @@ import nhcm.bytecodevm.generator.transformer.ConstantFixTransformer;
 import nhcm.bytecodevm.generator.globalclass.MethodFrameGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
+import nhcm.bytecodevm.progress.ConsoleVirtualizationProgress;
+import nhcm.bytecodevm.progress.VirtualizationProgress;
 import nhcm.bytecodevm.tools.JarTransformer;
 import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.utils.ClassUtils;
@@ -24,7 +26,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 public class Obfuscator
@@ -37,10 +43,25 @@ public class Obfuscator
 
     private final List<VMSetGenerator> VMSetGenerators = new ArrayList<>();
     private final GeneratedMemberNamer namer;
+    private final Long seed;
+    private PlanningStats planningStats = PlanningStats.empty();
+    private final List<ObfuscationReport.MethodPlan> plannedMethods = new ArrayList<>();
+    private final List<ObfuscationReport.Diagnostic> planningDiagnostics = new ArrayList<>();
+    private final Map<String, Integer> skippedMethods = new LinkedHashMap<>();
+    private int inputClassCount;
+    private int inputResourceCount;
+    private int outputClassCount;
+    private int outputResourceCount;
 
     public Obfuscator(BytecodeVMConfig config)
     {
+        this(config, null);
+    }
+
+    public Obfuscator(BytecodeVMConfig config, Long seed)
+    {
         this.config = config;
+        this.seed = seed;
         this.namer = new GeneratedMemberNamer(config);
         this.targetExclude = new TargetMatcher();
         for(String exclusion : config.exclusions)
@@ -54,29 +75,65 @@ public class Obfuscator
         }
     }
 
-    public void obfuscate()
+    public ObfuscationReport obfuscate() throws IOException
     {
-        if(!Files.exists(config.inputFile))
-        {
-            logger.error("{}", LogColors.error("Input file does not exist: " + LogColors.path(config.inputFile.toAbsolutePath())));
-            return;
-        }
+        requireInput();
+        resetPlanning();
+        long started = System.nanoTime();
         logger.info("{}", LogColors.lifecycle(
                 "Obfuscating " +
                         LogColors.path(config.inputFile.toAbsolutePath()) +
                         " -> " +
                         LogColors.path(config.outputFile.toAbsolutePath())));
-        try
+        JarTransformer.transformJar(
+                config.inputFile.toFile(),
+                config.outputFile.toFile(),
+                this::obfuscateProcess);
+        return createReport("protect")
+                .withElapsedMillis((System.nanoTime() - started) / 1_000_000L);
+    }
+
+    public ObfuscationReport inspect() throws IOException
+    {
+        requireInput();
+        resetPlanning();
+        long started = System.nanoTime();
+        JarTransformer.JarContext context = JarTransformer.readJar(config.inputFile.toFile());
+        inputClassCount = context.classes.size();
+        inputResourceCount = context.resources.size();
+        namer.reserveClassNames(context.classes.keySet());
+        processJar(context);
+        outputClassCount = inputClassCount;
+        outputResourceCount = inputResourceCount;
+        return createReport("inspect")
+                .withElapsedMillis((System.nanoTime() - started) / 1_000_000L);
+    }
+
+    private void requireInput() throws NoSuchFileException
+    {
+        if (!Files.isRegularFile(config.inputFile))
         {
-            JarTransformer.transformJar(config.inputFile.toFile(), config.outputFile.toFile(), this::obfuscateProcess);
-        } catch (IOException e)
-        {
-            logger.error(LogColors.error("Failed obfuscating while reading or writing jar"), e);
+            throw new NoSuchFileException(config.inputFile.toAbsolutePath().toString());
         }
+    }
+
+    private void resetPlanning()
+    {
+        VMSetGenerators.clear();
+        plannedMethods.clear();
+        planningDiagnostics.clear();
+        skippedMethods.clear();
+        planningStats = PlanningStats.empty();
+        inputClassCount = 0;
+        inputResourceCount = 0;
+        outputClassCount = 0;
+        outputResourceCount = 0;
     }
 
     private void obfuscateProcess(JarTransformer.JarContext context)
     {
+        inputClassCount = context.classes.size();
+        inputResourceCount = context.resources.size();
         namer.reserveClassNames(context.classes.keySet());
         processJar(context);
         logger.info("{}", LogColors.lifecycle("Adding required VM support classes"));
@@ -90,9 +147,10 @@ public class Obfuscator
                             " [" + generator.vmStructure + "]" +
                             " (" + generator.methodCount() + " method(s))"));
             VirtualizationResult result;
-            try (CliProgress progress = new CliProgress(generator.vmClassName))
+            try (VirtualizationProgress progress =
+                         new ConsoleVirtualizationProgress(generator.vmClassName))
             {
-                result = generator.compile(context, progress::update);
+                result = generator.compile(context, progress);
             }
             context.classes.putAll(result.transformedTarget);
             context.addClass(result.vmClass);
@@ -100,6 +158,11 @@ public class Obfuscator
             {
                 context.addClass(codePoolClass);
             }
+            logger.debug(
+                    "VM {} generated {} support class(es) and transformed {} target class(es)",
+                    generator.vmClassName,
+                    result.codePoolClass.size() + 1,
+                    result.transformedTarget.size());
             logger.info("{}", LogColors.success("Done virtualizing VM: " + LogColors.strong(generator.vmClassName)));
         }
         logger.info("{}", LogColors.success("Done virtualizing all classes"));
@@ -108,6 +171,8 @@ public class Obfuscator
             int removed = SdkAnnotationRemover.remove(context.classes.values());
             logger.debug("Removed {} BytecodeVM SDK annotation(s)", removed);
         }
+        outputClassCount = context.classes.size();
+        outputResourceCount = context.resources.size();
     }
 
     private void processJar(JarTransformer.JarContext context)
@@ -178,6 +243,7 @@ public class Obfuscator
                 matchedMethods++;
                 GeneratorProfile profile = GeneratorProfile.of(candidate.methodConfig);
 
+                VMSetGenerator assignedGenerator = null;
                 switch(config.createMode)
                 {
                     case PER_CLASS ->
@@ -190,7 +256,8 @@ public class Obfuscator
                                         profile.apply(config)));
                         GeneratorGroupKey key = new GeneratorGroupKey(classNode.name, profile);
                         int ordinal = generatorOrdinals.merge(key, 1, Integer::sum) - 1;
-                        pickGenerator(generators, ordinal).addMethod(methodNode, classNode);
+                        assignedGenerator = pickGenerator(generators, ordinal);
+                        assignedGenerator.addMethod(methodNode, classNode);
                     }
 
                     case PER_METHOD ->
@@ -203,6 +270,7 @@ public class Obfuscator
 
                         perMethod.addMethod(methodNode, classNode);
                         perMethods.add(perMethod);
+                        assignedGenerator = perMethod;
                     }
 
                     case PER_PACKAGE ->
@@ -217,7 +285,8 @@ public class Obfuscator
                                         profile.apply(config)));
                         GeneratorGroupKey key = new GeneratorGroupKey(classPackage, profile);
                         int ordinal = generatorOrdinals.merge(key, 1, Integer::sum) - 1;
-                        pickGenerator(generators, ordinal).addMethod(methodNode, classNode);
+                        assignedGenerator = pickGenerator(generators, ordinal);
+                        assignedGenerator.addMethod(methodNode, classNode);
                     }
 
                     case ONE_FOR_ALL ->
@@ -230,9 +299,20 @@ public class Obfuscator
                                         profile.apply(config)));
                         GeneratorGroupKey key = new GeneratorGroupKey("", profile);
                         int ordinal = generatorOrdinals.merge(key, 1, Integer::sum) - 1;
-                        pickGenerator(generators, ordinal).addMethod(methodNode, classNode);
+                        assignedGenerator = pickGenerator(generators, ordinal);
+                        assignedGenerator.addMethod(methodNode, classNode);
                     }
                 }
+                assignedGenerator = Objects.requireNonNull(
+                        assignedGenerator,
+                        "VM generator assignment");
+                plannedMethods.add(new ObfuscationReport.MethodPlan(
+                        candidate.id.owner,
+                        candidate.id.name,
+                        candidate.id.desc,
+                        selectionSource(candidate, includedByCall),
+                        assignedGenerator.vmClassName,
+                        assignedGenerator.vmStructure.name()));
             }
 
             if(config.createMode == BytecodeVMConfig.VMCreateMode.PER_CLASS && perClass != null)
@@ -253,6 +333,31 @@ public class Obfuscator
             }
         }
 
+        int eligibleMethods = (int) candidates.stream().filter(MethodCandidate::eligible).count();
+        int explicitlyIncludedMethods = (int) candidates.stream()
+                .filter(candidate -> candidate.eligible && candidate.explicitIncluded)
+                .count();
+        int explicitlyExcludedMethods = (int) candidates.stream()
+                .filter(candidate -> candidate.eligible && candidate.explicitExcluded)
+                .count();
+        for (MethodCandidate candidate : candidates)
+        {
+            if (!candidate.eligible)
+            {
+                skippedMethods.merge(candidate.ineligibleReason, 1, Integer::sum);
+            }
+        }
+        planningStats = new PlanningStats(
+                candidates.size(),
+                eligibleMethods,
+                explicitlyIncludedMethods,
+                explicitlyExcludedMethods,
+                matchedMethods,
+                calledMethodsIncluded,
+                calledMethodsExcluded,
+                fixedConstants);
+        createPlanningDiagnostics(explicitlyIncludedMethods, matchedMethods);
+
         logger.info("{}", LogColors.scan(
                 "Scanned input file, found " +
                 LogColors.strong(matchedMethods) +
@@ -269,6 +374,82 @@ public class Obfuscator
                     LogColors.strong(calledMethodsExcluded) +
                     " target method(s)"));
         }
+        logger.debug(
+                "Method planning: {} total, {} eligible, {} explicitly included, {} explicitly excluded",
+                candidates.size(),
+                eligibleMethods,
+                explicitlyIncludedMethods,
+                explicitlyExcludedMethods);
+        for (VMSetGenerator generator : VMSetGenerators)
+        {
+            logger.debug(
+                    "Planned VM {} [{}] with {} method(s)",
+                    generator.vmClassName,
+                    generator.vmStructure,
+                    generator.methodCount());
+        }
+    }
+
+    private ObfuscationReport createReport(String mode) throws IOException
+    {
+        List<ObfuscationReport.VMSet> vmSets = VMSetGenerators.stream()
+                .map(generator -> new ObfuscationReport.VMSet(
+                        generator.vmClassName,
+                        generator.vmStructure.name(),
+                        generator.methodCount()))
+                .toList();
+        return new ObfuscationReport(
+                mode,
+                ObfuscationReport.currentVersion(),
+                config.inputFile.toAbsolutePath().normalize().toString(),
+                "protect".equals(mode) ? config.outputFile.toAbsolutePath().normalize().toString() : null,
+                seed,
+                sha256(config.inputFile),
+                "protect".equals(mode) ? sha256(config.outputFile) : null,
+                0L,
+                config.toMap(),
+                inputClassCount,
+                inputResourceCount,
+                planningStats.totalMethods,
+                planningStats.eligibleMethods,
+                planningStats.explicitlyIncludedMethods,
+                planningStats.explicitlyExcludedMethods,
+                planningStats.matchedMethods,
+                planningStats.calledMethodsIncluded,
+                planningStats.calledMethodsExcluded,
+                planningStats.fixedConstants,
+                skippedMethods,
+                vmSets.size(),
+                vmSets,
+                plannedMethods,
+                planningDiagnostics,
+                outputClassCount,
+                outputResourceCount,
+                Math.max(0, outputClassCount - inputClassCount),
+                false);
+    }
+
+    private static String sha256(java.nio.file.Path path) throws IOException
+    {
+        MessageDigest digest;
+        try
+        {
+            digest = MessageDigest.getInstance("SHA-256");
+        }
+        catch (NoSuchAlgorithmException exception)
+        {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+        try (InputStream input = Files.newInputStream(path))
+        {
+            byte[] buffer = new byte[16_384];
+            int count;
+            while ((count = input.read(buffer)) >= 0)
+            {
+                digest.update(buffer, 0, count);
+            }
+        }
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     private VMSetGenerator newVMSetGenerator(
@@ -327,7 +508,26 @@ public class Obfuscator
 
     private static String profileName(String base, GeneratorProfile profile)
     {
-        return base + "$P" + Integer.toUnsignedString(profile.hashCode(), 36);
+        int hash = 0x811C9DC5;
+        hash = stableHash(hash, profile.structure().name());
+        hash = stableHash(hash, profile.superInstructionMaxHandlers());
+        hash = stableHash(hash, profile.superInstructionMinFrequency());
+        return base + "$P" + Integer.toUnsignedString(hash, 36);
+    }
+
+    private static int stableHash(int hash, String value)
+    {
+        int result = hash;
+        for (int index = 0; index < value.length(); index++)
+        {
+            result = stableHash(result, value.charAt(index));
+        }
+        return result;
+    }
+
+    private static int stableHash(int hash, int value)
+    {
+        return (hash ^ value) * 0x01000193;
     }
 
     private static void addNonEmpty(List<VMSetGenerator> target, List<VMSetGenerator> candidates)
@@ -358,9 +558,10 @@ public class Obfuscator
             {
                 SdkAnnotationReader.MethodDirectives sdkMethod =
                         SdkAnnotationReader.methodDirectives(classNode, methodNode);
-                boolean ignored = securityManagerClass ||
-                                  shouldIgnoreMethod(methodNode) ||
-                                  stackTraceSensitiveMethods.contains(methodKey(methodNode));
+                String ineligibleReason = ineligibleReason(
+                        methodNode,
+                        securityManagerClass,
+                        stackTraceSensitiveMethods.contains(methodKey(methodNode)));
                 boolean explicitIncluded = sdkMethod.selected() ||
                         (classIncluded && targetInclude.isMethodMatched(classNode, methodNode));
                 boolean explicitExcluded = classExcluded ||
@@ -371,9 +572,11 @@ public class Obfuscator
                         classNode,
                         methodNode,
                         MethodId.of(classNode, methodNode),
-                        !ignored,
+                        ineligibleReason == null,
+                        ineligibleReason,
                         explicitIncluded,
                         explicitExcluded,
+                        sdkMethod.selected(),
                         methodConfig,
                         callPolicy(methodConfig)));
             }
@@ -494,6 +697,59 @@ public class Obfuscator
                !excludedByCall;
     }
 
+    private static String selectionSource(MethodCandidate candidate, boolean includedByCall)
+    {
+        if (includedByCall)
+        {
+            return "CALL_GRAPH";
+        }
+        return candidate.sdkIncluded ? "SDK_ANNOTATION" : "CONFIG_MATCH";
+    }
+
+    private void createPlanningDiagnostics(int explicitlyIncludedMethods, int matchedMethods)
+    {
+        if (matchedMethods == 0)
+        {
+            planningDiagnostics.add(new ObfuscationReport.Diagnostic(
+                    "WARN",
+                    "NO_METHODS_SELECTED",
+                    "No eligible methods will be virtualized; check includes, exclusions, and SDK annotations."));
+        }
+        else if (explicitlyIncludedMethods == 0)
+        {
+            planningDiagnostics.add(new ObfuscationReport.Diagnostic(
+                    "INFO",
+                    "CALL_GRAPH_ONLY",
+                    "All selected methods came from call-graph expansion."));
+        }
+        if (planningStats.explicitlyExcludedMethods > 0)
+        {
+            planningDiagnostics.add(new ObfuscationReport.Diagnostic(
+                    "INFO",
+                    "EXPLICIT_EXCLUSIONS",
+                    planningStats.explicitlyExcludedMethods +
+                            " eligible method(s) were excluded by configuration or SDK annotations."));
+        }
+        if (!skippedMethods.isEmpty())
+        {
+            planningDiagnostics.add(new ObfuscationReport.Diagnostic(
+                    "INFO",
+                    "INELIGIBLE_METHODS",
+                    "Methods skipped for VM compatibility: " + skippedMethods));
+        }
+        for (ObfuscationReport.Diagnostic diagnostic : planningDiagnostics)
+        {
+            if ("WARN".equals(diagnostic.level()))
+            {
+                logger.warn("Inspect {}: {}", diagnostic.code(), diagnostic.message());
+            }
+            else
+            {
+                logger.debug("Inspect {}: {}", diagnostic.code(), diagnostic.message());
+            }
+        }
+    }
+
     private String getVMLocation(String globalLocation, String classPackage, ClassNode classNode)
     {
         return switch(config.location)
@@ -523,6 +779,34 @@ public class Obfuscator
                MethodUtils.isAbstract(methodNode) ||
                MethodUtils.isNative(methodNode) ||
                usesStackTraceIntrospection(methodNode);
+    }
+
+    private static String ineligibleReason(
+            MethodNode methodNode,
+            boolean securityManagerClass,
+            boolean stackTraceSensitive)
+    {
+        if (securityManagerClass)
+        {
+            return "SECURITY_MANAGER_CLASS";
+        }
+        if ("<init>".equals(methodNode.name))
+        {
+            return "CONSTRUCTOR";
+        }
+        if (MethodUtils.isAbstract(methodNode))
+        {
+            return "ABSTRACT";
+        }
+        if (MethodUtils.isNative(methodNode))
+        {
+            return "NATIVE";
+        }
+        if (stackTraceSensitive)
+        {
+            return "STACK_TRACE_SENSITIVE";
+        }
+        return null;
     }
 
     private static String methodKey(MethodNode methodNode)
@@ -663,8 +947,10 @@ public class Obfuscator
             MethodNode method,
             MethodId id,
             boolean eligible,
+            String ineligibleReason,
             boolean explicitIncluded,
             boolean explicitExcluded,
+            boolean sdkIncluded,
             BytecodeVMConfig methodConfig,
             SdkCallPolicy callPolicy)
     {
@@ -697,93 +983,20 @@ public class Obfuscator
     {
     }
 
-    private static class CliProgress implements AutoCloseable
+    private record PlanningStats(
+            int totalMethods,
+            int eligibleMethods,
+            int explicitlyIncludedMethods,
+            int explicitlyExcludedMethods,
+            int matchedMethods,
+            int calledMethodsIncluded,
+            int calledMethodsExcluded,
+            int fixedConstants)
     {
-        private static final String CLEAR_LINE = "\u001B[2K";
-        private static final int BAR_WIDTH = 22;
-        private static final int MAX_TITLE_LENGTH = 28;
-        private static final int MAX_STATUS_LENGTH = 18;
-
-        private final String title;
-        private final boolean enabled;
-        private long lastRenderNanos;
-        private boolean closed;
-
-        private CliProgress(String title)
+        private static PlanningStats empty()
         {
-            this.title = title;
-            this.enabled = System.console() != null;
-        }
-
-        private void update(int completed, int total, String status)
-        {
-            if (!enabled || closed)
-            {
-                return;
-            }
-
-            int safeTotal = Math.max(total, 1);
-            int safeCompleted = Math.max(0, Math.min(completed, safeTotal));
-            long now = System.nanoTime();
-            boolean edgeUpdate = safeCompleted == 0 || safeCompleted == safeTotal;
-            if (!edgeUpdate && now - lastRenderNanos < 50_000_000L)
-            {
-                return;
-            }
-
-            int filled = (int) ((safeCompleted * (long) BAR_WIDTH) / safeTotal);
-            int percent = (int) ((safeCompleted * 100L) / safeTotal);
-
-            StringBuilder bar = new StringBuilder(BAR_WIDTH);
-            for (int i = 0; i < BAR_WIDTH; i++)
-            {
-                bar.append(i < filled ? '=' : ' ');
-            }
-
-            String line = String.format(
-                    Locale.ROOT,
-                    "Virtualizing VM %s [%s] %3d%% %d/%d %s",
-                    truncate(title, MAX_TITLE_LENGTH),
-                    bar,
-                    percent,
-                    safeCompleted,
-                    safeTotal,
-                    truncate(status, MAX_STATUS_LENGTH));
-
-            System.out.print("\r" + CLEAR_LINE + line);
-            System.out.flush();
-            lastRenderNanos = now;
-        }
-
-        @Override
-        public void close()
-        {
-            if (!closed)
-            {
-                if (enabled)
-                {
-                    System.out.print("\r" + CLEAR_LINE + "\r");
-                    System.out.flush();
-                }
-                closed = true;
-            }
-        }
-
-        private static String truncate(String value, int maxLength)
-        {
-            if (value == null)
-            {
-                return "";
-            }
-            if (value.length() <= maxLength)
-            {
-                return value;
-            }
-            if (maxLength <= 3)
-            {
-                return value.substring(0, maxLength);
-            }
-            return value.substring(0, maxLength - 3) + "...";
+            return new PlanningStats(0, 0, 0, 0, 0, 0, 0, 0);
         }
     }
+
 }

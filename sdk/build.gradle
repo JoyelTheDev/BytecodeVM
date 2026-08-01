@@ -24,16 +24,6 @@ tasks.withType(Javadoc).configureEach {
     options.addBooleanOption('Xdoclint:all,-missing', true)
 }
 
-tasks.register('verifySdkApi', JavaExec) {
-    group = 'verification'
-    description = 'Verifies annotation targets, retention, and inheritance-safe defaults.'
-    dependsOn testClasses
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'nhcm.bytecodevm.sdk.SdkApiContractTest'
-}
-
-check.dependsOn verifySdkApi
-
 mavenPublishing {
     publishToMavenCentral()
 

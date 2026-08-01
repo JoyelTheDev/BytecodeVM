@@ -1,23 +1,18 @@
 package nhcm.bytecodevm;
 
-import nhcm.bytecodevm.config.BytecodeVMConfig;
-import nhcm.bytecodevm.generator.Obfuscator;
+import nhcm.bytecodevm.cli.BytecodeVMCLI;
 import nhcm.bytecodevm.utils.LogColors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class BytecodeVM
 {
     private static final Logger logger = LoggerFactory.getLogger(BytecodeVM.class);
     private static final AtomicBoolean terminating = new AtomicBoolean(false);
-
-    private static final String version = "2.0.0";
 
     private static final String defaultConfig = """
             # Relative paths are resolved from the current working directory.
@@ -86,6 +81,7 @@ public class BytecodeVM
 
             # all selects virtualization targets. Additional groups scope matching boolean options.
             # Matcher strings containing '*' should stay quoted because '*' is YAML alias syntax.
+            # Run `inspect <config.yml>` to preview include matches and VM allocation.
             includes:
               all:
                 - "*"
@@ -93,13 +89,6 @@ public class BytecodeVM
             exclusions:
               all:
                 - "* <init>(*)V"
-            """;
-
-    private static final String usage = """
-            Usage:
-            java -jar BytecodeVM.jar --config <config file>
-            java -jar BytecodeVM.jar --defaultconfig
-            java -jar BytecodeVM.jar --defaultrun <input jar>
             """;
 
     private static final String asciiArt = """
@@ -110,6 +99,7 @@ public class BytecodeVM
             ██████╔╝   ██║      ██║   ███████╗╚██████╗╚██████╔╝██████╔╝███████╗ ╚████╔╝ ██║ ╚═╝ ██║
             ╚═════╝    ╚═╝      ╚═╝   ╚══════╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝  ╚═══╝  ╚═╝     ╚═╝
             
+            (Credit to GPT 5.5 and GPT 5.6)
             By NHCM, Version %s
             
             MUST READ:
@@ -117,76 +107,52 @@ public class BytecodeVM
             It can make your program hundreds of times slower, while the quality of its protection is not guaranteed.
             This obfuscator may not even provide protection comparable to existing virtualization tools such as V*P or The*ida, or even basic bytecode-to-native obfuscation tools such as JN*C.
             Its purpose is to demonstrate the concept of bytecode virtualization.
-            """.formatted(version);
+            """.formatted(BuildInfo.VERSION);
 
-    public static void main(String[] args) throws InterruptedException
+    public static void main(String[] args)
     {
         installTerminationHandlers();
-        System.out.println(asciiArt);
-        Thread.sleep(1000);
-        int exitCode = run(args);
+        printBanner();
+        printCliIntent(args);
+        int exitCode = BytecodeVMCLI.execute(args);
         if(exitCode != 0)
         {
             System.exit(exitCode);
         }
     }
 
-    private static int run(String[] args)
+    public static String defaultConfig()
     {
-        try
+        return defaultConfig;
+    }
+
+    public static void printBanner()
+    {
+        System.out.println(asciiArt);
+    }
+
+    private static void printCliIntent(String[] args)
+    {
+        if (args.length == 0 || containsArgument(args, "-h", "--help"))
         {
-            if(args.length == 1)
+            logger.info("{}", LogColors.lifecycle("Printing usage"));
+        }
+        else if (containsArgument(args, "-V", "--version"))
+        {
+            logger.info("{}", LogColors.lifecycle("Printing version"));
+        }
+    }
+
+    private static boolean containsArgument(String[] args, String shortName, String longName)
+    {
+        for (String argument : args)
+        {
+            if (shortName.equals(argument) || longName.equals(argument))
             {
-                if(args[0].equals("--defaultconfig"))
-                {
-                    Files.writeString(Path.of("defaultconfig.yml"), defaultConfig);
-                    logger.info("{}", LogColors.success("Default config saved to ./defaultconfig.yml"));
-                    return 0;
-                } else
-                {
-                    logger.info("{}", usage);
-                    return 1;
-                }
-            } else if(args.length == 2)
-            {
-                if(args[0].equals("--config"))
-                {
-                    Path configFile = Path.of(args[1]);
-                    if(!Files.exists(configFile))
-                    {
-                        logger.error("{}", LogColors.error("Config file does not exist: " + LogColors.path(configFile.toAbsolutePath())));
-                        return 1;
-                    }
-                    logger.info("{}", LogColors.lifecycle("Starting BytecodeVM with config " + LogColors.path(configFile.toAbsolutePath())));
-                    Obfuscator obfuscator = new Obfuscator(BytecodeVMConfig.parse(configFile));
-                    obfuscator.obfuscate();
-                    logger.info("{}", LogColors.success("Program exiting"));
-                    return 0;
-                } else if(args[0].equals("--defaultrun"))
-                {
-                    logger.info("{}", LogColors.lifecycle("Starting BytecodeVM with default config"));
-                    String inputFile = args[1];
-                    String outputFile = inputFile.replaceAll("\\.jar$", "") + "-bytecodevm.jar";
-                    Obfuscator obfuscator = new Obfuscator(BytecodeVMConfig.parse(defaultConfig, inputFile, outputFile));
-                    obfuscator.obfuscate();
-                    logger.info("{}", LogColors.success("Program exiting"));
-                    return 0;
-                } else
-                {
-                    logger.info("{}", usage);
-                    return 1;
-                }
-            } else
-            {
-                logger.info("{}", usage);
-                return 1;
+                return true;
             }
         }
-        catch (Exception e)
-        {
-            logger.error(LogColors.error("Program failed"), e);
-            return 1;
-        }
+        return false;
     }
 
     private static void installTerminationHandlers()

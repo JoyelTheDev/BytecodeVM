@@ -5,6 +5,8 @@ import org.objectweb.asm.util.CheckClassAdapter;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,7 +31,11 @@ public final class GeneratedJarVerifier
     public static void verify(Path jarPath) throws Exception
     {
         List<String> failures = new ArrayList<>();
-        try (JarFile jar = new JarFile(jarPath.toFile()))
+        URL jarUrl = jarPath.toAbsolutePath().toUri().toURL();
+        try (JarFile jar = new JarFile(jarPath.toFile());
+             URLClassLoader loader = new URLClassLoader(
+                     new URL[]{jarUrl},
+                     GeneratedJarVerifier.class.getClassLoader()))
         {
             var entries = jar.entries();
             while (entries.hasMoreElements())
@@ -44,6 +50,7 @@ public final class GeneratedJarVerifier
                 {
                     CheckClassAdapter.verify(
                             new ClassReader(jar.getInputStream(entry)),
+                            loader,
                             false,
                             output);
                 }

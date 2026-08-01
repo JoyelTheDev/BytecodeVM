@@ -27,29 +27,66 @@ build/libs/BytecodeVM-2.0.0.jar
 
 ## Usage
 
-Create a default config:
+Every invocation prints the BytecodeVM banner and version information. Show the command list
+or the version generated from Gradle's `project.version` with:
 
 ```powershell
-java -jar BytecodeVM-2.0.0.jar --defaultconfig
+java -jar BytecodeVM.jar --help
+java -jar BytecodeVM.jar --version
+java -jar BytecodeVM.jar --help protect
 ```
 
-Run obfuscation:
+Create and validate a documented YAML configuration:
 
 ```powershell
-java -jar BytecodeVM-2.0.0.jar --config config.yml
+java -jar BytecodeVM.jar init config.yml
+java -jar BytecodeVM.jar validate config.yml
 ```
 
-Run obfuscation with default config:
+Inspect exactly what will be protected without generating an output JAR:
 
 ```powershell
-java -jar BytecodeVM-2.0.0.jar --defaultrun <input jar>
+java -jar BytecodeVM.jar inspect config.yml
+java -jar BytecodeVM.jar inspect config.yml --report inspection.json
 ```
 
-Set log level when debugging:
+`inspect` applies the configured `includes` and `exclusions` through the same selection and VM
+allocation path as `protect`. The terminal only shows the matched method count and concise VM
+allocation. The optional JSON report contains the complete selected-method plan and diagnostics.
+
+Protect a JAR and optionally verify every emitted class with ASM:
 
 ```powershell
-java "-Dbytecodevm.log.level=DEBUG" -jar BytecodeVM-2.0.0.jar --config config.yml
+java -jar BytecodeVM.jar protect config.yml
 ```
+
+`protect`, `validate`, and `inspect` accept either a positional YAML config or an input JAR using
+default settings. The command always comes first, followed by its arguments and options.
+`--config` remains available for scripts. The commands also support `--input`, `--output`,
+and `--report <report.json>`.
+Existing output, report, and initialized config files are overwritten automatically.
+
+Lifecycle logs are printed to the terminal with colors. `--verbose` adds detailed planning and
+generation records. `--log-file <file>` additionally writes the same logs to a file, while
+`--quiet` suppresses normal logger output and command summaries. The banner and errors remain visible.
+
+The JSON report records the effective configuration, seed, input/output SHA-256, method
+selection and skip reasons, per-method VM assignments, VM structure counts, generated class
+counts and elapsed time. This makes `inspect` suitable for CI
+checks before a release build.
+
+Legacy `--config`, `--defaultconfig`, and `--defaultrun` invocations remain accepted and are
+mapped to `protect` or `init` with overwrite behavior matching older releases.
+
+| Exit code | Meaning |
+| ---: | --- |
+| `0` | Success |
+| `1` | Unexpected failure |
+| `2` | Invalid command-line usage |
+| `3` | Invalid configuration or inspection failure |
+| `4` | Missing or unreadable input JAR |
+| `5` | Generation, output, or report write failure |
+| `6` | Generated output verification failure |
 
 ## Config
 
@@ -219,7 +256,7 @@ public final class LicenseService {
 }
 ```
 
-Every SDK option uses `CONFIG` to inherit its value from the enclosing class annotation and then YAML. Method values override class values. A method-level structure override is assigned to a compatible VM set, so it does not silently retain an incompatible global VM structure.
+Every SDK option uses `CONFIG` to inherit its value from the enclosing class annotation and then YAML. Explicit class or method SDK values override YAML, and method values override class values. A structure override is assigned to a compatible VM set, so it does not silently retain an incompatible global VM structure. `inspect` and `protect` emit a warning when an SDK structure falls outside the configured automatic tier.
 
 `VMOptions` groups the low-level YAML switches into three practical controls. `encrypt` controls virtual addresses, operands, per-method opcode maps, constant binding, and dynamic state keys. `shuffle` controls constants, split streams, instruction blocks, and virtual-CFG layout. `obfuscate` controls dispatch obfuscation and dynamic CodePool construction. Explicitly enabling any group also enables `protectCodePool`; disabling one group leaves the other groups unchanged. Fine-grained tuning remains available in YAML.
 

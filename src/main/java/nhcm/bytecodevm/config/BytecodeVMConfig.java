@@ -5,17 +5,39 @@ import nhcm.bytecodevm.config.sdk.SdkAnnotationReader;
 import nhcm.bytecodevm.enums.VMStructure;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 @Builder(toBuilder = true)
 public class BytecodeVMConfig
 {
+    private static final java.util.Set<String> CONFIG_KEYS = java.util.Set.of(
+            "input", "output", "createMode", "location", "renameMode", "interpretMode",
+            "vmStructure", "protectCodePool", "virtualizeInstructionAddresses", "encryptOperands",
+            "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
+            "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey",
+            "virtualControlFlowGraph", "constantFix", "fixConstants", "removeAnnotations",
+            "includeMethodsCalledWithin", "excludeMethodsCalledWithin", "virtualizeInvocationBridges",
+            "vmIntegrityCheck", "vmIntegrityCheckRatio", "vmIntegrityRecheckInterval", "superInstruction",
+            "superinstrcution", "superInstructionCombineRange", "superinstrcutioncombinerange",
+            "superInstructionMode", "superInstructionMaxHandlers", "superInstructionMinFrequency",
+            "vmCount", "includes", "exclusions", "mutateMode");
+    private static final java.util.Set<String> MATCH_GROUP_KEYS = java.util.Set.of(
+            "all", "protectCodePool", "virtualizeInstructionAddresses", "encryptOperands",
+            "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
+            "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey",
+            "virtualControlFlowGraph", "constantFix", "superInstruction");
+
     public final Path inputFile;
     public final Path outputFile;
     public final VMCreateMode createMode;
@@ -108,6 +130,7 @@ public class BytecodeVMConfig
 
     private static BytecodeVMConfig parse(Map<String, Object> yaml, String input, String output)
     {
+        validateConfigKeys(yaml);
         MatchRules matchRules = MatchRules.parse(yaml);
         String[] includes = matchRules.includes("all");
         String[] exclusions = matchRules.exclusions("all");
@@ -119,7 +142,7 @@ public class BytecodeVMConfig
                 5,
                 2,
                 32);
-        return BytecodeVMConfig
+        BytecodeVMConfig parsed = BytecodeVMConfig
                 .builder()
                 .inputFile(Path.of(input))
                 .outputFile(Path.of(output))
@@ -164,6 +187,97 @@ public class BytecodeVMConfig
                 .exclusions(exclusions)
                 .matchRules(matchRules)
                 .build();
+        if (parsed.includeMethodsCalledWithin && parsed.excludeMethodsCalledWithin)
+        {
+            throw new IllegalArgumentException(
+                    "includeMethodsCalledWithin and excludeMethodsCalledWithin cannot both be true");
+        }
+        return parsed;
+    }
+
+    private static void validateConfigKeys(Map<String, Object> yaml)
+    {
+        for (String key : yaml.keySet())
+        {
+            if (!CONFIG_KEYS.contains(key))
+            {
+                throw new IllegalArgumentException("Unknown config value: " + key);
+            }
+        }
+    }
+
+    public BytecodeVMConfig withPaths(Path input, Path output)
+    {
+        return toBuilder()
+                .inputFile(input == null ? inputFile : input)
+                .outputFile(output == null ? outputFile : output)
+                .build();
+    }
+
+    /** Returns the fully resolved configuration in stable YAML field order. */
+    public Map<String, Object> toMap()
+    {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("input", inputFile.toString());
+        values.put("output", outputFile.toString());
+        values.put("createMode", createMode.name());
+        values.put("location", location.name());
+        values.put("renameMode", renameMode.name());
+        values.put("interpretMode", interpretMode.name());
+        values.put("vmStructure", vmStructure.name());
+        values.put("protectCodePool", protectCodePool);
+        values.put("virtualizeInstructionAddresses", virtualizeInstructionAddresses);
+        values.put("encryptOperands", encryptOperands);
+        values.put("perMethodOpcodeMap", perMethodOpcodeMap);
+        values.put("shuffleConstants", shuffleConstants);
+        values.put("bindConstantsToOperands", bindConstantsToOperands);
+        values.put("splitCodeStreams", splitCodeStreams);
+        values.put("shuffleInstructionBlocks", shuffleInstructionBlocks);
+        values.put("obfuscateDispatch", obfuscateDispatch);
+        values.put("dynamicCodePoolBuild", dynamicCodePoolBuild);
+        values.put("dynamicStateKey", dynamicStateKey);
+        values.put("virtualControlFlowGraph", virtualControlFlowGraph);
+        values.put("constantFix", constantFix);
+        values.put("removeAnnotations", removeAnnotations);
+        values.put("includeMethodsCalledWithin", includeMethodsCalledWithin);
+        values.put("excludeMethodsCalledWithin", excludeMethodsCalledWithin);
+        values.put("virtualizeInvocationBridges", virtualizeInvocationBridges);
+        values.put("vmIntegrityCheck", vmIntegrityCheck);
+        values.put("vmIntegrityCheckRatio", vmIntegrityCheckRatio);
+        values.put("vmIntegrityRecheckInterval", vmIntegrityRecheckInterval);
+        values.put("superInstruction", superInstruction);
+        values.put("superInstructionCombineRange", List.of(
+                superInstructionCombineMin,
+                superInstructionCombineMax));
+        values.put("superInstructionMode", superInstructionMode.name());
+        values.put("superInstructionMaxHandlers", superInstructionMaxHandlers);
+        values.put("superInstructionMinFrequency", superInstructionMinFrequency);
+        values.put("vmCount", vmCount);
+        values.put("includes", ruleDocument(matchRules.includes));
+        values.put("exclusions", ruleDocument(matchRules.exclusions));
+        return Collections.unmodifiableMap(values);
+    }
+
+    public String toYaml()
+    {
+        DumperOptions options = new DumperOptions();
+        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        options.setPrettyFlow(true);
+        options.setIndent(2);
+        options.setSplitLines(false);
+        return new Yaml(options).dump(toMap());
+    }
+
+    private static Map<String, List<String>> ruleDocument(Map<String, String[]> groups)
+    {
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        groups.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> result.put(
+                        entry.getKey(),
+                        List.copyOf(Arrays.asList(entry.getValue()))));
+        result.putIfAbsent("all", List.of());
+        return Collections.unmodifiableMap(result);
     }
 
     public BytecodeVMConfig forMethod(ClassNode owner, MethodNode method)
@@ -537,6 +651,10 @@ public class BytecodeVMConfig
                 if (!(entry.getValue() instanceof List<?> groupRules))
                 {
                     throw new IllegalArgumentException("Match group must be a list: " + key + "." + groupName);
+                }
+                if (!MATCH_GROUP_KEYS.contains(groupName))
+                {
+                    throw new IllegalArgumentException("Unknown match group: " + key + "." + groupName);
                 }
                 result.put(groupName, readRuleArray(groupRules, key + "." + groupName));
             }

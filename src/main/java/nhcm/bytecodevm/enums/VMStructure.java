@@ -69,6 +69,34 @@ public enum VMStructure
         return this == LOW || this == MEDIUM || this == HIGH;
     }
 
+    public boolean acceptsResolvedStructure(VMStructure resolved)
+    {
+        if (!isAutomatic())
+        {
+            return this == resolved;
+        }
+        VMStructure[] candidates = switch (this)
+        {
+            case LOW -> LOW_CANDIDATES;
+            case MEDIUM -> MEDIUM_CANDIDATES;
+            case HIGH -> HIGH_CANDIDATES;
+            default -> throw new IllegalStateException("Unexpected automatic structure: " + this);
+        };
+        for (VMStructure candidate : candidates)
+        {
+            if (candidate == resolved)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static synchronized void resetAutomaticSelection()
+    {
+        AUTO_BAGS.clear();
+    }
+
     public synchronized VMStructure resolveAuto()
     {
         VMStructure[] candidates = switch (this)

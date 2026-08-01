@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 
 public class MethodsReplacer
 {
@@ -51,12 +52,19 @@ public class MethodsReplacer
 
     public Map<String, ClassNode> transform()
     {
+        return transform(ignored -> { });
+    }
+
+    public Map<String, ClassNode> transform(Consumer<CompiledMethod> replacedMethod)
+    {
+        Objects.requireNonNull(replacedMethod, "replacedMethod");
         Map<String, ClassNode> classes = new LinkedHashMap<>();
         for (CompiledMethod compiledMethod : compiledMethods)
         {
             validate(compiledMethod);
             classes.put(compiledMethod.owner.name, compiledMethod.owner);
             replace(compiledMethod);
+            replacedMethod.accept(compiledMethod);
         }
         return classes;
     }

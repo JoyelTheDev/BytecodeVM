@@ -20,6 +20,8 @@ import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructio
 import nhcm.bytecodevm.generator.virtualization.VMGenerator;
 import nhcm.bytecodevm.generator.virtualization.VMMethodSegmenter;
 import nhcm.bytecodevm.generator.virtualization.VMObfProfile;
+import nhcm.bytecodevm.progress.ProgressStage;
+import nhcm.bytecodevm.progress.VirtualizationProgress;
 import nhcm.bytecodevm.tools.JarTransformer;
 import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.tools.VMMethodCompiler;
@@ -33,11 +35,6 @@ import java.util.*;
 public class VMSetGenerator
 {
     private static final int CODE_POOL_METHOD_SIZE_LIMIT = 32_000;
-
-    public interface ProgressListener
-    {
-        void update(int completed, int total, String status);
-    }
 
     private final Map<MethodNode, ClassNode> methodsToObfuscate = new LinkedHashMap<>();
     private final Set<Integer> uniqueCodeIds = new LinkedHashSet<>();
@@ -115,70 +112,79 @@ public class VMSetGenerator
 
     public VirtualizationResult compile()
     {
-        return compile(null, null);
+        return compile(null, VirtualizationProgress.silent());
     }
 
-    public VirtualizationResult compile(ProgressListener progress)
+    public VirtualizationResult compile(VirtualizationProgress progress)
     {
         return compile(null, progress);
     }
 
-    public VirtualizationResult compile(JarTransformer.JarContext serializationContext, ProgressListener progress)
+    public VirtualizationResult compile(
+            JarTransformer.JarContext serializationContext,
+            VirtualizationProgress progress)
     {
+        Objects.requireNonNull(progress, "progress");
         compiledMethods.clear();
         codePoolMethods.clear();
         codePoolGenerators.clear();
         superInstructions.clear();
-        int methodCount = methodsToObfuscate.size();
-        int totalSteps = methodCount * 2 + 3;
-        int completedSteps = 0;
-        reportProgress(progress, completedSteps, totalSteps, "Compiling methods");
 
         List<PendingMethod> invocationBridges = new ArrayList<>();
-        for (Map.Entry<MethodNode, ClassNode> entry : methodsToObfuscate.entrySet())
+        try (ProgressStage stage = progress.compilingMethods(methodsToObfuscate.size()))
         {
-            ClassNode owner = entry.getValue();
-            MethodNode method = entry.getKey();
-
-            for (MethodNode bridge : invocationBridgeGenerator.rewrite(owner, method))
+            for (Map.Entry<MethodNode, ClassNode> entry : methodsToObfuscate.entrySet())
             {
-                if (config.virtualizeInvocationBridges && InvocationBridgeGenerator.canVirtualizeBridge(bridge))
+                ClassNode owner = entry.getValue();
+                MethodNode method = entry.getKey();
+                for (MethodNode bridge : invocationBridgeGenerator.rewrite(owner, method))
                 {
-                    invocationBridges.add(new PendingMethod(owner, bridge));
+                    if (config.virtualizeInvocationBridges && InvocationBridgeGenerator.canVirtualizeBridge(bridge))
+                    {
+                        invocationBridges.add(new PendingMethod(owner, bridge));
+                        stage.addWork(1);
+                    }
                 }
+                compileMethod(owner, method);
+                stage.advance(describeMethod(owner, method));
             }
-            compileMethod(owner, method);
-            completedSteps++;
-            reportProgress(progress, completedSteps, totalSteps, "Compiling methods");
+            for (PendingMethod bridge : invocationBridges)
+            {
+                compileMethod(bridge.owner(), bridge.method());
+                stage.advance(describeMethod(bridge.owner(), bridge.method()));
+            }
         }
 
-        for (PendingMethod bridge : invocationBridges)
+        List<List<CompiledMethod>> codePoolPartitions;
+        try (ProgressStage stage = progress.packingCodePools(codePoolMethods.size()))
         {
-            compileMethod(bridge.owner(), bridge.method());
+            codePoolPartitions = partitionCompiledMethods(stage);
+        }
+        try (ProgressStage stage = progress.generatingCodePools(codePoolPartitions.size()))
+        {
+            generateCodePools(codePoolPartitions, stage);
         }
 
-        totalSteps = methodCount + invocationBridges.size() + codePoolMethods.size() + 3;
-        reportProgress(progress, completedSteps, totalSteps, "Planning pools");
-        completedSteps += createCodePools(progress, completedSteps, totalSteps);
-        reportProgress(progress, completedSteps, totalSteps, "Built code pools");
-
-        reportProgress(progress, completedSteps, totalSteps, "Generating VM");
-        VMGenerator vmGenerator = new VMGenerator(
-                vmClassName,
-                codePoolGenerators,
-                opcMutator,
-                methodFrameGenerator,
-                vmProgramGenerator,
-                vmCodePoolGenerator,
-                config,
-                namer,
-                protectionProfile,
-                superInstructions,
-                integrityCapability);
-        ClassNode vmClass = vmGenerator.getClassNode();
-        List<ClassNode> vmAuxiliaryClasses = vmGenerator.getAuxiliaryClasses();
-        completedSteps++;
-        reportProgress(progress, completedSteps, totalSteps, "Generated VM");
+        ClassNode vmClass;
+        List<ClassNode> vmAuxiliaryClasses;
+        try (ProgressStage stage = progress.generatingVmRuntime())
+        {
+            VMGenerator vmGenerator = new VMGenerator(
+                    vmClassName,
+                    codePoolGenerators,
+                    opcMutator,
+                    methodFrameGenerator,
+                    vmProgramGenerator,
+                    vmCodePoolGenerator,
+                    config,
+                    namer,
+                    protectionProfile,
+                    superInstructions,
+                    integrityCapability);
+            vmClass = vmGenerator.getClassNode();
+            vmAuxiliaryClasses = vmGenerator.getAuxiliaryClasses();
+            stage.advance("Runtime classes generated");
+        }
 
         List<ClassNode> codePoolClasses = new ArrayList<>();
         for (CodePoolGenerator codePoolGenerator : codePoolGenerators)
@@ -192,13 +198,17 @@ public class VMSetGenerator
                 codePoolClasses,
                 vmAuxiliaryClasses);
 
-        reportProgress(progress, completedSteps, totalSteps, "Replacing methods");
         Set<MethodNode> integrityProtectedMethods = selectIntegrityProtectedMethods(integrityBuild.plan());
-        Map<String, ClassNode> transformedTargets = new MethodsReplacer(
-                compiledMethods,
-                vmClassName,
-                integrityBuild.plan(),
-                integrityProtectedMethods).transform();
+        Map<String, ClassNode> transformedTargets;
+        try (ProgressStage stage = progress.replacingMethods(compiledMethods.size()))
+        {
+            transformedTargets = new MethodsReplacer(
+                    compiledMethods,
+                    vmClassName,
+                    integrityBuild.plan(),
+                    integrityProtectedMethods).transform(method ->
+                            stage.advance(describeMethod(method.owner, method.source)));
+        }
         IntegrityEntryTransformer.Result integrityEntries = prepareIntegrityEntries(
                 integrityBuild,
                 integrityProtectedMethods);
@@ -209,9 +219,6 @@ public class VMSetGenerator
         {
             transformedTargets.putAll(integrityResult.transformedTarget);
         }
-        completedSteps++;
-        reportProgress(progress, completedSteps, totalSteps, "Replaced methods");
-
         List<ClassNode> generatedClasses = new ArrayList<>(codePoolClasses);
         generatedClasses.add(methodFrameGenerator.getClassNode());
         generatedClasses.add(vmProgramGenerator.getClassNode());
@@ -348,14 +355,6 @@ public class VMSetGenerator
         return integrityVm.compile();
     }
 
-    private static void reportProgress(ProgressListener progress, int completed, int total, String status)
-    {
-        if (progress != null)
-        {
-            progress.update(completed, total, status);
-        }
-    }
-
     private static void addHashClass(Map<String, ClassNode> classes, ClassNode classNode)
     {
         classes.putIfAbsent(classNode.name, classNode);
@@ -364,7 +363,7 @@ public class VMSetGenerator
     private void compileMethod(ClassNode owner, MethodNode method)
     {
         VMMethod vmMethod = compiler.compile(owner, method);
-        BytecodeVMConfig methodConfig = config.forMethod(owner, method);
+        BytecodeVMConfig methodConfig = resolveMethodConfig(owner, method);
 
         int codeId = generateUniqueCodeId();
         CompiledMethod compiledMethod = new CompiledMethod(
@@ -397,17 +396,27 @@ public class VMSetGenerator
                 methodConfig));
     }
 
-    private int createCodePools(ProgressListener progress, int completedSteps, int totalSteps)
+    private BytecodeVMConfig resolveMethodConfig(ClassNode owner, MethodNode method)
     {
-        List<List<CompiledMethod>> partitions = partitionCompiledMethods(progress, completedSteps, totalSteps);
-        int plannedSteps = codePoolMethods.size();
+        BytecodeVMConfig methodConfig = config.forMethod(owner, method);
+        if (methodConfig.vmStructure == vmStructure)
+        {
+            return methodConfig;
+        }
+
+        // Automatic SDK tiers have already been assigned to this concrete VM set.
+        // Keep per-method toggles, but encode its CodePool for the owning runtime.
+        return methodConfig.toBuilder()
+                .vmStructure(vmStructure)
+                .build();
+    }
+
+    private void generateCodePools(
+            List<List<CompiledMethod>> partitions,
+            ProgressStage progress)
+    {
         for (int index = 0; index < partitions.size(); index++)
         {
-            reportProgress(
-                    progress,
-                    completedSteps + plannedSteps,
-                    totalSteps,
-                    "Building pool " + (index + 1) + "/" + partitions.size());
             String poolClassName = poolClassName(index, partitions.size());
             codePoolGenerators.add(new CodePoolGenerator(
                     poolClassName,
@@ -419,8 +428,8 @@ public class VMSetGenerator
                     namer,
                     protectionProfile,
                     superInstructions));
+            progress.advance(poolClassName);
         }
-        return plannedSteps + 1;
     }
 
     private String poolClassName(int index, int partitionCount)
@@ -432,7 +441,7 @@ public class VMSetGenerator
         return namer.className(classPackage(vmClassName), classSimpleName(codePoolClassName) + '$' + index);
     }
 
-    private List<List<CompiledMethod>> partitionCompiledMethods(ProgressListener progress, int completedSteps, int totalSteps)
+    private List<List<CompiledMethod>> partitionCompiledMethods(ProgressStage progress)
     {
         List<List<CompiledMethod>> partitions = new ArrayList<>();
         List<CompiledMethod> current = new ArrayList<>();
@@ -440,29 +449,23 @@ public class VMSetGenerator
         for (int index = 0; index < codePoolMethods.size(); index++)
         {
             CompiledMethod method = codePoolMethods.get(index);
-            reportProgress(
-                    progress,
-                    completedSteps + index + 1,
-                    totalSteps,
-                    "Planning " + (index + 1) + "/" + codePoolMethods.size());
-            current.add(method);
-            if (fitsInCodePool(current))
-            {
-                continue;
-            }
-
-            current.remove(current.size() - 1);
-            if (current.isEmpty())
-            {
-                throw methodTooLarge(method);
-            }
-            partitions.add(new ArrayList<>(current));
-            current.clear();
             current.add(method);
             if (!fitsInCodePool(current))
             {
-                throw methodTooLarge(method);
+                current.remove(current.size() - 1);
+                if (current.isEmpty())
+                {
+                    throw methodTooLarge(method);
+                }
+                partitions.add(new ArrayList<>(current));
+                current.clear();
+                current.add(method);
+                if (!fitsInCodePool(current))
+                {
+                    throw methodTooLarge(method);
+                }
             }
+            progress.advance(describeMethod(method.owner, method.source));
         }
 
         if (!current.isEmpty())
@@ -554,6 +557,11 @@ public class VMSetGenerator
                 "VM method cannot fit in a CodePool: " +
                         method.owner.name + '.' +
                         method.source.name + method.source.desc);
+    }
+
+    private static String describeMethod(ClassNode owner, MethodNode method)
+    {
+        return owner.name.replace('/', '.') + '.' + method.name + method.desc;
     }
 
     public void addMethod(MethodNode methodNode, ClassNode classNode)
