@@ -1,19 +1,14 @@
 plugins {
     id 'java-library'
-    id 'maven-publish'
+    id 'com.vanniktech.maven.publish' version '0.37.0'
 }
 
-group = 'dev.nhcm.bytecodevm'
+group = 'io.github.nhcm-dev'
 version = '2.0.0'
 description = 'Compile-time annotations for configuring BytecodeVM protection'
 
 base {
     archivesName = 'bytecodevm-sdk'
-}
-
-java {
-    withSourcesJar()
-    withJavadocJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -39,27 +34,52 @@ tasks.register('verifySdkApi', JavaExec) {
 
 check.dependsOn verifySdkApi
 
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            from components.java
-            artifactId = 'bytecodevm-sdk'
-            pom {
-                name = 'BytecodeVM SDK'
-                description = project.description
-                url = 'https://github.com/NHCM-dev/BytecodeVM'
-                developers {
-                    developer {
-                        id = 'NHCM-dev'
-                        name = 'NHCM'
-                    }
-                }
-                scm {
-                    url = 'https://github.com/NHCM-dev/BytecodeVM'
-                    connection = 'scm:git:https://github.com/NHCM-dev/BytecodeVM.git'
-                    developerConnection = 'scm:git:ssh://git@github.com/NHCM-dev/BytecodeVM.git'
-                }
+mavenPublishing {
+    publishToMavenCentral()
+
+    signAllPublications()
+
+    coordinates(
+            'io.github.nhcm-dev',
+            'bytecodevm-sdk',
+            '2.0.0'
+    )
+
+    pom {
+        name = 'BytecodeVM SDK'
+        description = project.description
+        url = 'https://github.com/NHCM-dev/BytecodeVM'
+
+        licenses {
+            license {
+                name = 'MIT License'
+                url = 'https://opensource.org/licenses/MIT'
+                distribution = 'repo'
             }
         }
+
+        developers {
+            developer {
+                id = 'NHCM-dev'
+                name = 'NHCM'
+                url = 'https://github.com/NHCM-dev'
+            }
+        }
+
+        scm {
+            url = 'https://github.com/NHCM-dev/BytecodeVM'
+            connection = 'scm:git:https://github.com/NHCM-dev/BytecodeVM.git'
+            developerConnection = 'scm:git:ssh://git@github.com/NHCM-dev/BytecodeVM.git'
+        }
+    }
+}
+
+signing {
+    def signingKeyFile = findProperty('signingKeyFile')
+    def signingPassword = findProperty('signingPassword')
+
+    if (signingKeyFile != null) {
+        def signingKey = file(signingKeyFile).getText('UTF-8')
+        useInMemoryPgpKeys(signingKey, signingPassword)
     }
 }

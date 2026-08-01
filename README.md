@@ -169,15 +169,30 @@ exclusions:
 
 ## Annotation SDK
 
-The `sdk` subproject is a dependency-free Java 8 annotation library. Applications should use it as a compile-only dependency; SDK classes are not required at runtime.
+The `sdk` subproject is a dependency-free Java 8 annotation library published on [Maven Central](https://central.sonatype.com/artifact/io.github.nhcm-dev/bytecodevm-sdk/2.0.0). SDK classes are not required at runtime, so `compileOnly` is recommended instead of packaging them into the application.
 
 ```groovy
+repositories {
+    mavenCentral()
+}
+
 dependencies {
-    compileOnly 'dev.nhcm.bytecodevm:bytecodevm-sdk:2.0.0'
+    compileOnly 'io.github.nhcm-dev:bytecodevm-sdk:2.0.0'
 }
 ```
 
-Publish the current checkout to Maven Local with:
+For Maven projects, use `provided` scope:
+
+```xml
+<dependency>
+    <groupId>io.github.nhcm-dev</groupId>
+    <artifactId>bytecodevm-sdk</artifactId>
+    <version>2.0.0</version>
+    <scope>provided</scope>
+</dependency>
+```
+
+To test the current source checkout instead of the published release, publish it to Maven Local with:
 
 ```powershell
 gradlew :sdk:publishToMavenLocal
