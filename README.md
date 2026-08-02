@@ -11,6 +11,10 @@ It can make your program hundreds of times slower, while the quality of its prot
 This obfuscator may not even provide protection comparable to existing virtualization tools such as V\*P or The\*ida, or even basic bytecode-to-native obfuscation tools such as JN\*C.
 Its purpose is to demonstrate the concept of bytecode virtualization.
 
+Friendly warning: any kind of virtualization can make protected code hundreds of times slower.
+Code virtualization **should not** be applied to **time-critical** methods.
+It should be used **only** for **very important methods** or code where runtime performance is not sensitive.
+
 A video is available here: https://youtu.be/hnDbwdsGjBU
 
 ## Build
