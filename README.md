@@ -11,6 +11,8 @@ It can make your program hundreds of times slower, while the quality of its prot
 This obfuscator may not even provide protection comparable to existing virtualization tools such as V\*P or The\*ida, or even basic bytecode-to-native obfuscation tools such as JN\*C.
 Its purpose is to demonstrate the concept of bytecode virtualization.
 
+A video is available here: https://youtu.be/hnDbwdsGjBU
+
 ## Build
 
 This project uses JDK 21
