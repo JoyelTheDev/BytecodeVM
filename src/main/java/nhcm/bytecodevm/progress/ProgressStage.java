@@ -7,6 +7,10 @@ public interface ProgressStage extends AutoCloseable
     {
     }
 
+    default void setDetail(String detail)
+    {
+    }
+
     void advance(String detail);
 
     @Override

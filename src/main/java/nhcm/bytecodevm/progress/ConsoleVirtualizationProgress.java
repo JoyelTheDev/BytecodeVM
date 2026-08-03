@@ -46,6 +46,12 @@ public final class ConsoleVirtualizationProgress implements VirtualizationProgre
     }
 
     @Override
+    public VirtualizationProgress forVm(String vmName)
+    {
+        return new ConsoleVirtualizationProgress(vmName);
+    }
+
+    @Override
     public void close()
     {
         if (activeStage != null)
@@ -62,7 +68,7 @@ public final class ConsoleVirtualizationProgress implements VirtualizationProgre
             activeStage.close();
         }
         activeStage = stage;
-        stage.render(0, "Starting");
+        stage.render(0, "Starting", true);
         return stage;
     }
 
@@ -95,6 +101,16 @@ public final class ConsoleVirtualizationProgress implements VirtualizationProgre
             if (!closed && amount > 0)
             {
                 total += amount;
+                render(completed, "Queued more work", true);
+            }
+        }
+
+        @Override
+        public final void setDetail(String detail)
+        {
+            if (!closed)
+            {
+                render(completed, detail, true);
             }
         }
 
@@ -106,10 +122,10 @@ public final class ConsoleVirtualizationProgress implements VirtualizationProgre
                 return;
             }
             completed = Math.min(completed + 1, total);
-            render(completed, detail);
+            render(completed, detail, false);
         }
 
-        private void render(int value, String detail)
+        private void render(int value, String detail, boolean force)
         {
             if (!enabled || closed)
             {
@@ -117,7 +133,7 @@ public final class ConsoleVirtualizationProgress implements VirtualizationProgre
             }
             long now = System.nanoTime();
             boolean edge = value == 0 || value == total;
-            if (!edge && now - lastRenderNanos < 50_000_000L)
+            if (!force && !edge && now - lastRenderNanos < 50_000_000L)
             {
                 return;
             }
@@ -149,7 +165,7 @@ public final class ConsoleVirtualizationProgress implements VirtualizationProgre
             if (completed < total)
             {
                 completed = total;
-                render(completed, "Done");
+                render(completed, "Done", true);
             }
             if (enabled)
             {

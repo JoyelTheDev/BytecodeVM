@@ -13,6 +13,11 @@ public interface VirtualizationProgress extends AutoCloseable
 
     ProgressStage replacingMethods(int totalMethods);
 
+    default VirtualizationProgress forVm(String vmName)
+    {
+        return this;
+    }
+
     @Override
     default void close()
     {
@@ -27,7 +32,13 @@ public interface VirtualizationProgress extends AutoCloseable
     {
         INSTANCE;
 
-        private static final ProgressStage STAGE = detail -> { };
+        private static final ProgressStage STAGE = new ProgressStage()
+        {
+            @Override
+            public void advance(String detail)
+            {
+            }
+        };
 
         @Override
         public ProgressStage compilingMethods(int totalMethods)
@@ -57,6 +68,12 @@ public interface VirtualizationProgress extends AutoCloseable
         public ProgressStage replacingMethods(int totalMethods)
         {
             return STAGE;
+        }
+
+        @Override
+        public VirtualizationProgress forVm(String vmName)
+        {
+            return this;
         }
     }
 }

@@ -114,8 +114,15 @@ public class BytecodeVM
     public static void main(String[] args)
     {
         installTerminationHandlers();
-        printBanner();
-        printCliIntent(args);
+        System.out.println(asciiArt);
+        if (args.length == 0 || containsArgument(args, "-h", "--help"))
+        {
+            logger.info("{}", LogColors.lifecycle("Printing usage"));
+        }
+        else if (containsArgument(args, "-V", "--version"))
+        {
+            logger.info("{}", LogColors.lifecycle("Printing version"));
+        }
         int exitCode = BytecodeVMCLI.execute(args);
         if(exitCode != 0)
         {
@@ -126,23 +133,6 @@ public class BytecodeVM
     public static String defaultConfig()
     {
         return defaultConfig;
-    }
-
-    public static void printBanner()
-    {
-        System.out.println(asciiArt);
-    }
-
-    private static void printCliIntent(String[] args)
-    {
-        if (args.length == 0 || containsArgument(args, "-h", "--help"))
-        {
-            logger.info("{}", LogColors.lifecycle("Printing usage"));
-        }
-        else if (containsArgument(args, "-V", "--version"))
-        {
-            logger.info("{}", LogColors.lifecycle("Printing version"));
-        }
     }
 
     private static boolean containsArgument(String[] args, String shortName, String longName)

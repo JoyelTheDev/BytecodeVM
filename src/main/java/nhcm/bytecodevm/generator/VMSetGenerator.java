@@ -53,6 +53,7 @@ public class VMSetGenerator
     private final InvocationBridgeGenerator invocationBridgeGenerator;
     private final List<CompiledMethod> compiledMethods = new ArrayList<>();
     private final List<CompiledMethod> codePoolMethods = new ArrayList<>();
+    private final Map<CompiledMethod, Boolean> singleMethodCodePoolFits = new IdentityHashMap<>();
     @Getter
     private final List<CodePoolGenerator> codePoolGenerators = new ArrayList<>();
     private final BytecodeVMConfig config;
@@ -127,6 +128,7 @@ public class VMSetGenerator
         Objects.requireNonNull(progress, "progress");
         compiledMethods.clear();
         codePoolMethods.clear();
+        singleMethodCodePoolFits.clear();
         codePoolGenerators.clear();
         superInstructions.clear();
 
@@ -169,6 +171,7 @@ public class VMSetGenerator
         List<ClassNode> vmAuxiliaryClasses;
         try (ProgressStage stage = progress.generatingVmRuntime())
         {
+            stage.setDetail("Generating runtime class");
             VMGenerator vmGenerator = new VMGenerator(
                     vmClassName,
                     codePoolGenerators,
@@ -181,6 +184,7 @@ public class VMSetGenerator
                     protectionProfile,
                     superInstructions,
                     integrityCapability);
+            stage.setDetail("Collecting runtime classes");
             vmClass = vmGenerator.getClassNode();
             vmAuxiliaryClasses = vmGenerator.getAuxiliaryClasses();
             stage.advance("Runtime classes generated");
@@ -214,7 +218,8 @@ public class VMSetGenerator
                 integrityProtectedMethods);
         VirtualizationResult integrityResult = virtualizeIntegrityDerivation(
                 integrityBuild,
-                integrityEntries);
+                integrityEntries,
+                progress);
         if (integrityResult != null)
         {
             transformedTargets.putAll(integrityResult.transformedTarget);
@@ -328,7 +333,8 @@ public class VMSetGenerator
 
     private VirtualizationResult virtualizeIntegrityDerivation(
             IntegrityBuild integrityBuild,
-            IntegrityEntryTransformer.Result integrityEntries)
+            IntegrityEntryTransformer.Result integrityEntries,
+            VirtualizationProgress progress)
     {
         if (integrityBuild.plan() == null)
         {
@@ -352,7 +358,10 @@ public class VMSetGenerator
         {
             integrityVm.addMethod(derivationMethod, integrityBuild.carrierClass());
         }
-        return integrityVm.compile();
+        try (VirtualizationProgress integrityProgress = progress.forVm(integrityVm.vmClassName))
+        {
+            return integrityVm.compile(integrityProgress);
+        }
     }
 
     private static void addHashClass(Map<String, ClassNode> classes, ClassNode classNode)
@@ -477,16 +486,55 @@ public class VMSetGenerator
 
     private boolean fitsInCodePool(List<CompiledMethod> methods)
     {
+        if (methods.size() == 1)
+        {
+            Boolean cached = singleMethodCodePoolFits.get(methods.getFirst());
+            if (cached != null)
+            {
+                return cached;
+            }
+        }
+        BytecodeVMConfig sizingConfig = config.toBuilder()
+                .superInstruction(false)
+                .build();
+        List<CompiledMethod> sizingMethods = methods.stream()
+                .map(method -> withSizingConfig(method, sizingConfig))
+                .toList();
         CodePoolGenerator candidate = new CodePoolGenerator(
                 codePoolClassName,
-                methods,
+                sizingMethods,
                 vmProgramGenerator,
                 vmCodePoolGenerator,
-                config,
+                sizingConfig,
                 false,
                 GeneratedMemberNamer.DISABLED,
-                protectionProfile);
-        return candidate.getMaxGeneratedMethodSize() <= CODE_POOL_METHOD_SIZE_LIMIT;
+                protectionProfile,
+                new SuperInstructionRegistry(config.superInstructionMaxHandlers));
+        boolean fits = candidate.getMaxGeneratedMethodSize() <= CODE_POOL_METHOD_SIZE_LIMIT;
+        if (methods.size() == 1)
+        {
+            singleMethodCodePoolFits.put(methods.getFirst(), fits);
+        }
+        return fits;
+    }
+
+    private static CompiledMethod withSizingConfig(
+            CompiledMethod method,
+            BytecodeVMConfig sizingConfig)
+    {
+        BytecodeVMConfig methodConfig = method.config == null
+                ? sizingConfig
+                : method.config.toBuilder().superInstruction(false).build();
+        return new CompiledMethod(
+                method.owner,
+                method.source,
+                method.vmMethod,
+                method.codeId,
+                method.codeIds,
+                method.descriptor,
+                method.isStatic,
+                method.virtualizeInstructionAddresses,
+                methodConfig);
     }
 
     private List<CompiledMethod> splitForCodePools(CompiledMethod method)

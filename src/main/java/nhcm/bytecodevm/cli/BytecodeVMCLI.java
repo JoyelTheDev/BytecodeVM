@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
 
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -93,7 +95,7 @@ public final class BytecodeVMCLI implements Callable<Integer>
         String requestedCommandHelp = requestedCommandHelp(arguments);
         if (requestedCommandHelp != null)
         {
-            commandLine.getSubcommands().get(requestedCommandHelp).usage(commandLine.getOut());
+            logUsage(commandLine.getSubcommands().get(requestedCommandHelp));
             return CLIExitCodes.SUCCESS;
         }
         String[] normalizedArguments = normalizeArguments(arguments);
@@ -104,14 +106,14 @@ public final class BytecodeVMCLI implements Callable<Integer>
         }
         commandLine.setParameterExceptionHandler((exception, ignored) -> {
             CommandLine failedCommand = exception.getCommandLine();
-            failedCommand.getErr().println("Error: " + exception.getMessage());
+            logCliError(exception.getMessage());
             if (failedCommand == commandLine)
             {
                 printRootUsage(failedCommand);
             }
             else
             {
-                failedCommand.usage(failedCommand.getErr());
+                logUsage(failedCommand);
             }
             return CLIExitCodes.USAGE;
         });
@@ -120,7 +122,7 @@ public final class BytecodeVMCLI implements Callable<Integer>
                     ? cli.exitCode()
                     : CLIExitCodes.FAILURE;
             String message = exception.getMessage();
-            command.getErr().println("Error: " + (message == null ? exception.getClass().getSimpleName() : message));
+            logCliError(message == null ? exception.getClass().getSimpleName() : message);
             if (application.verbose && exitCode != CLIExitCodes.USAGE)
             {
                 Throwable detail = exception.getCause() == null ? exception : exception.getCause();
@@ -128,7 +130,7 @@ public final class BytecodeVMCLI implements Callable<Integer>
                 Path details = application.resolvedLogFile();
                 if (details != null)
                 {
-                    command.getErr().println("Details also written to " + details);
+                    logger.error("{}", LogColors.error("Details also written to " + details));
                 }
             }
             return exitCode;
@@ -173,7 +175,7 @@ public final class BytecodeVMCLI implements Callable<Integer>
 
     private static void printRootUsage(CommandLine root)
     {
-        root.getOut().print("""
+        logCliBlock("""
                 Usage:
                   java -jar BytecodeVM.jar <command> [options]
 
@@ -192,7 +194,23 @@ public final class BytecodeVMCLI implements Callable<Integer>
 
                 Run `java -jar BytecodeVM.jar --help <command>` for command-specific options.
                 """);
-        root.getOut().flush();
+    }
+
+    private static void logUsage(CommandLine commandLine)
+    {
+        StringWriter buffer = new StringWriter();
+        commandLine.usage(new PrintWriter(buffer));
+        logCliBlock(buffer.toString());
+    }
+
+    private static void logCliBlock(String message)
+    {
+        logger.info("{}", message.stripTrailing());
+    }
+
+    private static void logCliError(String message)
+    {
+        logger.error("{}", LogColors.error("Error: " + message));
     }
 
     private static String[] normalizeArguments(String[] arguments)

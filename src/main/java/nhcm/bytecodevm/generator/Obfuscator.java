@@ -48,6 +48,7 @@ public class Obfuscator
     private final List<ObfuscationReport.MethodPlan> plannedMethods = new ArrayList<>();
     private final List<ObfuscationReport.Diagnostic> planningDiagnostics = new ArrayList<>();
     private final Map<String, Integer> skippedMethods = new LinkedHashMap<>();
+    private final Map<String, Integer> vmProfileOrdinals = new HashMap<>();
     private int inputClassCount;
     private int inputResourceCount;
     private int outputClassCount;
@@ -123,6 +124,7 @@ public class Obfuscator
         plannedMethods.clear();
         planningDiagnostics.clear();
         skippedMethods.clear();
+        vmProfileOrdinals.clear();
         planningStats = PlanningStats.empty();
         inputClassCount = 0;
         inputResourceCount = 0;
@@ -251,7 +253,7 @@ public class Obfuscator
                         List<VMSetGenerator> generators = perClass.computeIfAbsent(
                                 profile,
                                 ignored -> newVMSetGenerators(
-                                        profileName(ClassUtils.getSimpleName(classNode) + "$VM", profile),
+                                        profileName(ClassUtils.getSimpleName(classNode) + "$VM", vmLocation),
                                         vmLocation,
                                         profile.apply(config)));
                         GeneratorGroupKey key = new GeneratorGroupKey(classNode.name, profile);
@@ -280,7 +282,7 @@ public class Obfuscator
                         List<VMSetGenerator> generators = packageProfiles.computeIfAbsent(
                                 profile,
                                 ignored -> newVMSetGenerators(
-                                        profileName(classPackage + "$VM", profile),
+                                        profileName(classPackage + "$VM", classPackage),
                                         classPackage,
                                         profile.apply(config)));
                         GeneratorGroupKey key = new GeneratorGroupKey(classPackage, profile);
@@ -294,7 +296,7 @@ public class Obfuscator
                         List<VMSetGenerator> generators = allInOneVms.computeIfAbsent(
                                 profile,
                                 ignored -> newVMSetGenerators(
-                                        profileName("BytecodeVM", profile),
+                                        profileName("BytecodeVM", "BytecodeVM"),
                                         "BytecodeVM",
                                         profile.apply(config)));
                         GeneratorGroupKey key = new GeneratorGroupKey("", profile);
@@ -506,28 +508,11 @@ public class Obfuscator
         return generators.get(Math.floorMod(ordinal, generators.size()));
     }
 
-    private static String profileName(String base, GeneratorProfile profile)
+    private String profileName(String base, String location)
     {
-        int hash = 0x811C9DC5;
-        hash = stableHash(hash, profile.structure().name());
-        hash = stableHash(hash, profile.superInstructionMaxHandlers());
-        hash = stableHash(hash, profile.superInstructionMinFrequency());
-        return base + "$P" + Integer.toUnsignedString(hash, 36);
-    }
-
-    private static int stableHash(int hash, String value)
-    {
-        int result = hash;
-        for (int index = 0; index < value.length(); index++)
-        {
-            result = stableHash(result, value.charAt(index));
-        }
-        return result;
-    }
-
-    private static int stableHash(int hash, int value)
-    {
-        return (hash ^ value) * 0x01000193;
+        String key = location + '/' + base;
+        int ordinal = vmProfileOrdinals.merge(key, 1, Integer::sum) - 1;
+        return ordinal == 0 ? base : base + "$Profile" + ordinal;
     }
 
     private static void addNonEmpty(List<VMSetGenerator> target, List<VMSetGenerator> candidates)
