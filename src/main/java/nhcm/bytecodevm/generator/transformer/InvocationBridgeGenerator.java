@@ -135,6 +135,14 @@ public class InvocationBridgeGenerator
             {
                 return false;
             }
+            if (instruction instanceof MethodInsnNode methodInsn &&
+                methodInsn.getOpcode() == Opcodes.INVOKESPECIAL &&
+                !"<init>".equals(methodInsn.name))
+            {
+                // Keep JVM invokespecial lookup semantics in the bridge. Treating a
+                // super/private call as a constructor or invokevirtual is incorrect.
+                return false;
+            }
         }
         return true;
     }
