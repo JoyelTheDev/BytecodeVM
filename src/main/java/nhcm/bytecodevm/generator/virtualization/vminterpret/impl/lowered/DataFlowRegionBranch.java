@@ -54,6 +54,8 @@ public final class DataFlowRegionBranch extends InterpretBranch
                 context.program(),
                 context.frame(),
                 context.constants(),
-                payload));
+                payload,
+                context.instructionIndex(),
+                context.opcode()));
     }
 }

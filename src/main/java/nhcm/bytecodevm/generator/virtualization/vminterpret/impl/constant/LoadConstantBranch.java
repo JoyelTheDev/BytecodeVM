@@ -29,8 +29,11 @@ public class LoadConstantBranch extends InterpretBranch
                 context.vm.owner,
                 context.vm.resolveConstant.name(),
                 "java/lang/Object",
+                context.program(),
                 constant,
-                context.frame()));
+                context.frame(),
+                context.instructionIndex(),
+                context.opcode()));
 
         ib.ifElse(
                 AdvInsnBuilder.or(

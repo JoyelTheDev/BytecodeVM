@@ -36,7 +36,6 @@ public class VMRuntimeLayout
     public final MethodRef syncState;
     public final MethodRef mix;
     public final MethodRef dispatchKey;
-    public final MethodRef decodeMaybeString;
     public final MethodRef methodType;
     public final MethodRef resolveConstant;
     public final MethodRef loadOwner;
@@ -93,7 +92,11 @@ public class VMRuntimeLayout
         this.methodTypes = field("METHOD_TYPES", "Ljava/util/Map;");
         this.monitors = field("MONITORS", "Ljava/util/Map;");
 
-        this.constantString = method("constantString", "([Ljava/lang/Object;I)Ljava/lang/String;");
+        this.constantString = method(
+                "constantString",
+                programDescriptor == null
+                        ? "([Ljava/lang/Object;I)Ljava/lang/String;"
+                        : "(" + programDescriptor + frameDescriptor + "[Ljava/lang/Object;III)Ljava/lang/String;");
         this.resolve = programDescriptor == null ? null : method("resolve", "(I)" + programDescriptor);
         this.interpret = programDescriptor == null ? null : method(
                 interpreterName(structure),
@@ -109,10 +112,10 @@ public class VMRuntimeLayout
                 "(" + programDescriptor + frameDescriptor + "IILjava/lang/Object;I)V");
         this.executeRegisterOp = programDescriptor == null ? null : method(
                 "executeRegisterOp",
-                "(" + programDescriptor + frameDescriptor + "[Ljava/lang/Object;IIIIIII)V");
+                "(" + programDescriptor + frameDescriptor + "[Ljava/lang/Object;IIIIIIIII)V");
         this.executeDataFlow = programDescriptor == null ? null : method(
                 "executeDataFlow",
-                "(" + programDescriptor + frameDescriptor + "[Ljava/lang/Object;[I)V");
+                "(" + programDescriptor + frameDescriptor + "[Ljava/lang/Object;[III)V");
         this.instructionIndex = programDescriptor == null ? null : method("instructionIndex", "(" + programDescriptor + frameDescriptor + "I)I");
         this.instructionIndexInBlock = programDescriptor == null ? null : method("instructionIndexInBlock", "(" + programDescriptor + "II)I");
         this.decodeOpcode = programDescriptor == null ? null : method("decodeOpcode", "(" + programDescriptor + frameDescriptor + "I)I");
@@ -125,9 +128,12 @@ public class VMRuntimeLayout
         this.syncState = programDescriptor == null ? null : method("syncState", "(" + programDescriptor + frameDescriptor + "I)V");
         this.mix = method("mix", "(IIII)I");
         this.dispatchKey = method("dispatchKey", "(I)I");
-        this.decodeMaybeString = method("decodeMaybeString", "(Ljava/lang/Object;)Ljava/lang/String;");
         this.methodType = method("methodType", "(Ljava/lang/String;)Ljava/lang/invoke/MethodType;");
-        this.resolveConstant = method("resolveConstant", "(Ljava/lang/Object;" + frameDescriptor + ")Ljava/lang/Object;");
+        this.resolveConstant = method(
+                "resolveConstant",
+                programDescriptor == null
+                        ? "(Ljava/lang/Object;" + frameDescriptor + ")Ljava/lang/Object;"
+                        : "(" + programDescriptor + "Ljava/lang/Object;" + frameDescriptor + "II)Ljava/lang/Object;");
         this.loadOwner = method("loadOwner", "(Ljava/lang/String;)Ljava/lang/Class;");
         this.loadOwnerWithLoader = method("loadOwner", "(Ljava/lang/String;Ljava/lang/ClassLoader;)Ljava/lang/Class;");
         this.invoke = method(
@@ -176,7 +182,9 @@ public class VMRuntimeLayout
         this.cloneArray = method("cloneArray", "(Ljava/lang/Object;)Ljava/lang/Object;");
         this.findExceptionHandler = method(
                 "findExceptionHandler",
-                "(Ljava/lang/Throwable;[III[Ljava/lang/Object;)I");
+                programDescriptor == null
+                        ? "(Ljava/lang/Throwable;[III[Ljava/lang/Object;)I"
+                        : "(Ljava/lang/Throwable;[IIII" + programDescriptor + frameDescriptor + "[Ljava/lang/Object;)I");
         this.monitorFor = method(
                 "monitorFor",
                 "(Ljava/lang/Object;)Ljava/util/concurrent/locks/ReentrantLock;");

@@ -52,7 +52,9 @@ public final class RegisterOperationBranch extends InterpretBranch
                 sourceA,
                 sourceB,
                 auxiliary,
-                width));
+                width,
+                context.instructionIndex(),
+                context.opcode()));
         ib.set(
                 context.frameField(context.frame.stackPointer),
                 AdvInsnBuilder.plus(baseStack, delta));

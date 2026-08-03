@@ -28,7 +28,7 @@ This project uses JDK 21
 The runnable fat jar is generated at:
 
 ```text
-build/libs/BytecodeVM-2.0.0.jar
+build/libs/BytecodeVM-X.X.X.jar
 ```
 
 ## Usage
@@ -125,6 +125,7 @@ vmCount: 5
 
 # CodePool and virtual control-flow protection.
 protectCodePool: true
+dynamicConstantDecrypt: true
 virtualizeInstructionAddresses: true
 encryptOperands: true
 perMethodOpcodeMap: true
@@ -159,6 +160,7 @@ superInstructionMinFrequency: 2
 includes:
   all: ["*", "* *(*)*"]
   protectCodePool: ["* @Sensitive *(*)*"]
+  dynamicConstantDecrypt: ["* @Sensitive *(*)*"]
   encryptOperands: ["com.example.secure.* *(*)*"]
   obfuscateDispatch: ["* *(*)*"]
   constantFix: ["com.example.secure.* *"]
@@ -182,6 +184,7 @@ exclusions:
 | `interpretMode` | `SAVE_ALL_INSTRUCTION`, `SAVE_ONLY_REQUIRED_INSTRUCTION` | Required | Controls how many interpreter branches are emitted. |
 | `vmStructure` | See VM Structures below | `MEDIUM` | Selects a concrete VM structure or an automatic protection-strength tier for each VM set. |
 | `protectCodePool` | `true`, `false` | `true`   | Enables code-pool protection. When disabled, most protection sub-options below have no effect. |
+| `dynamicConstantDecrypt` | `true`, `false` | `true` | Encrypts strings, numeric constants, and type descriptors per use site and decrypts them from the current method, frame, virtual PC, block, instruction, and opcode state. Requires `protectCodePool`. |
 | `virtualizeInstructionAddresses` | `true`, `false` | `true`   | Encodes virtual instruction addresses instead of using direct layout addresses. |
 | `encryptOperands` | `true`, `false` | `true`   | Encrypts virtual instruction operands. |
 | `perMethodOpcodeMap` | `true`, `false` | `true`   | Uses method-specific opcode mapping and decoding. |
@@ -264,7 +267,7 @@ public final class LicenseService {
 
 Every SDK option uses `CONFIG` to inherit its value from the enclosing class annotation and then YAML. Explicit class or method SDK values override YAML, and method values override class values. A structure override is assigned to a compatible VM set, so it does not silently retain an incompatible global VM structure. `inspect` and `protect` emit a warning when an SDK structure falls outside the configured automatic tier.
 
-`VMOptions` groups the low-level YAML switches into three practical controls. `encrypt` controls virtual addresses, operands, per-method opcode maps, constant binding, and dynamic state keys. `shuffle` controls constants, split streams, instruction blocks, and virtual-CFG layout. `obfuscate` controls dispatch obfuscation and dynamic CodePool construction. Explicitly enabling any group also enables `protectCodePool`; disabling one group leaves the other groups unchanged. Fine-grained tuning remains available in YAML.
+`VMOptions` groups the low-level YAML switches into three practical controls. `encrypt` controls virtual addresses, operands, per-method opcode maps, dynamic constant decryption, constant binding, and dynamic state keys. `shuffle` controls constants, split streams, instruction blocks, and virtual-CFG layout. `obfuscate` controls dispatch obfuscation and dynamic CodePool construction. Explicitly enabling any group also enables `protectCodePool`; disabling one group leaves the other groups unchanged. Fine-grained tuning remains available in YAML.
 
 Constant relocation is class metadata, so the SDK exposes `constantFix` only through `@ProtectClass`. `superInstructionMaxHandlers` controls a VM-set-wide handler registry and therefore remains YAML-only; per-target `SuperInstructionOptions` exposes enablement, mode, combine range, and minimum pattern frequency.
 
@@ -393,6 +396,7 @@ You can also use grouped object form:
 includes:
   all: ["*", "* *(*)*"]
   protectCodePool: ["* @Sensitive *(*)*"]
+  dynamicConstantDecrypt: ["* @Sensitive *(*)*"]
   encryptOperands: ["com.example.secure.* *(*)*"]
 exclusions:
   all: ["* <init>(*)V"]
@@ -403,7 +407,7 @@ exclusions:
 
 Supported boolean group names are:
 
-`protectCodePool`, `virtualizeInstructionAddresses`, `encryptOperands`, `perMethodOpcodeMap`, `shuffleConstants`, `bindConstantsToOperands`, `splitCodeStreams`, `shuffleInstructionBlocks`, `obfuscateDispatch`, `dynamicCodePoolBuild`, `dynamicStateKey`, `virtualControlFlowGraph`, `constantFix`, and `superInstruction`.
+`protectCodePool`, `dynamicConstantDecrypt`, `virtualizeInstructionAddresses`, `encryptOperands`, `perMethodOpcodeMap`, `shuffleConstants`, `bindConstantsToOperands`, `splitCodeStreams`, `shuffleInstructionBlocks`, `obfuscateDispatch`, `dynamicCodePoolBuild`, `dynamicStateKey`, `virtualControlFlowGraph`, `constantFix`, and `superInstruction`.
 
 Only included classes and then methods will be processed.
 

@@ -46,6 +46,8 @@ public class BytecodeVM
 
             # CodePool, bytecode encoding, and virtual control flow protection.
             protectCodePool: true
+            # Dynamically decrypts constants using the current VM execution state.
+            dynamicConstantDecrypt: true
             virtualizeInstructionAddresses: true
             encryptOperands: true
             perMethodOpcodeMap: true

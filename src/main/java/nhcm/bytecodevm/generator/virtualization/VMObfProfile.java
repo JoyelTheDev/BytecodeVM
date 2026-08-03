@@ -145,6 +145,47 @@ public class VMObfProfile
         return mix((methodKey ^ stateKey) ^ opcode, virtualPc, operandIndex, saltConstant);
     }
 
+    public int constantStateMix(
+            int methodKey,
+            int stateKey,
+            int virtualPc,
+            int blockIndex,
+            int instructionIndex,
+            int opcode)
+    {
+        int path = mix(methodKey ^ stateKey, virtualPc, blockIndex, saltConstant);
+        return mix(path, instructionIndex, opcode, saltString);
+    }
+
+    public int constantStateMixSecondary(
+            int methodKey,
+            int stateKey,
+            int virtualPc,
+            int blockIndex,
+            int instructionIndex,
+            int opcode)
+    {
+        int path = mix(stateKey ^ saltArray, methodKey, opcode, virtualPc);
+        return mix(path, blockIndex, instructionIndex, saltOpcodeMap);
+    }
+
+    public int constantSelector(int primary, int secondary, int nonceA, int nonceB)
+    {
+        return mix(primary ^ nonceA, secondary, nonceB, saltHandler);
+    }
+
+    public int constantSelectorSecondary(int primary, int secondary, int nonceA, int nonceB)
+    {
+        return mix(secondary ^ nonceB, primary, nonceA, saltBlock);
+    }
+
+    public int constantStream(int primary, int secondary, int nonceA, int nonceB, int index)
+    {
+        int left = mix(primary ^ nonceA, secondary, index, saltConstant);
+        int right = mix(secondary ^ nonceB, primary, index, saltArray);
+        return left ^ Integer.rotateLeft(right, (nonceA + index) & 31);
+    }
+
     public int handlerMix(int methodKey, int handlerSlot, int field)
     {
         return mix(methodKey, handlerSlot, field, saltHandler);

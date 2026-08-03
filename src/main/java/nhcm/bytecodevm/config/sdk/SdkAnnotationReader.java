@@ -154,6 +154,7 @@ public final class SdkAnnotationReader
             builder.protectCodePool(true);
         }
         builder.virtualizeInstructionAddresses(enabled)
+                .dynamicConstantDecrypt(enabled)
                 .encryptOperands(enabled)
                 .perMethodOpcodeMap(enabled)
                 .bindConstantsToOperands(enabled)

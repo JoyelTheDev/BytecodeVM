@@ -23,7 +23,7 @@ public class BytecodeVMConfig
 {
     private static final java.util.Set<String> CONFIG_KEYS = java.util.Set.of(
             "input", "output", "createMode", "location", "renameMode", "interpretMode",
-            "vmStructure", "protectCodePool", "virtualizeInstructionAddresses", "encryptOperands",
+            "vmStructure", "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
             "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey",
             "virtualControlFlowGraph", "constantFix", "fixConstants", "removeAnnotations",
@@ -33,7 +33,7 @@ public class BytecodeVMConfig
             "superInstructionMode", "superInstructionMaxHandlers", "superInstructionMinFrequency",
             "vmCount", "includes", "exclusions", "mutateMode");
     private static final java.util.Set<String> MATCH_GROUP_KEYS = java.util.Set.of(
-            "all", "protectCodePool", "virtualizeInstructionAddresses", "encryptOperands",
+            "all", "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
             "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey",
             "virtualControlFlowGraph", "constantFix", "superInstruction");
@@ -46,6 +46,7 @@ public class BytecodeVMConfig
     public final InterpretMode interpretMode;
     public final VMStructure vmStructure;
     public final boolean protectCodePool;
+    public final boolean dynamicConstantDecrypt;
     public final boolean virtualizeInstructionAddresses;
     public final boolean encryptOperands;
     public final boolean perMethodOpcodeMap;
@@ -152,6 +153,7 @@ public class BytecodeVMConfig
                 .vmStructure(optionalVMStructure(yaml, "vmStructure", VMStructure.MEDIUM))
                 .renameMode(RenameMode.valueOf(requiredString(yaml, "renameMode")))
                 .protectCodePool(optionalBoolean(yaml, "protectCodePool", true))
+                .dynamicConstantDecrypt(optionalBoolean(yaml, "dynamicConstantDecrypt", true))
                 .virtualizeInstructionAddresses(optionalBoolean(yaml, "virtualizeInstructionAddresses", true))
                 .encryptOperands(optionalBoolean(yaml, "encryptOperands", true))
                 .perMethodOpcodeMap(optionalBoolean(yaml, "perMethodOpcodeMap", true))
@@ -226,6 +228,7 @@ public class BytecodeVMConfig
         values.put("interpretMode", interpretMode.name());
         values.put("vmStructure", vmStructure.name());
         values.put("protectCodePool", protectCodePool);
+        values.put("dynamicConstantDecrypt", dynamicConstantDecrypt);
         values.put("virtualizeInstructionAddresses", virtualizeInstructionAddresses);
         values.put("encryptOperands", encryptOperands);
         values.put("perMethodOpcodeMap", perMethodOpcodeMap);
@@ -292,6 +295,7 @@ public class BytecodeVMConfig
                 .vmStructure(vmStructure)
                 .renameMode(renameMode)
                 .protectCodePool(statementEnabled("protectCodePool", protectCodePool, owner, method))
+                .dynamicConstantDecrypt(statementEnabled("dynamicConstantDecrypt", dynamicConstantDecrypt, owner, method))
                 .virtualizeInstructionAddresses(statementEnabled("virtualizeInstructionAddresses", virtualizeInstructionAddresses, owner, method))
                 .encryptOperands(statementEnabled("encryptOperands", encryptOperands, owner, method))
                 .perMethodOpcodeMap(statementEnabled("perMethodOpcodeMap", perMethodOpcodeMap, owner, method))
@@ -337,6 +341,7 @@ public class BytecodeVMConfig
                 .vmStructure(VMStructure.HIGH)
                 .renameMode(renameMode)
                 .protectCodePool(true)
+                .dynamicConstantDecrypt(true)
                 .virtualizeInstructionAddresses(true)
                 .encryptOperands(true)
                 .perMethodOpcodeMap(true)

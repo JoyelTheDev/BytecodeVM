@@ -563,8 +563,7 @@ public class CodePoolGenerator extends ClassObj
         switch (value)
         {
             case null -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), AdvInsnBuilder.constant(null));
-            case ProtectedVMMethod.EncodedString encoded -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), encodedString(ib, encoded));
-            case ProtectedVMMethod.EncodedType encoded -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), encodedType(ib, encoded));
+            case ProtectedVMMethod.EncodedConstant encoded -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), encodedConstant(ib, encoded));
             case String ignored -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), AdvInsnBuilder.constant(value));
             case Integer integer -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), boxedInteger(integer));
             case Long number -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), boxedLong(number));
@@ -590,31 +589,33 @@ public class CodePoolGenerator extends ClassObj
         }
     }
 
-    private Expr encodedType(AdvInsnBuilder ib, ProtectedVMMethod.EncodedType value)
+    private Expr encodedConstant(AdvInsnBuilder ib, ProtectedVMMethod.EncodedConstant value)
     {
-        Local encoded = ib.var("encodedType" + Math.abs(value.descriptor().hashCode()) + RandomUtils.randomInt(Integer.MAX_VALUE), "[Ljava/lang/Object;");
-        ib.set(encoded, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(2)));
-        ib.setArray(encoded, AdvInsnBuilder.constant(0), encodedString(ib, ProtectedVMMethod.encodeString("__BytecodeVM_TYPE__", profile)));
-        ib.setArray(encoded, AdvInsnBuilder.constant(1), encodedString(ib, ProtectedVMMethod.encodeString(value.descriptor(), profile)));
-        return encoded;
-    }
-
-    private Expr encodedString(AdvInsnBuilder ib, ProtectedVMMethod.EncodedString value)
-    {
-        Local encoded = ib.var("encodedString" + Math.abs(Arrays.hashCode(value.chars())) + RandomUtils.randomInt(Integer.MAX_VALUE), "[Ljava/lang/Object;");
-        ib.set(encoded, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(2)));
-        ib.setArray(encoded, AdvInsnBuilder.constant(0), emitIntArray(ib, "encodedChars" + RandomUtils.randomInt(Integer.MAX_VALUE), value.chars()));
-        ib.setArray(encoded, AdvInsnBuilder.constant(1), boxedInteger(value.key()));
+        Local encoded = ib.var(
+                "encodedConstant" + Math.abs(Arrays.deepHashCode(value.variants())) + RandomUtils.randomInt(Integer.MAX_VALUE),
+                "[[I");
+        ib.set(encoded, AdvInsnBuilder.newMultiArray(
+                "[[I",
+                1,
+                AdvInsnBuilder.constant(value.variants().length)));
+        for (int index = 0; index < value.variants().length; index++)
+        {
+            ib.setArray(encoded, AdvInsnBuilder.constant(index), emitIntArray(
+                    ib,
+                    "constantVariant" + RandomUtils.randomInt(Integer.MAX_VALUE),
+                    value.variants()[index]));
+        }
         return encoded;
     }
 
     private Expr typeConstant(AdvInsnBuilder ib, Type type)
     {
-        Local value = ib.var("typeConstant" + ib.rawBuilder().hashCode() + "_" + Math.abs(type.getDescriptor().hashCode()), "[Ljava/lang/Object;");
-        ib.set(value, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(2)));
-        ib.setArray(value, AdvInsnBuilder.constant(0), AdvInsnBuilder.constant("__BytecodeVM_TYPE__"));
-        ib.setArray(value, AdvInsnBuilder.constant(1), AdvInsnBuilder.constant(type.getDescriptor()));
-        return value;
+        Local encoded = ib.var(
+                "typeDescriptor" + Math.abs(type.getDescriptor().hashCode()) + RandomUtils.randomInt(Integer.MAX_VALUE),
+                "[Ljava/lang/String;");
+        ib.set(encoded, AdvInsnBuilder.newArray("java/lang/String", AdvInsnBuilder.constant(1)));
+        ib.setArray(encoded, AdvInsnBuilder.constant(0), AdvInsnBuilder.constant(type.getDescriptor()));
+        return encoded;
     }
 
     private InsnList initMAX_LOCALS_MAX_STACK()

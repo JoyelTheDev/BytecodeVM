@@ -17,6 +17,13 @@ import java.util.*;
 
 public class ProtectedVMMethod
 {
+    public static final int CONSTANT_STRING = 1;
+    public static final int CONSTANT_INTEGER = 2;
+    public static final int CONSTANT_LONG = 3;
+    public static final int CONSTANT_FLOAT = 4;
+    public static final int CONSTANT_DOUBLE = 5;
+    public static final int CONSTANT_TYPE = 6;
+
     public static final int RECORD_SIZE = 8;
     public static final int BLOCK_SIZE = 4;
     public static final int HANDLER_SIZE = 4;
@@ -122,7 +129,6 @@ public class ProtectedVMMethod
         int methodKey = protect ? nonZeroRandom() : 0;
 
         Map<Integer, Integer> virtualPcByOriginalPc = createVirtualPcMap(instructions, virtualizeInstructionAddresses);
-        ConstantLayout constantLayout = createConstantLayout(method.constants, config, profile);
         OpcodeLayout opcodeLayout = createOpcodeLayout(instructions, config, methodKey, profile);
         List<BasicBlock> blocks = createBlocks(method, instructions, virtualPcByOriginalPc, virtualizeInstructionAddresses, config);
         List<VMInstruction> records = createRecords(blocks, protect && config.shuffleInstructionBlocks);
@@ -142,6 +148,17 @@ public class ProtectedVMMethod
                 stateKeyByInstruction.put(instruction, dynamicStateKey ? nonZeroRandom() : 0);
             }
         }
+
+        ConstantLayout constantLayout = createConstantLayout(
+                method,
+                records,
+                slotByInstruction,
+                stateKeyByInstruction,
+                blockByInstruction,
+                virtualPcByOriginalPc,
+                methodKey,
+                config,
+                profile);
 
         int[] operandStarts = createOperandStarts(records, protect && config.splitCodeStreams);
         int totalOperands = 0;
@@ -270,17 +287,6 @@ public class ProtectedVMMethod
         return flags;
     }
 
-    public static EncodedString encodeString(String value, VMObfProfile profile)
-    {
-        int key = nonZeroRandom();
-        int[] chars = new int[value.length()];
-        for (int i = 0; i < chars.length; i++)
-        {
-            chars[i] = value.charAt(i) ^ profile.stringMix(key, i);
-        }
-        return new EncodedString(chars, key);
-    }
-
     private static int[] protectExceptionHandlers(
             VMMethod method,
             Map<Integer, Integer> constantIndexByOriginal,
@@ -331,10 +337,91 @@ public class ProtectedVMMethod
     }
 
     private static ConstantLayout createConstantLayout(
-            Object[] constants,
+            VMMethod method,
+            List<VMInstruction> instructions,
+            Map<VMInstruction, Integer> slotByInstruction,
+            Map<VMInstruction, Integer> stateKeyByInstruction,
+            Map<VMInstruction, Integer> blockByInstruction,
+            Map<Integer, Integer> virtualPcByOriginalPc,
+            int methodKey,
             BytecodeVMConfig config,
             VMObfProfile profile)
     {
+        Object[] constants = method.constants;
+        Map<Integer, Set<ConstantBinding>> bindingsByConstant = new HashMap<>();
+        if (config.protectCodePool && config.dynamicConstantDecrypt)
+        {
+            for (VMInstruction instruction : instructions)
+            {
+                int slot = slotByInstruction.get(instruction);
+                int stateKey = stateKeyByInstruction.get(instruction);
+                int virtualPc = virtualPcByOriginalPc.get(instruction.programCounter);
+                int blockIndex = blockByInstruction.get(instruction);
+                int opcode = dispatchOpcode(instruction.mutatedOpcode, config, profile);
+                ConstantBinding binding = new ConstantBinding(
+                        profile.constantStateMix(
+                                methodKey,
+                                stateKey,
+                                virtualPc,
+                                blockIndex,
+                                slot,
+                                opcode),
+                        profile.constantStateMixSecondary(
+                                methodKey,
+                                stateKey,
+                                virtualPc,
+                                blockIndex,
+                                slot,
+                                opcode));
+                for (int operandIndex = 0; operandIndex < instruction.operandCount(); operandIndex++)
+                {
+                    VMOperand operand = instruction.operand(operandIndex);
+                    if (operand.constantReference)
+                    {
+                        bindingsByConstant.computeIfAbsent(operand.rawValue, ignored -> new LinkedHashSet<>()).add(binding);
+                    }
+                }
+            }
+
+            for (int handler = 0; handler < method.exceptionHandlers.length; handler += HANDLER_SIZE)
+            {
+                int typeIndex = method.exceptionHandlers[handler + 3];
+                if (typeIndex < 0)
+                {
+                    continue;
+                }
+                int startPc = method.exceptionHandlers[handler];
+                int endPc = method.exceptionHandlers[handler + 1];
+                Set<ConstantBinding> bindings = bindingsByConstant.computeIfAbsent(typeIndex, ignored -> new LinkedHashSet<>());
+                for (VMInstruction instruction : instructions)
+                {
+                    if (instruction.programCounter >= startPc && instruction.programCounter < endPc)
+                    {
+                        int slot = slotByInstruction.get(instruction);
+                        int stateKey = stateKeyByInstruction.get(instruction);
+                        int virtualPc = virtualPcByOriginalPc.get(instruction.programCounter);
+                        int blockIndex = blockByInstruction.get(instruction);
+                        int opcode = dispatchOpcode(instruction.mutatedOpcode, config, profile);
+                        bindings.add(new ConstantBinding(
+                                profile.constantStateMix(
+                                        methodKey,
+                                        stateKey,
+                                        virtualPc,
+                                        blockIndex,
+                                        slot,
+                                        opcode),
+                                profile.constantStateMixSecondary(
+                                        methodKey,
+                                        stateKey,
+                                        virtualPc,
+                                        blockIndex,
+                                        slot,
+                                        opcode)));
+                    }
+                }
+            }
+        }
+
         List<Integer> order = new ArrayList<>();
         for (int index = 0; index < constants.length; index++)
         {
@@ -350,27 +437,88 @@ public class ProtectedVMMethod
         for (int newIndex = 0; newIndex < order.size(); newIndex++)
         {
             int originalIndex = order.get(newIndex);
-            shuffled[newIndex] = protectConstant(constants[originalIndex], config, profile);
+            Set<ConstantBinding> bindings = bindingsByConstant.get(originalIndex);
+            if (config.protectCodePool && config.dynamicConstantDecrypt && (bindings == null || bindings.isEmpty()))
+            {
+                bindings = Set.of(new ConstantBinding(
+                        profile.constantStateMix(methodKey, 0, 0, -1, -1, 0),
+                        profile.constantStateMixSecondary(methodKey, 0, 0, -1, -1, 0)));
+            }
+            shuffled[newIndex] = protectConstant(constants[originalIndex], bindings, config, profile);
             indexByOriginal.put(originalIndex, newIndex);
         }
         return new ConstantLayout(shuffled, indexByOriginal);
     }
 
-    private static Object protectConstant(Object value, BytecodeVMConfig config, VMObfProfile profile)
+    private static Object protectConstant(
+            Object value,
+            Set<ConstantBinding> bindings,
+            BytecodeVMConfig config,
+            VMObfProfile profile)
     {
-        if (!config.protectCodePool)
+        if (!config.protectCodePool || !config.dynamicConstantDecrypt)
         {
             return value;
         }
-        if (value instanceof String string)
+        int[] plain = switch (value)
         {
-            return encodeString(string, profile);
-        }
-        if (value instanceof org.objectweb.asm.Type type)
+            case String string -> constantPayload(CONSTANT_STRING, string);
+            case Integer integer -> new int[]{CONSTANT_INTEGER, integer};
+            case Long number -> new int[]{CONSTANT_LONG, (int) (number >>> 32), number.intValue()};
+            case Float number -> new int[]{CONSTANT_FLOAT, Float.floatToRawIntBits(number)};
+            case Double number -> {
+                long bits = Double.doubleToRawLongBits(number);
+                yield new int[]{CONSTANT_DOUBLE, (int) (bits >>> 32), (int) bits};
+            }
+            case org.objectweb.asm.Type type -> constantPayload(CONSTANT_TYPE, type.getDescriptor());
+            default -> null;
+        };
+        if (plain == null)
         {
-            return new EncodedType(type.getDescriptor());
+            return value;
         }
-        return value;
+
+        int[][] variants = new int[bindings.size()][];
+        int variantIndex = 0;
+        for (ConstantBinding binding : bindings)
+        {
+            int nonceA = nonZeroRandom();
+            int nonceB = nonZeroRandom();
+            int[] variant = new int[plain.length + 4];
+            variant[0] = nonceA;
+            variant[1] = nonceB;
+            variant[2] = profile.constantSelector(binding.primary, binding.secondary, nonceA, nonceB);
+            variant[3] = profile.constantSelectorSecondary(binding.primary, binding.secondary, nonceA, nonceB);
+            for (int index = 0; index < plain.length; index++)
+            {
+                variant[index + 4] = plain[index] ^ profile.constantStream(
+                        binding.primary,
+                        binding.secondary,
+                        nonceA,
+                        nonceB,
+                        index);
+            }
+            variants[variantIndex++] = variant;
+        }
+        for (int current = variants.length - 1; current > 0; current--)
+        {
+            int swap = RandomUtils.randomInt(current + 1);
+            int[] temporary = variants[current];
+            variants[current] = variants[swap];
+            variants[swap] = temporary;
+        }
+        return new EncodedConstant(variants);
+    }
+
+    private static int[] constantPayload(int tag, String value)
+    {
+        int[] payload = new int[value.length() + 1];
+        payload[0] = tag;
+        for (int index = 0; index < value.length(); index++)
+        {
+            payload[index + 1] = value.charAt(index);
+        }
+        return payload;
     }
 
     private static OpcodeLayout createOpcodeLayout(
@@ -723,11 +871,11 @@ public class ProtectedVMMethod
     {
     }
 
-    public record EncodedString(int[] chars, int key)
+    private record ConstantBinding(int primary, int secondary)
     {
     }
 
-    public record EncodedType(String descriptor)
+    public record EncodedConstant(int[][] variants)
     {
     }
 }

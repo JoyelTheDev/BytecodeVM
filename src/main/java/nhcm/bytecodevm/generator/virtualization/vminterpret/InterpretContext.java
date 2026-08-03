@@ -332,8 +332,12 @@ public final class InterpretContext
                 vm.owner,
                 vm.constantString.name(),
                 "java/lang/String",
+                program(),
+                frame(),
                 constants(),
-                index);
+                index,
+                instructionIndex(),
+                opcode());
     }
 
     public Expr loadClass(Expr className)

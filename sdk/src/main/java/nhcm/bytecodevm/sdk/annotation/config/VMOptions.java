@@ -15,7 +15,7 @@ public @interface VMOptions
     /** Selects a concrete VM structure or an automatic strength tier. */
     VMStructure structure() default VMStructure.CONFIG;
 
-    /** Enables encrypted addresses, operands, opcode maps, constants, and state keys. */
+    /** Enables encrypted addresses, operands, opcode maps, dynamic constants, and state keys. */
     Toggle encrypt() default Toggle.CONFIG;
 
     /** Enables constant, stream, instruction-block, and virtual-CFG shuffling. */
