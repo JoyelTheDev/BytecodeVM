@@ -166,7 +166,7 @@ public class VMRuntimeLayout
                 "(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/reflect/Field;");
         this.findMethod = method(
                 "findMethod",
-                "(Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;");
+                "(Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/Class;Ljava/lang/Class;)Ljava/lang/reflect/Method;");
         this.adaptMethodHandle = method(
                 "adaptMethodHandle",
                 "(Ljava/lang/reflect/Method;ZI)Ljava/lang/invoke/MethodHandle;");

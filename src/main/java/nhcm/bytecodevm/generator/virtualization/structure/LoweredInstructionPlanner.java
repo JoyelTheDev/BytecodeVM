@@ -362,6 +362,7 @@ public final class LoweredInstructionPlanner
             pcs.add(instruction.programCounter);
         }
         Set<Integer> leaders = new HashSet<>();
+        leaders.addAll(method.getControlFlowLeaders());
         leaders.add(instructions.getFirst().programCounter);
         for (int index = 0; index < method.exceptionHandlers.length; index += 4)
         {

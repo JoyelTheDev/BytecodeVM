@@ -63,7 +63,8 @@ public final class VMMethodSegmenter
                 source.maxStack,
                 source.getOpcMutator(),
                 startPc,
-                source.methodEndPc);
+                source.methodEndPc,
+                source.getControlFlowLeaders());
     }
 
     private static int[] localExceptionHandlers(

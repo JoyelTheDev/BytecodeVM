@@ -18,6 +18,7 @@ public class VMMethod implements Iterable<VMInstruction>
     private final OpcMutator opcMutator;
     private List<VMInstruction> instructionCache;
     private Map<Integer, VMInstruction> instructionByPc;
+    private Set<Integer> controlFlowLeaders;
 
     public VMMethod(int[] code, Object[] constants, int maxLocals, int maxStack)
     {
@@ -55,6 +56,20 @@ public class VMMethod implements Iterable<VMInstruction>
             int pcBase,
             int methodEndPc)
     {
+        this(code, constants, exceptionHandlers, maxLocals, maxStack, opcMutator, pcBase, methodEndPc, null);
+    }
+
+    public VMMethod(
+            int[] code,
+            Object[] constants,
+            int[] exceptionHandlers,
+            int maxLocals,
+            int maxStack,
+            OpcMutator opcMutator,
+            int pcBase,
+            int methodEndPc,
+            Set<Integer> controlFlowLeaders)
+    {
         this.code = Objects.requireNonNull(code, "code");
         this.constants = Objects.requireNonNull(constants, "constants");
         this.exceptionHandlers = Objects.requireNonNull(exceptionHandlers, "exceptionHandlers");
@@ -63,6 +78,9 @@ public class VMMethod implements Iterable<VMInstruction>
         this.opcMutator = opcMutator;
         this.pcBase = pcBase;
         this.methodEndPc = methodEndPc;
+        this.controlFlowLeaders = controlFlowLeaders == null
+                ? null
+                : Collections.unmodifiableSet(new LinkedHashSet<>(controlFlowLeaders));
     }
 
     public synchronized List<VMInstruction> getInstructions()
@@ -173,6 +191,51 @@ public class VMMethod implements Iterable<VMInstruction>
     public OpcMutator getOpcMutator()
     {
         return opcMutator;
+    }
+
+    public synchronized Set<Integer> getControlFlowLeaders()
+    {
+        if (controlFlowLeaders != null)
+        {
+            return controlFlowLeaders;
+        }
+        LinkedHashSet<Integer> leaders = new LinkedHashSet<>();
+        List<VMInstruction> instructions = getInstructions();
+        if (!instructions.isEmpty())
+        {
+            leaders.add(instructions.getFirst().programCounter);
+        }
+        for (VMInstruction instruction : instructions)
+        {
+            for (int operandIndex = 0; operandIndex < instruction.operandCount(); operandIndex++)
+            {
+                if (isJumpTargetOperand(instruction.opcode, operandIndex))
+                {
+                    leaders.add(instruction.operand(operandIndex).rawValue);
+                }
+            }
+        }
+        for (int index = 0; index < exceptionHandlers.length; index += 4)
+        {
+            leaders.add(exceptionHandlers[index]);
+            leaders.add(exceptionHandlers[index + 1]);
+            leaders.add(exceptionHandlers[index + 2]);
+        }
+        controlFlowLeaders = Collections.unmodifiableSet(leaders);
+        return controlFlowLeaders;
+    }
+
+    private static boolean isJumpTargetOperand(Opcs opcode, int operandIndex)
+    {
+        return switch (opcode)
+        {
+            case IFEQ, IFNE, IFLT, IFGE, IFGT, IFLE,
+                 IF_ICMPEQ, IF_ICMPNE, IF_ICMPLT, IF_ICMPGE, IF_ICMPGT, IF_ICMPLE,
+                 IF_ACMPEQ, IF_ACMPNE, IFNULL, IFNONNULL, GOTO -> operandIndex == 0;
+            case TABLESWITCH -> operandIndex == 2 || operandIndex >= 4;
+            case LOOKUPSWITCH -> operandIndex == 0 || (operandIndex >= 3 && (operandIndex & 1) == 1);
+            default -> false;
+        };
     }
 
     @Override

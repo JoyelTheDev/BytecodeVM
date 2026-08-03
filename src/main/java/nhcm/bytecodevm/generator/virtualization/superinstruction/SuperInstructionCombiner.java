@@ -235,6 +235,7 @@ public class SuperInstructionCombiner
         }
 
         Set<Integer> leaders = new HashSet<>();
+        leaders.addAll(method.getControlFlowLeaders());
         leaders.add(instructions.getFirst().programCounter);
         for (int index = 0; index < method.exceptionHandlers.length; index += ProtectedVMMethod.HANDLER_SIZE)
         {

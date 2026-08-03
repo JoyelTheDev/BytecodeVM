@@ -3670,21 +3670,48 @@ public class VMGenerator extends ClassObj
         Local ownerClass = ib.getLocal("ownerClass", "java/lang/Class", 0);
         Local name = ib.getLocal("name", "java/lang/String", 1);
         Local parameterTypes = ib.getLocal("parameterTypes", "[Ljava/lang/Class;", 2);
-        Local interfaces = ib.getLocal("interfaces", "[Ljava/lang/Class;", 3);
-        Local index = ib.getLocal("index", "I", 4);
-        Local superClass = ib.getLocal("superClass", "java/lang/Class", 6);
+        Local returnType = ib.getLocal("returnType", "java/lang/Class", 3);
+        Local declaredMethods = ib.getLocal("declaredMethods", "[Ljava/lang/reflect/Method;", 4);
+        Local candidate = ib.getLocal("candidate", "java/lang/reflect/Method", 5);
+        Local interfaces = ib.getLocal("interfaces", "[Ljava/lang/Class;", 6);
+        Local index = ib.getLocal("index", "I", 7);
+        Local superClass = ib.getLocal("superClass", "java/lang/Class", 9);
 
-        ib.tryCatch(
-                b -> b.returnValue(AdvInsnBuilder.callVirtual(
-                        ownerClass,
-                        "java/lang/Class",
-                        "getDeclaredMethod",
-                        "java/lang/reflect/Method",
-                        name,
-                        parameterTypes)),
-                "java/lang/NoSuchMethodException",
-                "ignored",
-                b -> {});
+        ib.set(declaredMethods, AdvInsnBuilder.callVirtual(
+                ownerClass,
+                "java/lang/Class",
+                "getDeclaredMethods",
+                "[Ljava/lang/reflect/Method;"));
+        ib.forLoop(
+                b -> b.set(index, AdvInsnBuilder.constant(0)),
+                AdvInsnBuilder.lessThan(index, AdvInsnBuilder.arrayLength(declaredMethods)),
+                b -> b.increment(index, 1),
+                b -> {
+                    b.set(candidate, AdvInsnBuilder.arrayAt(declaredMethods, index));
+                    b.ifCondition(
+                            AdvInsnBuilder.and(
+                                    AdvInsnBuilder.isTrue(AdvInsnBuilder.callVirtual(
+                                            name,
+                                            "java/lang/String",
+                                            "equals",
+                                            "Z",
+                                            AdvInsnBuilder.cast(
+                                                    AdvInsnBuilder.callVirtual(candidate, "java/lang/reflect/Method", "getName", "java/lang/String"),
+                                                    "java/lang/Object"))),
+                                    AdvInsnBuilder.and(
+                                            AdvInsnBuilder.equal(
+                                                    AdvInsnBuilder.callVirtual(candidate, "java/lang/reflect/Method", "getReturnType", "java/lang/Class"),
+                                                    returnType),
+                                            AdvInsnBuilder.isTrue(AdvInsnBuilder.callStatic(
+                                                    "java/util/Arrays",
+                                                    "equals",
+                                                    "Z",
+                                                    AdvInsnBuilder.cast(
+                                                            AdvInsnBuilder.callVirtual(candidate, "java/lang/reflect/Method", "getParameterTypes", "[Ljava/lang/Class;"),
+                                                            "[Ljava/lang/Object;"),
+                                                    AdvInsnBuilder.cast(parameterTypes, "[Ljava/lang/Object;"))))),
+                            found -> found.returnValue(candidate));
+                });
 
         ib.set(interfaces, AdvInsnBuilder.callVirtual(ownerClass, "java/lang/Class", "getInterfaces", "[Ljava/lang/Class;"));
         ib.forLoop(
@@ -3698,7 +3725,8 @@ public class VMGenerator extends ClassObj
                                 "java/lang/reflect/Method",
                                 AdvInsnBuilder.arrayAt(interfaces, index),
                                 name,
-                                parameterTypes)),
+                                parameterTypes,
+                                returnType)),
                         "java/lang/NoSuchMethodException",
                         "ignored",
                         ignored -> {}));
@@ -3706,7 +3734,14 @@ public class VMGenerator extends ClassObj
         ib.set(superClass, AdvInsnBuilder.callVirtual(ownerClass, "java/lang/Class", "getSuperclass", "java/lang/Class"));
         ib.ifCondition(
                 AdvInsnBuilder.notNull(superClass),
-                b -> b.returnValue(AdvInsnBuilder.callStatic(vmLayout.owner, vmLayout.findMethod.name(), "java/lang/reflect/Method", superClass, name, parameterTypes)));
+                b -> b.returnValue(AdvInsnBuilder.callStatic(
+                        vmLayout.owner,
+                        vmLayout.findMethod.name(),
+                        "java/lang/reflect/Method",
+                        superClass,
+                        name,
+                        parameterTypes,
+                        returnType)));
         ib.throwValue(AdvInsnBuilder.newObject(
                 "java/lang/NoSuchMethodException",
                 stringConcat(
@@ -3801,7 +3836,8 @@ public class VMGenerator extends ClassObj
                                         "java/lang/reflect/Method",
                                         ownerClass,
                                         name,
-                                        AdvInsnBuilder.callVirtual(methodType, "java/lang/invoke/MethodType", "parameterArray", "[Ljava/lang/Class;")));
+                                        AdvInsnBuilder.callVirtual(methodType, "java/lang/invoke/MethodType", "parameterArray", "[Ljava/lang/Class;"),
+                                        AdvInsnBuilder.callVirtual(methodType, "java/lang/invoke/MethodType", "returnType", "java/lang/Class")));
                                 cacheAdaptedMethodHandle(tryReflect, reflectedMethod, ownerClass, name, methodType, isStatic, key, target);
                             },
                             "java/lang/Throwable",

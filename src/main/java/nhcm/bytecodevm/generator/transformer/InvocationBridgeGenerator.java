@@ -264,16 +264,16 @@ public class InvocationBridgeGenerator
         {
             name = namer.method(owner.name, "$vm$invoke$" + id++, descriptor);
         }
-        while (hasMethod(owner, name, descriptor));
+        while (hasMethodNamed(owner, name));
         nextIds.put(owner, id);
         return name;
     }
 
-    private static boolean hasMethod(ClassNode owner, String name, String descriptor)
+    private static boolean hasMethodNamed(ClassNode owner, String name)
     {
         for (MethodNode method : owner.methods)
         {
-            if (method.name.equals(name) && method.desc.equals(descriptor))
+            if (method.name.equals(name))
             {
                 return true;
             }
