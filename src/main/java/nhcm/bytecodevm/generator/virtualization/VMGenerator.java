@@ -3742,6 +3742,26 @@ public class VMGenerator extends ClassObj
                         name,
                         parameterTypes,
                         returnType)));
+        ib.ifCondition(
+                AdvInsnBuilder.isTrue(AdvInsnBuilder.callVirtual(ownerClass, "java/lang/Class", "isInterface", "Z")),
+                b -> b.tryCatch(
+                        tryObjectMethod -> {
+                            tryObjectMethod.set(candidate, AdvInsnBuilder.callVirtual(
+                                    objectClass(),
+                                    "java/lang/Class",
+                                    "getMethod",
+                                    "java/lang/reflect/Method",
+                                    name,
+                                    parameterTypes));
+                            tryObjectMethod.ifCondition(
+                                    AdvInsnBuilder.equal(
+                                            AdvInsnBuilder.callVirtual(candidate, "java/lang/reflect/Method", "getReturnType", "java/lang/Class"),
+                                            returnType),
+                                    found -> found.returnValue(candidate));
+                        },
+                        "java/lang/NoSuchMethodException",
+                        "ignored",
+                        ignored -> {}));
         ib.throwValue(AdvInsnBuilder.newObject(
                 "java/lang/NoSuchMethodException",
                 stringConcat(
