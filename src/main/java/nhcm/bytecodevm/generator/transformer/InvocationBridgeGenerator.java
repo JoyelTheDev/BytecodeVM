@@ -36,6 +36,10 @@ public class InvocationBridgeGenerator
             {
                 bridges.add(rewriteInvokeDynamic(owner, method, dynamicInsn));
             }
+            else if (instruction instanceof MethodInsnNode methodInsn && requiresCallerContextBridge(methodInsn))
+            {
+                bridges.add(rewriteCallerContextInvocation(owner, method, methodInsn));
+            }
             else if (instruction instanceof MethodInsnNode methodInsn &&
                     methodInsn.getOpcode() == Opcodes.INVOKESPECIAL &&
                     !"<init>".equals(methodInsn.name))
@@ -72,6 +76,39 @@ public class InvocationBridgeGenerator
                     invocation.bsm,
                     invocation.bsmArgs.clone());
         }
+        TypeUtils.returnValue(ib, Type.getReturnType(invocation.desc));
+        setBridgeLimits(bridge);
+        owner.methods.add(bridge);
+
+        source.instructions.set(invocation, new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                owner.name,
+                bridgeName,
+                invocation.desc,
+                false));
+        return bridge;
+    }
+
+    private MethodNode rewriteCallerContextInvocation(
+            ClassNode owner,
+            MethodNode source,
+            MethodInsnNode invocation)
+    {
+        String bridgeName = nextBridgeName(owner, invocation.desc);
+        MethodNode bridge = new MethodNode(
+                Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                bridgeName,
+                invocation.desc,
+                null,
+                null);
+        InsnBuilder ib = new InsnBuilder(bridge.instructions);
+        loadArguments(ib, Type.getArgumentTypes(invocation.desc), 0);
+        ib.add(new MethodInsnNode(
+                invocation.getOpcode(),
+                invocation.owner,
+                invocation.name,
+                invocation.desc,
+                invocation.itf));
         TypeUtils.returnValue(ib, Type.getReturnType(invocation.desc));
         setBridgeLimits(bridge);
         owner.methods.add(bridge);
@@ -143,8 +180,20 @@ public class InvocationBridgeGenerator
                 // super/private call as a constructor or invokevirtual is incorrect.
                 return false;
             }
+            if (instruction instanceof MethodInsnNode methodInsn && requiresCallerContextBridge(methodInsn))
+            {
+                return false;
+            }
         }
         return true;
+    }
+
+    private static boolean requiresCallerContextBridge(MethodInsnNode invocation)
+    {
+        return invocation.getOpcode() == Opcodes.INVOKESTATIC &&
+               "java/lang/invoke/MethodHandles".equals(invocation.owner) &&
+               "lookup".equals(invocation.name) &&
+               "()Ljava/lang/invoke/MethodHandles$Lookup;".equals(invocation.desc);
     }
 
     private static boolean isStringConcat(InvokeDynamicInsnNode invocation)

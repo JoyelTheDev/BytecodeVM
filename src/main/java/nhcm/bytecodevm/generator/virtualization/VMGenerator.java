@@ -3789,6 +3789,7 @@ public class VMGenerator extends ClassObj
         Local ownerClass = ib.getLocal("ownerClass", "java/lang/Class", 8);
         Local exception = ib.getLocal("exception", "java/lang/Throwable", 9);
         Local reflectedMethod = ib.getLocal("reflectedMethod", "java/lang/reflect/Method", 10);
+        Local accessMode = ib.getLocal("accessMode", "java/lang/invoke/VarHandle$AccessMode", 11);
 
         ib.ifCondition(
                 AdvInsnBuilder.and(
@@ -3830,6 +3831,55 @@ public class VMGenerator extends ClassObj
                                                     "java/lang/invoke/MethodHandle",
                                                     objectArrayClass(),
                                                     AdvInsnBuilder.callVirtual(methodType, "java/lang/invoke/MethodType", "parameterCount", "I"))),
+                                    "java/lang/invoke/MethodHandle",
+                                    "invokeExact",
+                                    "java/lang/Object",
+                                    arguments)),
+                            "java/lang/Throwable",
+                            "throwable",
+                            caught -> caught.throwValue(rethrow(caught.getLocal("throwable"))));
+                });
+
+        ib.set(accessMode, AdvInsnBuilder.nullValue("java/lang/invoke/VarHandle$AccessMode"));
+        ib.ifCondition(
+                isVarHandleInvocation(owner, isStatic),
+                b -> b.tryCatch(
+                        resolveMode -> resolveMode.set(accessMode, AdvInsnBuilder.callStatic(
+                                "java/lang/invoke/VarHandle$AccessMode",
+                                "valueFromMethodName",
+                                "java/lang/invoke/VarHandle$AccessMode",
+                                name)),
+                        "java/lang/IllegalArgumentException",
+                        "ignored",
+                        ignored -> {}));
+        ib.ifCondition(
+                AdvInsnBuilder.notNull(accessMode),
+                b -> {
+                    coerceArguments(b, arguments, methodType);
+                    b.set(target, AdvInsnBuilder.callVirtual(
+                            AdvInsnBuilder.callVirtual(
+                                    AdvInsnBuilder.callVirtual(
+                                            AdvInsnBuilder.callVirtual(
+                                                    AdvInsnBuilder.cast(receiver, "java/lang/invoke/VarHandle"),
+                                                    "java/lang/invoke/VarHandle",
+                                                    "toMethodHandle",
+                                                    "java/lang/invoke/MethodHandle",
+                                                    accessMode),
+                                            "java/lang/invoke/MethodHandle",
+                                            "asType",
+                                            "java/lang/invoke/MethodHandle",
+                                            methodType),
+                                    "java/lang/invoke/MethodHandle",
+                                    "asFixedArity",
+                                    "java/lang/invoke/MethodHandle"),
+                            "java/lang/invoke/MethodHandle",
+                            "asSpreader",
+                            "java/lang/invoke/MethodHandle",
+                            objectArrayClass(),
+                            AdvInsnBuilder.callVirtual(methodType, "java/lang/invoke/MethodType", "parameterCount", "I")));
+                    b.tryCatch(
+                            invokeVarHandle -> invokeVarHandle.returnValue(AdvInsnBuilder.callVirtual(
+                                    asArrayInvokerHandle(target),
                                     "java/lang/invoke/MethodHandle",
                                     "invokeExact",
                                     "java/lang/Object",
@@ -3937,7 +3987,19 @@ public class VMGenerator extends ClassObj
                                         "java/lang/String",
                                         "equals",
                                         "Z",
-                                        AdvInsnBuilder.cast(AdvInsnBuilder.constant("invokeExact"), "java/lang/Object"))))));
+                         AdvInsnBuilder.cast(AdvInsnBuilder.constant("invokeExact"), "java/lang/Object"))))));
+    }
+
+    private static Condition isVarHandleInvocation(Local owner, Local isStatic)
+    {
+        return AdvInsnBuilder.and(
+                AdvInsnBuilder.isFalse(isStatic),
+                AdvInsnBuilder.isTrue(AdvInsnBuilder.callVirtual(
+                        owner,
+                        "java/lang/String",
+                        "equals",
+                        "Z",
+                        AdvInsnBuilder.cast(AdvInsnBuilder.constant("java/lang/invoke/VarHandle"), "java/lang/Object"))));
     }
 
     private MethodNode genConstructMethod()
