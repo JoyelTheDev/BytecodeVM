@@ -24,7 +24,7 @@ public class ProtectedVMMethod
     public static final int CONSTANT_DOUBLE = 5;
     public static final int CONSTANT_TYPE = 6;
 
-    public static final int RECORD_SIZE = 8;
+    public static final int RECORD_SIZE = 9;
     public static final int BLOCK_SIZE = 4;
     public static final int HANDLER_SIZE = 4;
 
@@ -36,6 +36,7 @@ public class ProtectedVMMethod
     public static final int LAYOUT_CONSTANT_MASK = 5;
     public static final int LAYOUT_STATE_KEY = 6;
     public static final int LAYOUT_BLOCK_INDEX = 7;
+    public static final int LAYOUT_BRANCH_SELECTOR = 8;
 
     public static final int BLOCK_START_PC = 0;
     public static final int BLOCK_ORIGINAL_START_PC = 1;
@@ -46,6 +47,7 @@ public class ProtectedVMMethod
     public static final int FEATURE_ENCRYPT_OPERANDS = 1 << 1;
     public static final int FEATURE_BIND_CONSTANTS = 1 << 2;
     public static final int FEATURE_OBFUSCATE_DISPATCH = 1 << 3;
+    public static final int FEATURE_OBFUSCATE_INTERPRET_BRANCH = 1 << 4;
 
     public final int[] opcodeStream;
     public final int[] operandStream;
@@ -222,6 +224,34 @@ public class ProtectedVMMethod
                     profile);
             setLayout(layoutStream, slot, LAYOUT_BLOCK_INDEX, blockIndex, methodKey, stateKey, protect, profile);
 
+            int branchSelector = RandomUtils.randomInt();
+            if (config.interpretBranchCases > 1)
+            {
+                VMObfProfile.InterpretBranchPlan branchPlan = profile.interpretBranchPlan(
+                        instruction.opcode,
+                        config.interpretBranchCases);
+                branchSelector = branchPlan.realLabel();
+                if (config.obfuscateInterpretBranch)
+                {
+                    branchSelector ^= profile.interpretBranchMix(
+                            methodKey,
+                            stateKey,
+                            dispatchOpcode,
+                            virtualPc,
+                            slot,
+                            branchPlan);
+                }
+            }
+            setLayout(
+                    layoutStream,
+                    slot,
+                    LAYOUT_BRANCH_SELECTOR,
+                    branchSelector,
+                    methodKey,
+                    stateKey,
+                    protect,
+                    profile);
+
             for (int operandIndex = 0; operandIndex < operandCount; operandIndex++)
             {
                 VMOperand operand = instruction.operand(operandIndex);
@@ -283,6 +313,10 @@ public class ProtectedVMMethod
         if (config.obfuscateDispatch)
         {
             flags |= FEATURE_OBFUSCATE_DISPATCH;
+        }
+        if (config.obfuscateInterpretBranch && config.interpretBranchCases > 1)
+        {
+            flags |= FEATURE_OBFUSCATE_INTERPRET_BRANCH;
         }
         return flags;
     }

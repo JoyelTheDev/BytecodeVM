@@ -5,6 +5,7 @@ import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
 import nhcm.bytecodevm.advInsn.Condition;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
+import nhcm.bytecodevm.advInsn.SwitchCase;
 import nhcm.bytecodevm.config.BytecodeVMConfig;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
@@ -49,11 +50,7 @@ import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretContext;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.NumericType;
 import nhcm.bytecodevm.tools.OpcMutator;
-import nhcm.bytecodevm.utils.ClassUtils;
-import nhcm.bytecodevm.utils.FileUtils;
-import nhcm.bytecodevm.utils.FieldUtils;
-import nhcm.bytecodevm.utils.InsnUtils;
-import nhcm.bytecodevm.utils.MethodUtils;
+import nhcm.bytecodevm.utils.*;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -2332,7 +2329,7 @@ public class VMGenerator extends ClassObj
                 {
                     throw new IllegalStateException("Missing interpret branch: " + opcode);
                 }
-                branch.generate(ib, context, opcode);
+                emitInterpretBranch(ib, context, branch, opcode);
             }
             ib.returnVoid();
             return method;
@@ -2353,7 +2350,7 @@ public class VMGenerator extends ClassObj
                 {
                     throw new IllegalStateException("Missing interpret branch: " + opcode);
                 }
-                cases[i] = b -> branch.generate(b, context, opcode);
+                cases[i] = b -> emitInterpretBranch(b, context, branch, opcode);
             }
         }
 
@@ -2444,6 +2441,110 @@ public class VMGenerator extends ClassObj
         ib.switchTable(recipeIndex, 0, this::generateUnknownOpcode, cases);
         ib.returnVoid();
         return method;
+    }
+
+    private void emitInterpretBranch(
+            AdvInsnBuilder ib,
+            InterpretContext context,
+            InterpretBranch branch,
+            Opcs opcode)
+    {
+        int caseCount = config.interpretBranchCases;
+        if (!config.obfuscateInterpretBranch || caseCount <= 1)
+        {
+            branch.generate(ib, context, opcode);
+            return;
+        }
+
+        List<Map.Entry<Opcs, InterpretBranch>> fakeCandidates = new ArrayList<>(branches
+                .entrySet()
+                .stream()
+                .filter(entry -> entry.getKey() != opcode)
+                .filter(entry -> entry.getValue() != branch)
+                .filter(entry -> !entry.getValue().term(entry.getKey()))
+                .filter(entry -> !Opcs.isSpecialOpc(entry.getKey()))
+                .toList());
+
+        if (fakeCandidates.isEmpty())
+        {
+            branch.generate(ib, context, opcode);
+            return;
+        }
+
+        VMObfProfile.InterpretBranchPlan plan = profile.interpretBranchPlan(opcode, caseCount);
+        RandomUtils.shuffle(fakeCandidates);
+        int[] labels = plan.labels();
+        List<SwitchCase> cases = new ArrayList<>(caseCount);
+        int fakeIndex = 0;
+        for (int label : labels)
+        {
+            if (label == plan.realLabel())
+            {
+                cases.add(AdvInsnBuilder.switchCase(
+                        label,
+                        b -> branch.generate(b, context, opcode)));
+                continue;
+            }
+
+            Map.Entry<Opcs, InterpretBranch> fake =
+                    fakeCandidates.get(fakeIndex++ % fakeCandidates.size());
+
+            Opcs fakeOpcode = fake.getKey();
+            InterpretBranch fakeBranch = fake.getValue();
+
+            cases.add(AdvInsnBuilder.switchCase(
+                    label,
+                    b -> fakeBranch.generate(b, context, fakeOpcode)));
+        }
+
+        Local methodKey = context.intLocal("branchMethodKey", InterpretContext.BRANCH_METHOD_KEY);
+        Local virtualPc = context.intLocal("branchVirtualPc", InterpretContext.BRANCH_VIRTUAL_PC);
+        Local encodedSelector = context.intLocal(
+                "branchEncodedSelector",
+                InterpretContext.BRANCH_ENCODED_SELECTOR);
+        Local mixPath = context.intLocal("branchMixPath", InterpretContext.BRANCH_MIX_PATH);
+        Local mixMask = context.intLocal("branchMixMask", InterpretContext.BRANCH_MIX_MASK);
+        Local selector = context.intLocal("branchSelector", InterpretContext.BRANCH_SELECTOR);
+
+        ib.set(methodKey, callProgramInt(context.program(), programLayout.methodKey.name()));
+        emitLayoutValueInline(
+                ib,
+                context,
+                virtualPc,
+                ProtectedVMMethod.LAYOUT_PC,
+                InterpretContext.BRANCH_PC_SCRATCH);
+        emitLayoutValueInline(
+                ib,
+                context,
+                encodedSelector,
+                ProtectedVMMethod.LAYOUT_BRANCH_SELECTOR,
+                InterpretContext.BRANCH_SELECTOR_SCRATCH);
+        ib.set(selector, encodedSelector);
+        ib.ifCondition(
+                featureEnabled(
+                        context.program(),
+                        ProtectedVMMethod.FEATURE_OBFUSCATE_INTERPRET_BRANCH),
+                decode -> {
+                    decode.set(mixPath, mixCall(
+                            AdvInsnBuilder.bitXor(methodKey, context.frameStateKey()),
+                            virtualPc,
+                            context.instructionIndex(),
+                            AdvInsnBuilder.constant(plan.maskSalt())));
+                    decode.set(mixMask, mixCall(
+                            AdvInsnBuilder.bitXor(mixPath, context.opcode()),
+                            context.frameStateKey(),
+                            AdvInsnBuilder.constant(plan.decodeSalt()),
+                            AdvInsnBuilder.constant(plan.maskSalt() ^ profile.saltHandler)));
+                    decode.set(selector, structureXorDecode(
+                            encodedSelector,
+                            mixMask,
+                            plan.decodeSalt()));
+                });
+
+        ib.switchLookup(
+                selector,
+                this::generateUnknownOpcode,
+                cases.toArray(SwitchCase[]::new));
     }
 
     private String interpretChunkName(int chunkIndex)

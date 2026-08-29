@@ -56,6 +56,14 @@ public final class InterpretContext
     public static final int OPERAND_INDEX = 51;
     public static final int DISPATCH_SELECTOR = 52;
     public static final int STRUCTURE_STATE = 62;
+    public static final int BRANCH_METHOD_KEY = 160;
+    public static final int BRANCH_VIRTUAL_PC = 161;
+    public static final int BRANCH_ENCODED_SELECTOR = 162;
+    public static final int BRANCH_MIX_PATH = 163;
+    public static final int BRANCH_MIX_MASK = 164;
+    public static final int BRANCH_SELECTOR = 165;
+    public static final int BRANCH_PC_SCRATCH = 166;
+    public static final int BRANCH_SELECTOR_SCRATCH = 168;
     public static final int JUMP_TARGET = 9;
     public static final int SWITCH_KEY = 10;
     public static final int SWITCH_MIN = 11;

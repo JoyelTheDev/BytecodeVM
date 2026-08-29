@@ -157,12 +157,17 @@ superInstructionMode: HYBRID # RANDOM, PATTERN, HYBRID
 superInstructionMaxHandlers: 128
 superInstructionMinFrequency: 2
 
+# Interpret-branch decoys and dynamic branch selection.
+obfuscateInterpretBranch: true
+interpretBranchCases: 3
+
 includes:
   all: ["*", "* *(*)*"]
   protectCodePool: ["* @Sensitive *(*)*"]
   dynamicConstantDecrypt: ["* @Sensitive *(*)*"]
   encryptOperands: ["com.example.secure.* *(*)*"]
   obfuscateDispatch: ["* *(*)*"]
+  obfuscateInterpretBranch: ["* @Sensitive *(*)*"]
   constantFix: ["com.example.secure.* *"]
   superInstruction: ["com.example.hot.* *(*)*"]
 exclusions:
@@ -209,6 +214,8 @@ exclusions:
 | `superInstructionMode` | `RANDOM`, `PATTERN`, `HYBRID` | `HYBRID` | Chooses random ranges, frequent opcode patterns, or both. |
 | `superInstructionMaxHandlers` | `1` to `4096` | `128`    | Caps generated super-instruction recipes per VM set. |
 | `superInstructionMinFrequency` | Positive integer | `2`      | Minimum pattern frequency before `PATTERN` or `HYBRID` pre-registers a recipe. |
+| `obfuscateInterpretBranch` | `true`, `false` | `true` | Emits randomized sparse decoy branches and decrypts the real branch selector from CodePool data using the current method, state, instruction, virtual-PC, and opcode state. |
+| `interpretBranchCases` | `1` to `8` | `3` | Total generated cases per interpreter branch, including the real branch. `1` disables decoy expansion. |
 | `vmCount` | `1` to `1024` | `5`      | Expands each non-`PER_METHOD` VM grouping into this many randomized VM sets and distributes matched methods among them. Five covers the complete current `HIGH` candidate bag. |
 | `includes` | Array or object of match expressions | Required | Methods/classes to virtualize, plus optional per-boolean include groups. |
 | `exclusions` | Array or object of match expressions | Required | Methods/classes to skip, plus optional per-boolean exclude groups. Exclusions win over includes. |
@@ -407,7 +414,7 @@ exclusions:
 
 Supported boolean group names are:
 
-`protectCodePool`, `dynamicConstantDecrypt`, `virtualizeInstructionAddresses`, `encryptOperands`, `perMethodOpcodeMap`, `shuffleConstants`, `bindConstantsToOperands`, `splitCodeStreams`, `shuffleInstructionBlocks`, `obfuscateDispatch`, `dynamicCodePoolBuild`, `dynamicStateKey`, `virtualControlFlowGraph`, `constantFix`, and `superInstruction`.
+`protectCodePool`, `dynamicConstantDecrypt`, `virtualizeInstructionAddresses`, `encryptOperands`, `perMethodOpcodeMap`, `shuffleConstants`, `bindConstantsToOperands`, `splitCodeStreams`, `shuffleInstructionBlocks`, `obfuscateDispatch`, `dynamicCodePoolBuild`, `dynamicStateKey`, `virtualControlFlowGraph`, `constantFix`, `superInstruction`, and `obfuscateInterpretBranch`.
 
 Only included classes and then methods will be processed.
 

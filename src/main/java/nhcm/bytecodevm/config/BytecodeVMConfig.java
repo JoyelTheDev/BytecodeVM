@@ -11,17 +11,12 @@ import org.yaml.snakeyaml.Yaml;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Builder(toBuilder = true)
 public class BytecodeVMConfig
 {
-    private static final java.util.Set<String> CONFIG_KEYS = java.util.Set.of(
+    private static final Set<String> CONFIG_KEYS = java.util.Set.of(
             "input", "output", "createMode", "location", "renameMode", "interpretMode",
             "vmStructure", "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
@@ -31,12 +26,13 @@ public class BytecodeVMConfig
             "vmIntegrityCheck", "vmIntegrityCheckRatio", "vmIntegrityRecheckInterval", "superInstruction",
             "superinstrcution", "superInstructionCombineRange", "superinstrcutioncombinerange",
             "superInstructionMode", "superInstructionMaxHandlers", "superInstructionMinFrequency",
+            "obfuscateInterpretBranch", "interpretBranchCases",
             "vmCount", "includes", "exclusions", "mutateMode");
-    private static final java.util.Set<String> MATCH_GROUP_KEYS = java.util.Set.of(
+    private static final Set<String> MATCH_GROUP_KEYS = java.util.Set.of(
             "all", "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
             "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey",
-            "virtualControlFlowGraph", "constantFix", "superInstruction");
+            "virtualControlFlowGraph", "constantFix", "superInstruction", "obfuscateInterpretBranch");
 
     public final Path inputFile;
     public final Path outputFile;
@@ -72,6 +68,8 @@ public class BytecodeVMConfig
     public final SuperInstructionMode superInstructionMode;
     public final int superInstructionMaxHandlers;
     public final int superInstructionMinFrequency;
+    public final boolean obfuscateInterpretBranch;
+    public final int interpretBranchCases;
     public final int vmCount;
     public final String[] includes;
     public final String[] exclusions;
@@ -184,6 +182,8 @@ public class BytecodeVMConfig
                 .superInstructionMode(optionalEnum(yaml, "superInstructionMode", SuperInstructionMode.HYBRID))
                 .superInstructionMaxHandlers(optionalInt(yaml, "superInstructionMaxHandlers", 128, 1, 4096))
                 .superInstructionMinFrequency(optionalInt(yaml, "superInstructionMinFrequency", 2, 1, 1_000_000))
+                .obfuscateInterpretBranch(optionalBoolean(yaml, "obfuscateInterpretBranch", true))
+                .interpretBranchCases(optionalInt(yaml, "interpretBranchCases", 3, 1, 8))
                 .vmCount(optionalInt(yaml, "vmCount", 5, 1, 1024))
                 .includes(includes)
                 .exclusions(exclusions)
@@ -255,6 +255,8 @@ public class BytecodeVMConfig
         values.put("superInstructionMode", superInstructionMode.name());
         values.put("superInstructionMaxHandlers", superInstructionMaxHandlers);
         values.put("superInstructionMinFrequency", superInstructionMinFrequency);
+        values.put("obfuscateInterpretBranch", obfuscateInterpretBranch);
+        values.put("interpretBranchCases", interpretBranchCases);
         values.put("vmCount", vmCount);
         values.put("includes", ruleDocument(matchRules.includes));
         values.put("exclusions", ruleDocument(matchRules.exclusions));
@@ -307,6 +309,12 @@ public class BytecodeVMConfig
                 .dynamicCodePoolBuild(statementEnabled("dynamicCodePoolBuild", dynamicCodePoolBuild, owner, method))
                 .dynamicStateKey(statementEnabled("dynamicStateKey", dynamicStateKey, owner, method))
                 .virtualControlFlowGraph(statementEnabled("virtualControlFlowGraph", virtualControlFlowGraph, owner, method))
+                .obfuscateInterpretBranch(statementEnabled(
+                        "obfuscateInterpretBranch",
+                        obfuscateInterpretBranch,
+                        owner,
+                        method))
+                .interpretBranchCases(interpretBranchCases)
                 .constantFix(constantFix)
                 .removeAnnotations(removeAnnotations)
                 .includeMethodsCalledWithin(includeMethodsCalledWithin)
@@ -353,6 +361,8 @@ public class BytecodeVMConfig
                 .dynamicCodePoolBuild(true)
                 .dynamicStateKey(true)
                 .virtualControlFlowGraph(true)
+                .obfuscateInterpretBranch(obfuscateInterpretBranch)
+                .interpretBranchCases(Math.min(interpretBranchCases, 3))
                 .constantFix(false)
                 .removeAnnotations(removeAnnotations)
                 .includeMethodsCalledWithin(false)

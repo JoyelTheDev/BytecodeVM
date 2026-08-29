@@ -81,6 +81,10 @@ public class BytecodeVM
             superInstructionMaxHandlers: 128
             superInstructionMinFrequency: 2
 
+            # Interpret-branch decoys and dynamic branch selection.
+            obfuscateInterpretBranch: true
+            interpretBranchCases: 3
+
             # all selects virtualization targets. Additional groups scope matching boolean options.
             # Matcher strings containing '*' should stay quoted because '*' is YAML alias syntax.
             # Run `inspect <config.yml>` to preview include matches and VM allocation.

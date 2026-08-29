@@ -857,9 +857,20 @@ public class AdvInsnBuilder
             Consumer<AdvInsnBuilder> defaultBlock,
             Consumer<AdvInsnBuilder>... cases)
     {
+        List<Consumer<AdvInsnBuilder>> casesList = new ArrayList<>();
+        Collections.addAll(casesList, cases);
+        return switchTable(selector, min, defaultBlock, casesList);
+    }
+
+    public final AdvInsnBuilder switchTable(
+            Expr selector,
+            int min,
+            Consumer<AdvInsnBuilder> defaultBlock,
+            List<Consumer<AdvInsnBuilder>> cases)
+    {
         LabelNode defaultLabel = new LabelNode();
         LabelNode end = new LabelNode();
-        LabelNode[] labels = new LabelNode[cases.length];
+        LabelNode[] labels = new LabelNode[cases.size()];
         for (int i = 0; i < labels.length; i++)
         {
             labels[i] = new LabelNode();
@@ -867,16 +878,16 @@ public class AdvInsnBuilder
 
         appendView("switch (" + selector.source() + ") {");
         selector.emit(builder);
-        builder.tableSwitch(min, min + cases.length - 1, defaultLabel, labels);
+        builder.tableSwitch(min, min + cases.size() - 1, defaultLabel, labels);
         flowScopes.push(new FlowScope(null, end));
         indent++;
 
-        for (int i = 0; i < cases.length; i++)
+        for (int i = 0; i < cases.size(); i++)
         {
             appendView("case " + (min + i) + ":");
             builder.label(labels[i]);
             indent++;
-            cases[i].accept(this);
+            cases.get(i).accept(this);
             builder.goto_(end);
             indent--;
         }

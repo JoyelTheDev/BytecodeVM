@@ -217,6 +217,11 @@ public enum Opcs
         return null;
     }
 
+    public static boolean isSpecialOpc(Opcs opcode)
+    {
+        return opcode == SUPER_INSTRUCTION || opcode == REGISTER_OP || opcode == DATA_FLOW_REGION;
+    }
+
     public enum OperandFormat
     {
         NONE(0, 0L, -1),

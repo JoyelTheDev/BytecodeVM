@@ -1,10 +1,17 @@
 package nhcm.bytecodevm.generator.virtualization;
 
+import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.utils.RandomUtils;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 public class VMObfProfile
 {
     private final int[] layoutSlots;
+    private final Map<InterpretBranchPlanKey, InterpretBranchPlan> interpretBranchPlans = new HashMap<>();
     public final int decodeVariant;
     public final int mixSeed;
     public final int mixRoundA;
@@ -191,6 +198,37 @@ public class VMObfProfile
         return mix(methodKey, handlerSlot, field, saltHandler);
     }
 
+    public int interpretBranchMix(
+            int methodKey,
+            int stateKey,
+            int opcode,
+            int virtualPc,
+            int instructionIndex,
+            InterpretBranchPlan plan)
+    {
+        int path = mix(
+                methodKey ^ stateKey,
+                virtualPc,
+                instructionIndex,
+                plan.maskSalt());
+        return mix(
+                path ^ opcode,
+                stateKey,
+                plan.decodeSalt(),
+                plan.maskSalt() ^ saltHandler);
+    }
+
+    public synchronized InterpretBranchPlan interpretBranchPlan(Opcs opcode, int caseCount)
+    {
+        if (caseCount < 1)
+        {
+            throw new IllegalArgumentException("Interpret branch case count must be positive");
+        }
+        return interpretBranchPlans.computeIfAbsent(
+                new InterpretBranchPlanKey(opcode, caseCount),
+                ignored -> createInterpretBranchPlan(caseCount));
+    }
+
     public int arrayMix(int key, int index)
     {
         return mix(key, index, saltArray, 0);
@@ -236,5 +274,47 @@ public class VMObfProfile
             values[replacement] = value;
         }
         return values;
+    }
+
+    private static InterpretBranchPlan createInterpretBranchPlan(int caseCount)
+    {
+        int[] labels = new int[caseCount];
+        Set<Integer> used = new HashSet<>(caseCount * 2);
+        for (int index = 0; index < labels.length; index++)
+        {
+            int label;
+            do
+            {
+                label = nonZeroRandom();
+            } while (!used.add(label));
+            labels[index] = label;
+        }
+        return new InterpretBranchPlan(
+                labels[RandomUtils.randomInt(labels.length)],
+                labels,
+                nonZeroRandom(),
+                nonZeroRandom());
+    }
+
+    private record InterpretBranchPlanKey(Opcs opcode, int caseCount)
+    {
+    }
+
+    public record InterpretBranchPlan(
+            int realLabel,
+            int[] labels,
+            int maskSalt,
+            int decodeSalt)
+    {
+        public InterpretBranchPlan
+        {
+            labels = labels.clone();
+        }
+
+        @Override
+        public int[] labels()
+        {
+            return labels.clone();
+        }
     }
 }
