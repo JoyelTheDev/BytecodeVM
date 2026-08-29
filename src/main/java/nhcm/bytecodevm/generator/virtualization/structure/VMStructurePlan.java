@@ -60,7 +60,7 @@ public record VMStructurePlan(
             case FSM -> new VMStructurePlan(structure, DispatchKind.INDIRECT_TOKEN, SchedulerKind.FSM, 4);
             case EVENT -> new VMStructurePlan(structure, DispatchKind.CENTRAL, SchedulerKind.EVENT, 8);
             case COROUTINE -> new VMStructurePlan(structure, DispatchKind.CENTRAL, SchedulerKind.COROUTINE, 16);
-            case LOW, MEDIUM, HIGH -> throw new IllegalStateException("Unresolved VM structure strength");
+            default -> throw new IllegalStateException("Unresolved VM structure strength");
         };
     }
 

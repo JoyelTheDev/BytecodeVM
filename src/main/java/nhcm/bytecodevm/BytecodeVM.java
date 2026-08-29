@@ -33,9 +33,12 @@ public class BytecodeVM
             # concrete structure for latency-sensitive and heavily executed methods.
             #   LOW    -> SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
             #             THREADED_DIRECT, THREADED_INDIRECT
+            #   MEDIUM_LOW -> all LOW and MEDIUM structures
             #   MEDIUM -> CALL_THREADED, RECURSIVE, CONTINUATION_PASSING, OBJECT,
             #             SELF_MODIFYING, EVENT, COROUTINE
+            #   MEDIUM_HIGH -> all MEDIUM and HIGH structures
             #   HIGH   -> DATA_FLOW, POLYMORPHIC, GRAPH, FSM, REGISTER_BASED
+            #   ANY    -> all concrete VM structures
             # Concrete VM structures:
             #   SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
             #   THREADED_DIRECT, THREADED_INDIRECT, CALL_THREADED, RECURSIVE,

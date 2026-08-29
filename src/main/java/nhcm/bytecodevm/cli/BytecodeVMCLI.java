@@ -3,6 +3,7 @@ package nhcm.bytecodevm.cli;
 import nhcm.bytecodevm.BuildInfo;
 import nhcm.bytecodevm.BytecodeVM;
 import nhcm.bytecodevm.config.BytecodeVMConfig;
+import nhcm.bytecodevm.config.PresetConfigGallery;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.generator.ObfuscationReport;
 import nhcm.bytecodevm.generator.Obfuscator;
@@ -609,10 +610,41 @@ public final class BytecodeVMCLI implements Callable<Integer>
                 description = "Configuration output path.")
         private Path outputOption;
 
+        @CommandLine.Option(
+                names = "--preset",
+                paramLabel = "<name>",
+                description = "Configuration preset or concrete VMStructure name.")
+        private String preset;
+
+        @CommandLine.Option(
+                names = "--list-presets",
+                description = "List configuration presets and exit.")
+        private boolean listPresets;
+
+        @CommandLine.Option(
+                names = "--vm-structure",
+                paramLabel = "<structure>",
+                description = "Override the preset VM structure or automatic tier.")
+        private String vmStructure;
+
+        @CommandLine.Option(
+                names = "--vm-count",
+                paramLabel = "<count>",
+                description = "Override the generated VM count (1-1024).")
+        private Integer vmCount;
+
         @Override
         public Integer call()
         {
             parent.begin();
+            if (listPresets)
+            {
+                // A requested listing remains visible even when normal logs are quiet.
+                CLIRuntime.configure(false, false, parent.resolvedLogFile());
+                logPresetGallery();
+                parent.finish();
+                return CLIExitCodes.SUCCESS;
+            }
             if (positionalOutput != null && outputOption != null)
             {
                 throw new CLIException(CLIExitCodes.USAGE, "Specify the output positionally or with --output, not both");
@@ -628,10 +660,14 @@ public final class BytecodeVMCLI implements Callable<Integer>
                 {
                     Files.createDirectories(directory);
                 }
-                Files.writeString(absolute, BytecodeVM.defaultConfig());
+                boolean customized = preset != null || vmStructure != null || vmCount != null;
+                String configText = customized
+                        ? customizedConfig().toYaml()
+                        : BytecodeVM.defaultConfig();
+                Files.writeString(absolute, configText);
                 if (!parent.quiet())
                 {
-                    logger.info("{}", LogColors.success("Default config written to " + absolute));
+                    logger.info("{}", LogColors.success("Config written to " + absolute));
                 }
                 parent.finish();
                 return CLIExitCodes.SUCCESS;
@@ -640,6 +676,57 @@ public final class BytecodeVMCLI implements Callable<Integer>
             {
                 throw new CLIException(CLIExitCodes.GENERATION, "Cannot write config: " + output.toAbsolutePath(), exception);
             }
+            catch (IllegalArgumentException exception)
+            {
+                throw new CLIException(CLIExitCodes.CONFIG, exception.getMessage(), exception);
+            }
+        }
+
+        private BytecodeVMConfig customizedConfig()
+        {
+            BytecodeVMConfig config = PresetConfigGallery.create(
+                    preset == null ? PresetConfigGallery.BALANCED.name() : preset,
+                    Path.of("./input.jar"),
+                    Path.of("./output.jar"));
+
+            BytecodeVMConfig.BytecodeVMConfigBuilder builder = config.toBuilder();
+            if (vmStructure != null)
+            {
+                VMStructure structure;
+                try
+                {
+                    structure = VMStructure.parse(vmStructure);
+                }
+                catch (RuntimeException exception)
+                {
+                    throw new IllegalArgumentException("Unknown VM structure: " + vmStructure, exception);
+                }
+                builder.vmStructure(structure);
+                if (!structure.isAutomatic() && vmCount == null)
+                {
+                    builder.vmCount(1);
+                }
+            }
+            if (vmCount != null)
+            {
+                if (vmCount < 1 || vmCount > 1024)
+                {
+                    throw new IllegalArgumentException("VM count must be between 1 and 1024");
+                }
+                builder.vmCount(vmCount);
+            }
+            return builder.build();
+        }
+
+        private void logPresetGallery()
+        {
+            logger.info("{}", LogColors.lifecycle("Available configuration presets:"));
+            for (PresetConfigGallery.Preset available : PresetConfigGallery.presets())
+            {
+                logger.info("  {} - {}", available.name(), available.description());
+            }
+            logger.info("{}", LogColors.lifecycle(
+                    "Any concrete VMStructure can also be used as --preset, for example GRAPH."));
         }
     }
 

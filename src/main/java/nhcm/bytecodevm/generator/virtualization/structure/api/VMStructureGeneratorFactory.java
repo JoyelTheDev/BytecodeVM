@@ -46,7 +46,7 @@ public final class VMStructureGeneratorFactory
             case FSM -> new FsmVMGenerator();
             case EVENT -> new EventVMGenerator();
             case COROUTINE -> new CoroutineVMGenerator();
-            case LOW, MEDIUM, HIGH -> throw new IllegalArgumentException(
+            default -> throw new IllegalArgumentException(
                     "Automatic VM structure must be resolved before generator selection: " + structure);
         };
     }

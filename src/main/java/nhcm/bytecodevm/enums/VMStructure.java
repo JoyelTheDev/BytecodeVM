@@ -2,12 +2,8 @@ package nhcm.bytecodevm.enums;
 
 import nhcm.bytecodevm.utils.RandomUtils;
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Stream;
 
 public enum VMStructure
 {
@@ -28,9 +24,13 @@ public enum VMStructure
     FSM,
     EVENT,
     COROUTINE,
+
     LOW,
+    MEDIUM_LOW,
     MEDIUM,
-    HIGH;
+    MEDIUM_HIGH,
+    HIGH,
+    ANY;
 
     private static final int AUTO_WINDOW_SIZE = 12;
 
@@ -57,6 +57,7 @@ public enum VMStructure
             FSM,
             REGISTER_BASED
     };
+
     private static final Map<VMStructure, ArrayDeque<VMStructure>> AUTO_BAGS = new EnumMap<>(VMStructure.class);
 
     public static VMStructure parse(String value)
@@ -66,7 +67,12 @@ public enum VMStructure
 
     public boolean isAutomatic()
     {
-        return this == LOW || this == MEDIUM || this == HIGH;
+        return this == LOW
+               || this == MEDIUM_LOW
+               || this == MEDIUM
+               || this == MEDIUM_HIGH
+               || this == HIGH
+               || this == ANY;
     }
 
     public boolean acceptsResolvedStructure(VMStructure resolved)
@@ -80,6 +86,21 @@ public enum VMStructure
             case LOW -> LOW_CANDIDATES;
             case MEDIUM -> MEDIUM_CANDIDATES;
             case HIGH -> HIGH_CANDIDATES;
+            case MEDIUM_LOW -> Stream.concat(
+                    Arrays.stream(LOW_CANDIDATES),
+                    Arrays.stream(MEDIUM_CANDIDATES)
+            ).toArray(VMStructure[]::new);
+            case MEDIUM_HIGH -> Stream.concat(
+                    Arrays.stream(MEDIUM_CANDIDATES),
+                    Arrays.stream(HIGH_CANDIDATES)
+            ).toArray(VMStructure[]::new);
+            case ANY -> Stream.concat(
+                    Stream.concat(
+                            Arrays.stream(LOW_CANDIDATES),
+                            Arrays.stream(MEDIUM_CANDIDATES)
+                    ),
+                    Arrays.stream(HIGH_CANDIDATES)
+            ).toArray(VMStructure[]::new);
             default -> throw new IllegalStateException("Unexpected automatic structure: " + this);
         };
         for (VMStructure candidate : candidates)
@@ -104,6 +125,21 @@ public enum VMStructure
             case LOW -> LOW_CANDIDATES;
             case MEDIUM -> MEDIUM_CANDIDATES;
             case HIGH -> HIGH_CANDIDATES;
+            case MEDIUM_LOW -> Stream.concat(
+                    Arrays.stream(LOW_CANDIDATES),
+                    Arrays.stream(MEDIUM_CANDIDATES)
+            ).toArray(VMStructure[]::new);
+            case MEDIUM_HIGH -> Stream.concat(
+                    Arrays.stream(MEDIUM_CANDIDATES),
+                    Arrays.stream(HIGH_CANDIDATES)
+            ).toArray(VMStructure[]::new);
+            case ANY -> Stream.concat(
+                    Stream.concat(
+                            Arrays.stream(LOW_CANDIDATES),
+                            Arrays.stream(MEDIUM_CANDIDATES)
+                    ),
+                    Arrays.stream(HIGH_CANDIDATES)
+            ).toArray(VMStructure[]::new);
             default -> null;
         };
         if (candidates == null)

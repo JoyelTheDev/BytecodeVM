@@ -18,7 +18,8 @@ public class BytecodeVMConfig
 {
     private static final Set<String> CONFIG_KEYS = java.util.Set.of(
             "input", "output", "createMode", "location", "renameMode", "interpretMode",
-            "vmStructure", "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
+            "vmStructure","vmCount",
+            "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
             "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey",
             "virtualControlFlowGraph", "constantFix", "fixConstants", "removeAnnotations",
@@ -27,7 +28,7 @@ public class BytecodeVMConfig
             "superinstrcution", "superInstructionCombineRange", "superinstrcutioncombinerange",
             "superInstructionMode", "superInstructionMaxHandlers", "superInstructionMinFrequency",
             "obfuscateInterpretBranch", "interpretBranchCases",
-            "vmCount", "includes", "exclusions", "mutateMode");
+            "includes", "exclusions", "mutateMode");
     private static final Set<String> MATCH_GROUP_KEYS = java.util.Set.of(
             "all", "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
@@ -41,6 +42,7 @@ public class BytecodeVMConfig
     public final RenameMode renameMode;
     public final InterpretMode interpretMode;
     public final VMStructure vmStructure;
+    public final int vmCount;
     public final boolean protectCodePool;
     public final boolean dynamicConstantDecrypt;
     public final boolean virtualizeInstructionAddresses;
@@ -70,7 +72,6 @@ public class BytecodeVMConfig
     public final int superInstructionMinFrequency;
     public final boolean obfuscateInterpretBranch;
     public final int interpretBranchCases;
-    public final int vmCount;
     public final String[] includes;
     public final String[] exclusions;
     public final MatchRules matchRules;
@@ -149,6 +150,7 @@ public class BytecodeVMConfig
                 .location(VMLocation.valueOf(requiredString(yaml, "location")))
                 .interpretMode(InterpretMode.valueOf(requiredString(yaml, "interpretMode")))
                 .vmStructure(optionalVMStructure(yaml, "vmStructure", VMStructure.MEDIUM))
+                .vmCount(optionalInt(yaml, "vmCount", 5, 1, 1024))
                 .renameMode(RenameMode.valueOf(requiredString(yaml, "renameMode")))
                 .protectCodePool(optionalBoolean(yaml, "protectCodePool", true))
                 .dynamicConstantDecrypt(optionalBoolean(yaml, "dynamicConstantDecrypt", true))
@@ -184,7 +186,6 @@ public class BytecodeVMConfig
                 .superInstructionMinFrequency(optionalInt(yaml, "superInstructionMinFrequency", 2, 1, 1_000_000))
                 .obfuscateInterpretBranch(optionalBoolean(yaml, "obfuscateInterpretBranch", true))
                 .interpretBranchCases(optionalInt(yaml, "interpretBranchCases", 3, 1, 8))
-                .vmCount(optionalInt(yaml, "vmCount", 5, 1, 1024))
                 .includes(includes)
                 .exclusions(exclusions)
                 .matchRules(matchRules)
@@ -227,6 +228,7 @@ public class BytecodeVMConfig
         values.put("renameMode", renameMode.name());
         values.put("interpretMode", interpretMode.name());
         values.put("vmStructure", vmStructure.name());
+        values.put("vmCount", vmCount);
         values.put("protectCodePool", protectCodePool);
         values.put("dynamicConstantDecrypt", dynamicConstantDecrypt);
         values.put("virtualizeInstructionAddresses", virtualizeInstructionAddresses);
@@ -257,7 +259,6 @@ public class BytecodeVMConfig
         values.put("superInstructionMinFrequency", superInstructionMinFrequency);
         values.put("obfuscateInterpretBranch", obfuscateInterpretBranch);
         values.put("interpretBranchCases", interpretBranchCases);
-        values.put("vmCount", vmCount);
         values.put("includes", ruleDocument(matchRules.includes));
         values.put("exclusions", ruleDocument(matchRules.exclusions));
         return Collections.unmodifiableMap(values);
@@ -600,6 +601,15 @@ public class BytecodeVMConfig
         private static MatchRules empty()
         {
             return new MatchRules(Map.of(), Map.of());
+        }
+
+        public static MatchRules of(String[] includes, String[] exclusions)
+        {
+            String[] includedRules = includes == null ? new String[0] : includes.clone();
+            String[] excludedRules = exclusions == null ? new String[0] : exclusions.clone();
+            return new MatchRules(
+                    Map.of("all", includedRules),
+                    Map.of("all", excludedRules));
         }
 
         public String[] includes(String key)

@@ -84,6 +84,29 @@ checks before a release build.
 Legacy `--config`, `--defaultconfig`, and `--defaultrun` invocations remain accepted and are
 mapped to `protect` or `init` with overwrite behavior matching older releases.
 
+`init` writes the documented default configuration. A complete tuned profile can be selected with
+`java -jar BytecodeVM.jar init config.yml --preset BALANCED`. Use `init --list-presets` to inspect
+the gallery. Available presets are `DISABLED`, `SIMPLE`, `CODE_POOL_ONLY`, `FAST`, `LIGHT`,
+`BALANCED`, `INTEGRITY_FOCUSED`, `STRONG`, `EXTREME`, and `RANDOMIZED`.
+
+Any concrete VM structure can be used directly as a preset. For example,
+`init graph.yml --preset GRAPH` creates a balanced configuration using only one `GRAPH` VM.
+`--vm-structure` and `--vm-count` can override a gallery preset, such as
+`init custom.yml --preset STRONG --vm-structure FSM --vm-count 1`.
+
+| Preset | Intended use |
+|---|---|
+| `DISABLED` | Turns off every optional transform and protection layer while retaining basic virtualization. |
+| `SIMPLE` | Uses one `SIMPLE_DISPATCH` VM with normal encoding protections. |
+| `CODE_POOL_ONLY` | Focuses on CodePool, constant, opcode, and operand protection. |
+| `FAST` | Favors lower runtime overhead and LOW structures. |
+| `LIGHT` | Uses LOW and MEDIUM structures with restrained code expansion. |
+| `BALANCED` | General-purpose default with MEDIUM structures. |
+| `INTEGRITY_FOCUSED` | Enables full integrity coverage without EXTREME expansion settings. |
+| `STRONG` | Uses MEDIUM and HIGH structures, integrity sampling, and stronger branch decoys. |
+| `EXTREME` | Enables the strongest gallery settings and all HIGH structures. |
+| `RANDOMIZED` | Automatically selects from every concrete VM structure. |
+
 | Exit code | Meaning |
 | ---: | --- |
 | `0` | Success |
@@ -116,6 +139,9 @@ interpretMode: SAVE_ONLY_REQUIRED_INSTRUCTION
 # MEDIUM: CALL_THREADED, RECURSIVE, CONTINUATION_PASSING, OBJECT,
 #         SELF_MODIFYING, EVENT, COROUTINE
 # HIGH: DATA_FLOW, POLYMORPHIC, GRAPH, FSM, REGISTER_BASED
+# MEDIUM_LOW: all LOW and MEDIUM structures
+# MEDIUM_HIGH: all MEDIUM and HIGH structures
+# ANY: all concrete VM structures
 # Concrete: SIMPLE_DISPATCH, DISTRIBUTED_DISPATCH, MULTIPLE_DISPATCH,
 # THREADED_DIRECT, THREADED_INDIRECT, CALL_THREADED, RECURSIVE,
 # CONTINUATION_PASSING, OBJECT, POLYMORPHIC, SELF_MODIFYING,

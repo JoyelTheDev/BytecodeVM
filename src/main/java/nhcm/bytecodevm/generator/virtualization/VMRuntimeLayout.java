@@ -228,7 +228,7 @@ public class VMRuntimeLayout
             case FSM -> "runFiniteStateMachine";
             case EVENT -> "pumpVirtualEvents";
             case COROUTINE -> "runCoroutineMachine";
-            case LOW, MEDIUM, HIGH -> throw new IllegalArgumentException("Automatic structure is unresolved");
+            default -> throw new IllegalArgumentException("Automatic structure is unresolved");
         };
     }
 
@@ -257,7 +257,7 @@ public class VMRuntimeLayout
             case FSM -> "transitionState";
             case EVENT -> "deliverVirtualEvent";
             case COROUTINE -> "resumeVirtualCoroutine";
-            case LOW, MEDIUM, HIGH -> throw new IllegalArgumentException("Automatic structure is unresolved");
+            default -> throw new IllegalArgumentException("Automatic structure is unresolved");
         };
     }
 
