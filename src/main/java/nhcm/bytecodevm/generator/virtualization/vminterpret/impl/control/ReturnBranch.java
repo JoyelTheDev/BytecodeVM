@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.control;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
@@ -17,7 +17,7 @@ public class ReturnBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         if (!opcodes().contains(opcode))
         {
@@ -26,14 +26,14 @@ public class ReturnBranch extends InterpretBranch
 
         if (opcode == Opcs.RETURN)
         {
-            ib.set(context.frameReturnValue(), AdvInsnBuilder.nullValue("java/lang/Object"));
+            ib.set(context.frameReturnValue(), AdvIBdr.nullValue("java/lang/Object"));
         }
         else
         {
             popObject(ib, context);
             ib.set(context.frameReturnValue(), context.stackObject());
         }
-        ib.set(context.frameReturned(), AdvInsnBuilder.constant(true));
+        ib.set(context.frameReturned(), AdvIBdr.constant(true));
         ib.returnVoid();
     }
 

@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.polymorphic;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
@@ -27,12 +27,12 @@ public final class PolymorphicVMGenerator extends AbstractVMStructureGenerator i
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local polymorphicResult = runtime.intLocal("polymorphicResult", InterpretContext.OPCODE);
-        ib.set(polymorphicResult, AdvInsnBuilder.constant(0));
+        ib.set(polymorphicResult, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(polymorphicResult, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(polymorphicResult, AdvIBdr.constant(0)),
                 variant -> variant.set(polymorphicResult, generation.step(runtime)));
     }
 
@@ -52,26 +52,26 @@ public final class PolymorphicVMGenerator extends AbstractVMStructureGenerator i
         }
         dispatch.generation().onClassInitialize(initializer -> {
             Local variantMap = initializer.var("polymorphicHandlers", "java/util/Map");
-            initializer.set(variantMap, AdvInsnBuilder.newObject("java/util/HashMap"));
+            initializer.set(variantMap, AdvIBdr.newObject("java/util/HashMap"));
             int ordinal = 0;
             for (Map.Entry<Integer, VMDispatchTarget> entry : targets.entrySet())
             {
                 Local variants = initializer.var("variants" + ordinal++, "[L" + family.interfaceName() + ";");
-                initializer.set(variants, AdvInsnBuilder.newArray(
-                        family.interfaceName(), AdvInsnBuilder.constant(VARIANT_COUNT)));
+                initializer.set(variants, AdvIBdr.newArray(
+                        family.interfaceName(), AdvIBdr.constant(VARIANT_COUNT)));
                 for (int variant = 0; variant < VARIANT_COUNT; variant++)
                 {
                     initializer.setArray(
                             variants,
-                            AdvInsnBuilder.constant(variant),
+                            AdvIBdr.constant(variant),
                             family.newHandler(entry.getValue().primaryKey(), variant));
                 }
-                initializer.directCall(mapPut(variantMap, integer(AdvInsnBuilder.constant(entry.getKey())), variants));
+                initializer.directCall(mapPut(variantMap, integer(AdvIBdr.constant(entry.getKey())), variants));
             }
-            initializer.set(AdvInsnBuilder.staticField(variantsField), variantMap);
+            initializer.set(AdvIBdr.staticField(variantsField), variantMap);
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("polymorphicSelector", InterpretContext.DISPATCH_SELECTOR);
         Local variants = runtime.local(
@@ -81,30 +81,30 @@ public final class PolymorphicVMGenerator extends AbstractVMStructureGenerator i
                 "polymorphicHandler", family.interfaceName(), InterpretContext.DISPATCH_SELECTOR + 3);
         Local result = runtime.intLocal("polymorphicStatus", InterpretContext.DISPATCH_SELECTOR + 4);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(variants, AdvInsnBuilder.cast(
-                mapGet(AdvInsnBuilder.staticField(variantsField), integer(selector)),
+        ib.set(variants, AdvIBdr.cast(
+                mapGet(AdvIBdr.staticField(variantsField), integer(selector)),
                 "[L" + family.interfaceName() + ";"));
-        ib.ifCondition(AdvInsnBuilder.isNull(variants), missing -> missing.gotoLabel(dispatch.unknown()));
-        ib.set(variant, AdvInsnBuilder.callStatic(
+        ib.ifCondition(AdvIBdr.isNull(variants), missing -> missing.gotoLabel(dispatch.unknown()));
+        ib.set(variant, AdvIBdr.callStatic(
                 "java/lang/Math", "floorMod", "I",
                 dispatch.generation().mix(
                         runtime.frameStateKey(), runtime.instructionIndex(), selector,
-                        AdvInsnBuilder.constant(dispatch.profile().saltHandler)),
-                AdvInsnBuilder.constant(VARIANT_COUNT)));
-        ib.set(handler, AdvInsnBuilder.arrayAt(variants, variant));
+                        AdvIBdr.constant(dispatch.profile().saltHandler)),
+                AdvIBdr.constant(VARIANT_COUNT)));
+        ib.set(handler, AdvIBdr.arrayAt(variants, variant));
         ib.set(result, family.invoke(handler, runtime));
         dispatch.finishExternal(ib, result);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr integer(nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
+        return AdvIBdr.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapGet(nhcm.bytecodevm.advInsn.Expr map, nhcm.bytecodevm.advInsn.Expr key)
     {
-        return AdvInsnBuilder.callInterface(
-                map, "java/util/Map", "get", "java/lang/Object", AdvInsnBuilder.cast(key, "java/lang/Object"));
+        return AdvIBdr.callInterface(
+                map, "java/util/Map", "get", "java/lang/Object", AdvIBdr.cast(key, "java/lang/Object"));
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapPut(
@@ -112,8 +112,8 @@ public final class PolymorphicVMGenerator extends AbstractVMStructureGenerator i
             nhcm.bytecodevm.advInsn.Expr key,
             nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 map, "java/util/Map", "put", "java/lang/Object",
-                AdvInsnBuilder.cast(key, "java/lang/Object"), AdvInsnBuilder.cast(value, "java/lang/Object"));
+                AdvIBdr.cast(key, "java/lang/Object"), AdvIBdr.cast(value, "java/lang/Object"));
     }
 }

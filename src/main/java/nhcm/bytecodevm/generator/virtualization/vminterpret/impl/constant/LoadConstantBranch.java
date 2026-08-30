@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.constant;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
@@ -18,14 +18,14 @@ public class LoadConstantBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         Local constantIndex = context.intLocal("constantIndex", InterpretContext.RIGHT_VALUE);
         Local constant = context.objectLocal("constant", InterpretContext.DUP_VALUE_1);
 
         context.nextOperand(ib, constantIndex);
-        ib.set(constant, AdvInsnBuilder.arrayAt(context.constants(), constantIndex));
-        ib.set(constant, AdvInsnBuilder.callStatic(
+        ib.set(constant, AdvIBdr.arrayAt(context.constants(), constantIndex));
+        ib.set(constant, AdvIBdr.callStatic(
                 context.vm.owner,
                 context.vm.resolveConstant.name(),
                 "java/lang/Object",
@@ -36,10 +36,10 @@ public class LoadConstantBranch extends InterpretBranch
                 context.opcode()));
 
         ib.ifElse(
-                AdvInsnBuilder.or(
-                        AdvInsnBuilder.isInstanceOf(constant, "java/lang/Long"),
-                        AdvInsnBuilder.isInstanceOf(constant, "java/lang/Double")),
-                category2 -> pushObjectWithWidth(category2, context, constant, AdvInsnBuilder.constant(2)),
+                AdvIBdr.or(
+                        AdvIBdr.isInstanceOf(constant, "java/lang/Long"),
+                        AdvIBdr.isInstanceOf(constant, "java/lang/Double")),
+                category2 -> pushObjectWithWidth(category2, context, constant, AdvIBdr.constant(2)),
                 category1 -> pushObject(category1, context, constant));
     }
 }

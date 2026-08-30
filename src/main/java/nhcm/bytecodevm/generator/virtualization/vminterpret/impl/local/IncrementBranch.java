@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.local;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
@@ -18,7 +18,7 @@ public class IncrementBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         if (opcode != Opcs.IINC)
         {
@@ -33,12 +33,12 @@ public class IncrementBranch extends InterpretBranch
         ib.setArray(
                 context.locals(),
                 localIndex,
-                AdvInsnBuilder.callStatic(
+                AdvIBdr.callStatic(
                         "java/lang/Integer",
                         "valueOf",
                         "java/lang/Integer",
-                        AdvInsnBuilder.plus(
-                                AdvInsnBuilder.unbox(AdvInsnBuilder.arrayAt(context.locals(), localIndex), "I"),
+                        AdvIBdr.plus(
+                                AdvIBdr.unbox(AdvIBdr.arrayAt(context.locals(), localIndex), "I"),
                                 increment)));
     }
 }

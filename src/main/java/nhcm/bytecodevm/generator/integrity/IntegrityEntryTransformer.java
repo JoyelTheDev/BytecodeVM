@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.integrity;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.data.CompiledMethod;
@@ -74,11 +74,11 @@ public final class IntegrityEntryTransformer
                 new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.SYNTHETIC},
                 name,
                 ENTRY_DESCRIPTOR);
-        AdvInsnBuilder ib = new AdvInsnBuilder(cold);
+        AdvIBdr ib = new AdvIBdr(cold);
         Local receiver = ib.getLocal("receiver", "java/lang/Object", 0);
         Local arguments = ib.getLocal("arguments", "[Ljava/lang/Object;", 1);
         Local capability = ib.var("integrityCapability", "I");
-        ib.set(capability, AdvInsnBuilder.callStatic(
+        ib.set(capability, AdvIBdr.callStatic(
                 plan.owner(),
                 plan.methodName(),
                 "I"));
@@ -95,25 +95,25 @@ public final class IntegrityEntryTransformer
                 new Acc[]{Acc.PUBLIC, Acc.STATIC, Acc.SYNTHETIC},
                 name,
                 ENTRY_DESCRIPTOR);
-        AdvInsnBuilder ib = new AdvInsnBuilder(entry);
+        AdvIBdr ib = new AdvIBdr(entry);
         Local receiver = ib.getLocal("receiver", "java/lang/Object", 0);
         Local arguments = ib.getLocal("arguments", "[Ljava/lang/Object;", 1);
         if (plan.probeMethodName() != null)
         {
-            ib.directCall(AdvInsnBuilder.callStatic(
+            ib.directCall(AdvIBdr.callStatic(
                     carrierClass.name,
                     plan.probeMethodName(),
                     "V"));
         }
         Local envelope = ib.var("stateEnvelope", "J");
-        ib.set(envelope, AdvInsnBuilder.staticField(
+        ib.set(envelope, AdvIBdr.staticField(
                 carrierClass.name,
                 plan.stateFieldName(),
                 "J"));
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(envelope, AdvInsnBuilder.constant(0L)),
-                miss -> miss.returnValue(AdvInsnBuilder.callStatic(
+                AdvIBdr.equal(envelope, AdvIBdr.constant(0L)),
+                miss -> miss.returnValue(AdvIBdr.callStatic(
                         carrierClass.name,
                         coldName,
                         "java/lang/Object",
@@ -136,7 +136,7 @@ public final class IntegrityEntryTransformer
     }
 
     private Expr execute(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             CompiledMethod method,
             Expr receiver,
             Expr arguments,
@@ -146,17 +146,17 @@ public final class IntegrityEntryTransformer
         if (method.isSegmented())
         {
             Local codeIds = ib.var("boundCodeIds", "[I");
-            ib.set(codeIds, AdvInsnBuilder.newArray(
+            ib.set(codeIds, AdvIBdr.newArray(
                     "int",
-                    AdvInsnBuilder.constant(method.codeIds.size())));
+                    AdvIBdr.constant(method.codeIds.size())));
             for (int index = 0; index < method.codeIds.size(); index++)
             {
                 Expr codeId = binding == null
-                        ? AdvInsnBuilder.constant(method.codeIds.get(index))
+                        ? AdvIBdr.constant(method.codeIds.get(index))
                         : decodeCodeId(capability, method.codeIds.get(index), binding);
-                ib.setArray(codeIds, AdvInsnBuilder.constant(index), codeId);
+                ib.setArray(codeIds, AdvIBdr.constant(index), codeId);
             }
-            return AdvInsnBuilder.callStatic(
+            return AdvIBdr.callStatic(
                     vmClassName,
                     "execute",
                     "java/lang/Object",
@@ -166,9 +166,9 @@ public final class IntegrityEntryTransformer
                     capability);
         }
         Expr codeId = binding == null
-                ? AdvInsnBuilder.constant(method.codeId)
+                ? AdvIBdr.constant(method.codeId)
                 : decodeCodeId(capability, method.codeId, binding);
-        return AdvInsnBuilder.callStatic(
+        return AdvIBdr.callStatic(
                 vmClassName,
                 "execute",
                 "java/lang/Object",
@@ -189,7 +189,7 @@ public final class IntegrityEntryTransformer
         source.maxStack = 0;
         source.maxLocals = method.isStatic ? 0 : 1;
 
-        AdvInsnBuilder ib = new AdvInsnBuilder(source);
+        AdvIBdr ib = new AdvIBdr(source);
         Type[] parameterTypes = Type.getArgumentTypes(method.descriptor);
         int parameterSlots = 0;
         for (Type parameterType : parameterTypes)
@@ -197,9 +197,9 @@ public final class IntegrityEntryTransformer
             parameterSlots += parameterType.getSize();
         }
         Local arguments = ib.var("entryArguments", "[Ljava/lang/Object;");
-        ib.set(arguments, AdvInsnBuilder.newArray(
+        ib.set(arguments, AdvIBdr.newArray(
                 "java/lang/Object",
-                AdvInsnBuilder.constant(parameterSlots)));
+                AdvIBdr.constant(parameterSlots)));
 
         int sourceLocal = method.isStatic ? 0 : 1;
         int argumentSlot = 0;
@@ -207,15 +207,15 @@ public final class IntegrityEntryTransformer
         {
             Type parameterType = parameterTypes[index];
             Local parameter = ib.getLocal("entryArgument" + index, parameterType, sourceLocal);
-            ib.setArray(arguments, AdvInsnBuilder.constant(argumentSlot), parameter);
+            ib.setArray(arguments, AdvIBdr.constant(argumentSlot), parameter);
             sourceLocal += parameterType.getSize();
             argumentSlot += parameterType.getSize();
         }
 
         Expr receiver = method.isStatic
-                ? AdvInsnBuilder.constant(null)
-                : AdvInsnBuilder.cast(AdvInsnBuilder.self(method.owner.name), "java/lang/Object");
-        Expr entryCall = AdvInsnBuilder.callStatic(
+                ? AdvIBdr.constant(null)
+                : AdvIBdr.cast(AdvIBdr.self(method.owner.name), "java/lang/Object");
+        Expr entryCall = AdvIBdr.callStatic(
                 carrierClass.name,
                 entryName,
                 "java/lang/Object",
@@ -229,23 +229,23 @@ public final class IntegrityEntryTransformer
         }
         else
         {
-            ib.returnValue(AdvInsnBuilder.cast(entryCall, returnType));
+            ib.returnValue(AdvIBdr.cast(entryCall, returnType));
         }
     }
 
     private Expr decodeCodeId(Local capability, int codeId, DispatchBinding binding)
     {
         int encoded = codeId ^ binding.mask(plan.expectedCapability());
-        Expr x = AdvInsnBuilder.bitXor(capability, AdvInsnBuilder.constant(binding.salt()));
-        Expr rotated = AdvInsnBuilder.bitOr(
-                AdvInsnBuilder.shiftLeft(x, AdvInsnBuilder.constant(binding.rotation())),
-                AdvInsnBuilder.unsignedShiftRight(
+        Expr x = AdvIBdr.bitXor(capability, AdvIBdr.constant(binding.salt()));
+        Expr rotated = AdvIBdr.bitOr(
+                AdvIBdr.shiftLeft(x, AdvIBdr.constant(binding.rotation())),
+                AdvIBdr.unsignedShiftRight(
                         x,
-                        AdvInsnBuilder.constant(32 - binding.rotation())));
-        Expr runtimeMask = AdvInsnBuilder.bitXor(
-                AdvInsnBuilder.multiply(rotated, AdvInsnBuilder.constant(binding.multiplier())),
-                AdvInsnBuilder.constant(binding.addend()));
-        return AdvInsnBuilder.bitXor(AdvInsnBuilder.constant(encoded), runtimeMask);
+                        AdvIBdr.constant(32 - binding.rotation())));
+        Expr runtimeMask = AdvIBdr.bitXor(
+                AdvIBdr.multiply(rotated, AdvIBdr.constant(binding.multiplier())),
+                AdvIBdr.constant(binding.addend()));
+        return AdvIBdr.bitXor(AdvIBdr.constant(encoded), runtimeMask);
     }
 
     private String uniqueMethodName(String purpose)

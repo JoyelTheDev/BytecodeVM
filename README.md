@@ -166,6 +166,8 @@ virtualControlFlowGraph: true
 
 # Input transforms and call graph handling.
 constantFix: true
+preEncryptStrings: true
+preEncryptNumbers: true
 removeAnnotations: true # Remove BytecodeVM SDK annotations from output classes.
 includeMethodsCalledWithin: false
 excludeMethodsCalledWithin: false
@@ -195,6 +197,8 @@ includes:
   obfuscateDispatch: ["* *(*)*"]
   obfuscateInterpretBranch: ["* @Sensitive *(*)*"]
   constantFix: ["com.example.secure.* *"]
+  preEncryptStrings: ["com.example.secure.* *(*)*"]
+  preEncryptNumbers: ["com.example.secure.* *(*)*"]
   superInstruction: ["com.example.hot.* *(*)*"]
 exclusions:
   all: ["* <init>(*)V"]
@@ -228,6 +232,8 @@ exclusions:
 | `dynamicStateKey` | `true`, `false` | `true`   | Adds block-entry state capsules and a rolling per-record key chain used by opcode, layout, and operand decoding. |
 | `virtualControlFlowGraph` | `true`, `false` | `true`   | Stores methods as shuffled virtual basic blocks and resolves instruction indexes through block-local lookup. |
 | `constantFix` | `true`, `false` | `true`  | Moves `ConstantValue` data from static final fields into `<clinit>` assignments, updates initializer stack metadata, and clears the field value attribute. |
+| `preEncryptStrings` | `true`, `false` | `true` | Replaces string constants with per-site encrypted integer data and an inline runtime decoder before virtualization. |
+| `preEncryptNumbers` | `true`, `false` | `true` | Replaces integer, long, float, and double constants with per-site encrypted bit patterns reconstructed at runtime before virtualization. |
 | `removeAnnotations` | `true`, `false` | `true` | Removes BytecodeVM SDK annotations from classes and methods after their options have been applied. Other application annotations are untouched. |
 | `includeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively includes target-jar methods called from explicitly included methods. |
 | `excludeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively excludes target-jar methods called from explicitly included methods. |
@@ -440,7 +446,7 @@ exclusions:
 
 Supported boolean group names are:
 
-`protectCodePool`, `dynamicConstantDecrypt`, `virtualizeInstructionAddresses`, `encryptOperands`, `perMethodOpcodeMap`, `shuffleConstants`, `bindConstantsToOperands`, `splitCodeStreams`, `shuffleInstructionBlocks`, `obfuscateDispatch`, `dynamicCodePoolBuild`, `dynamicStateKey`, `virtualControlFlowGraph`, `constantFix`, `superInstruction`, and `obfuscateInterpretBranch`.
+`protectCodePool`, `dynamicConstantDecrypt`, `virtualizeInstructionAddresses`, `encryptOperands`, `perMethodOpcodeMap`, `shuffleConstants`, `bindConstantsToOperands`, `splitCodeStreams`, `shuffleInstructionBlocks`, `obfuscateDispatch`, `dynamicCodePoolBuild`, `dynamicStateKey`, `virtualControlFlowGraph`, `constantFix`, `preEncryptStrings`, `preEncryptNumbers`, `superInstruction`, and `obfuscateInterpretBranch`.
 
 Only included classes and then methods will be processed.
 

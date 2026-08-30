@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.lowered;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
@@ -17,7 +17,7 @@ public final class RegisterOperationBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         Local semantic = context.intLocal("registerSemantic", InterpretContext.RIGHT_VALUE);
         Local destination = context.intLocal("registerDestination", InterpretContext.LEFT_VALUE);
@@ -39,7 +39,7 @@ public final class RegisterOperationBranch extends InterpretBranch
         context.nextOperand(ib, baseDelta);
 
         ib.set(baseStack, context.frameField(context.frame.stackPointer));
-        ib.directCall(AdvInsnBuilder.callStatic(
+        ib.directCall(AdvIBdr.callStatic(
                 context.vmClassName,
                 context.vm.executeRegisterOp.name(),
                 "V",
@@ -47,7 +47,7 @@ public final class RegisterOperationBranch extends InterpretBranch
                 context.frame(),
                 context.constants(),
                 semantic,
-                AdvInsnBuilder.plus(baseStack, baseDelta),
+                AdvIBdr.plus(baseStack, baseDelta),
                 destination,
                 sourceA,
                 sourceB,
@@ -57,6 +57,6 @@ public final class RegisterOperationBranch extends InterpretBranch
                 context.opcode()));
         ib.set(
                 context.frameField(context.frame.stackPointer),
-                AdvInsnBuilder.plus(baseStack, delta));
+                AdvIBdr.plus(baseStack, delta));
     }
 }

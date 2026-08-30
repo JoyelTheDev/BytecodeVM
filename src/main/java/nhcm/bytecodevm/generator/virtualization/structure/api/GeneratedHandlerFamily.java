@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.api;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Acc;
@@ -139,11 +139,11 @@ public final class GeneratedHandlerFamily
                 tokenField.descriptor()));
 
         MethodNode init = MethodUtils.newMethodNode(new Acc[]{Acc.PUBLIC}, "<init>", "(I)V");
-        AdvInsnBuilder initBuilder = new AdvInsnBuilder(init);
+        AdvIBdr initBuilder = new AdvIBdr(init);
         Local initToken = initBuilder.getLocal("semanticToken", "I", 1);
         initBuilder.callNoArgSuperConstructor("java/lang/Object");
         initBuilder.set(
-                AdvInsnBuilder.field(AdvInsnBuilder.self(implementationName), tokenField),
+                AdvIBdr.field(AdvIBdr.self(implementationName), tokenField),
                 initToken);
         initBuilder.returnVoid();
         implementation.methods.add(init);
@@ -152,9 +152,9 @@ public final class GeneratedHandlerFamily
                 new Acc[]{Acc.PUBLIC, Acc.FINAL},
                 methodName,
                 descriptor);
-        AdvInsnBuilder ib = new AdvInsnBuilder(execute);
+        AdvIBdr ib = new AdvIBdr(execute);
         Local token = ib.var("activeSemanticToken", "I");
-        ib.set(token, AdvInsnBuilder.field(AdvInsnBuilder.self(implementationName), tokenField));
+        ib.set(token, AdvIBdr.field(AdvIBdr.self(implementationName), tokenField));
         emitDecisionTree(generation, ib, token, specs, 0, specs.size());
         implementation.methods.add(execute);
         return implementation;
@@ -162,7 +162,7 @@ public final class GeneratedHandlerFamily
 
     private static void emitDecisionTree(
             VMStructureGenerationContext generation,
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             Local token,
             List<HandlerSpec> specs,
             int from,
@@ -170,26 +170,26 @@ public final class GeneratedHandlerFamily
     {
         if (from >= to)
         {
-            ib.returnValue(AdvInsnBuilder.constant(0));
+            ib.returnValue(AdvIBdr.constant(0));
             return;
         }
         int middle = (from + to) >>> 1;
         HandlerSpec spec = specs.get(middle);
         ib.ifElse(
-                AdvInsnBuilder.equal(token, AdvInsnBuilder.constant(spec.token)),
+                AdvIBdr.equal(token, AdvIBdr.constant(spec.token)),
                 match -> {
                     emitTargetCall(generation, match, spec);
-                    match.returnValue(AdvInsnBuilder.constant(1));
+                    match.returnValue(AdvIBdr.constant(1));
                 },
                 mismatch -> mismatch.ifElse(
-                        AdvInsnBuilder.lessThan(token, AdvInsnBuilder.constant(spec.token)),
+                        AdvIBdr.lessThan(token, AdvIBdr.constant(spec.token)),
                         lower -> emitDecisionTree(generation, lower, token, specs, from, middle),
                         higher -> emitDecisionTree(generation, higher, token, specs, middle + 1, to)));
     }
 
     private static void emitTargetCall(
             VMStructureGenerationContext generation,
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             HandlerSpec spec)
     {
         int shape = generation.plan().structure().ordinal();
@@ -215,12 +215,12 @@ public final class GeneratedHandlerFamily
         if ((spec.variant & 1) != 0)
         {
             Local guard = ib.var("semanticGuard", "I");
-            ib.set(guard, AdvInsnBuilder.bitXor(
+            ib.set(guard, AdvIBdr.bitXor(
                     opcode,
-                    AdvInsnBuilder.constant(spec.target.primaryKey())));
+                    AdvIBdr.constant(spec.target.primaryKey())));
             ib.ifCondition(
-                    AdvInsnBuilder.equal(guard, AdvInsnBuilder.constant(Integer.MIN_VALUE)),
-                    impossible -> impossible.returnValue(AdvInsnBuilder.constant(0)));
+                    AdvIBdr.equal(guard, AdvIBdr.constant(Integer.MIN_VALUE)),
+                    impossible -> impossible.returnValue(AdvIBdr.constant(0)));
         }
         Map<SemanticArgument, Expr> semantic = new EnumMap<>(SemanticArgument.class);
         semantic.put(SemanticArgument.PROGRAM, program);
@@ -230,7 +230,7 @@ public final class GeneratedHandlerFamily
         semantic.put(SemanticArgument.OPCODE, opcode);
         semantic.put(
                 SemanticArgument.OPCODE_INDEX,
-                AdvInsnBuilder.constant(spec.target.handlerIndex()));
+                AdvIBdr.constant(spec.target.handlerIndex()));
         semantic.put(SemanticArgument.INSTRUCTION_INDEX, instructionIndex);
         List<Expr> arguments = new ArrayList<>();
         for (SemanticArgument argument : semanticCoreOrder(shape))
@@ -240,12 +240,12 @@ public final class GeneratedHandlerFamily
         for (int bit = 0; bit < 5; bit++)
         {
             arguments.add((shape & 1 << bit) == 0
-                    ? AdvInsnBuilder.constant(generation.profile().decodeVariant ^ bit)
-                    : AdvInsnBuilder.constant(
+                    ? AdvIBdr.constant(generation.profile().decodeVariant ^ bit)
+                    : AdvIBdr.constant(
                             ((long) generation.profile().decodeVariant << 32) ^
                             (0xD1B54A32D192ED03L + bit)));
         }
-        ib.directCall(AdvInsnBuilder.callStatic(
+        ib.directCall(AdvIBdr.callStatic(
                 generation.owner(),
                 spec.target.handlerName(),
                 "V",
@@ -279,9 +279,9 @@ public final class GeneratedHandlerFamily
         {
             throw new IllegalArgumentException("No generated handler for key " + primaryKey + ", variant " + variant);
         }
-        return AdvInsnBuilder.newObject(
+        return AdvIBdr.newObject(
                 reference.implementationName,
-                AdvInsnBuilder.constant(reference.token));
+                AdvIBdr.constant(reference.token));
     }
 
     public Expr invoke(Expr handler, InterpretContext runtime)
@@ -302,17 +302,17 @@ public final class GeneratedHandlerFamily
         {
             if ((structureShape & 1 << bit) == 0)
             {
-                arguments.add(AdvInsnBuilder.bitXor(
+                arguments.add(AdvIBdr.bitXor(
                         runtime.structureState(),
-                        AdvInsnBuilder.constant(bit)));
+                        AdvIBdr.constant(bit)));
             }
             else
             {
-                arguments.add(AdvInsnBuilder.constant(
+                arguments.add(AdvIBdr.constant(
                         ((long) structureShape << 32) ^ (0x9E3779B97F4A7C15L + bit)));
             }
         }
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 handler,
                 interfaceName,
                 methodName,

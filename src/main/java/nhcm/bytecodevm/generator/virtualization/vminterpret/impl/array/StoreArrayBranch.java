@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
@@ -20,7 +20,7 @@ public class StoreArrayBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         Local index = context.middleValue();
         Local array = context.objectLocal("array", InterpretContext.RIGHT_VALUE);
@@ -41,32 +41,32 @@ public class StoreArrayBranch extends InterpretBranch
         switch (opcode)
         {
             case IASTORE -> ib.setArray(
-                    AdvInsnBuilder.cast(array, "[I"),
+                    AdvIBdr.cast(array, "[I"),
                     index,
                     context.leftValue(NumericType.INT));
             case LASTORE -> ib.setArray(
-                    AdvInsnBuilder.cast(array, "[J"),
+                    AdvIBdr.cast(array, "[J"),
                     index,
                     context.leftValue(NumericType.LONG));
             case FASTORE -> ib.setArray(
-                    AdvInsnBuilder.cast(array, "[F"),
+                    AdvIBdr.cast(array, "[F"),
                     index,
                     context.leftValue(NumericType.FLOAT));
             case DASTORE -> ib.setArray(
-                    AdvInsnBuilder.cast(array, "[D"),
+                    AdvIBdr.cast(array, "[D"),
                     index,
                     context.leftValue(NumericType.DOUBLE));
             case AASTORE -> ib.setArray(
-                    AdvInsnBuilder.cast(array, "[Ljava/lang/Object;"),
+                    AdvIBdr.cast(array, "[Ljava/lang/Object;"),
                     index,
                     context.objectLocal("value", InterpretContext.LEFT_VALUE));
             case BASTORE -> generateByteOrBooleanStore(ib, context, array, index);
             case CASTORE -> ib.setArray(
-                    AdvInsnBuilder.cast(array, "[C"),
+                    AdvIBdr.cast(array, "[C"),
                     index,
                     context.leftValue(NumericType.INT));
             case SASTORE -> ib.setArray(
-                    AdvInsnBuilder.cast(array, "[S"),
+                    AdvIBdr.cast(array, "[S"),
                     index,
                     context.leftValue(NumericType.INT));
             default -> throw new IllegalArgumentException("Unsupported array store opcode: " + opcode);
@@ -74,23 +74,23 @@ public class StoreArrayBranch extends InterpretBranch
     }
 
     private static void generateByteOrBooleanStore(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             InterpretContext context,
             Expr array,
             Expr index)
     {
         Local value = context.objectLocal("value", InterpretContext.LEFT_VALUE);
         ib.ifElse(
-                AdvInsnBuilder.isInstanceOf(array, "[Z"),
+                AdvIBdr.isInstanceOf(array, "[Z"),
                 b -> b.setArray(
-                        AdvInsnBuilder.cast(array, "[Z"),
+                        AdvIBdr.cast(array, "[Z"),
                         index,
-                        AdvInsnBuilder.unbox(value, "Z")),
+                        AdvIBdr.unbox(value, "Z")),
                 b -> b.setArray(
-                        AdvInsnBuilder.cast(array, "[B"),
+                        AdvIBdr.cast(array, "[B"),
                         index,
-                        AdvInsnBuilder.callVirtual(
-                                AdvInsnBuilder.cast(value, "java/lang/Number"),
+                        AdvIBdr.callVirtual(
+                                AdvIBdr.cast(value, "java/lang/Number"),
                                 "java/lang/Number",
                                 "byteValue",
                                 "B")));

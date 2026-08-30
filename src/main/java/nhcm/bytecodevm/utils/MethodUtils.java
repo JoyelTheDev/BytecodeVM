@@ -46,4 +46,9 @@ public class MethodUtils
     {
         return (methodNode.access & Opcodes.ACC_NATIVE) != 0;
     }
+
+    public static boolean hasBody(MethodNode method)
+    {
+        return (method.access & (Opcodes.ACC_ABSTRACT | Opcodes.ACC_NATIVE)) == 0;
+    }
 }

@@ -18,14 +18,14 @@ public interface Condition
         builder.label(falseLabel);
     }
 
-    default void jumpIfTrue(AdvInsnBuilder builder, LabelNode trueLabel)
+    default void jumpIfTrue(AdvIBdr builder, LabelNode trueLabel)
     {
         jumpIfTrue(builder.rawBuilder(), trueLabel);
     }
 
     void jumpIfFalse(InsnBuilder builder, LabelNode falseLabel);
 
-    default void jumpIfFalse(AdvInsnBuilder builder, LabelNode falseLabel)
+    default void jumpIfFalse(AdvIBdr builder, LabelNode falseLabel)
     {
         jumpIfFalse(builder.rawBuilder(), falseLabel);
     }

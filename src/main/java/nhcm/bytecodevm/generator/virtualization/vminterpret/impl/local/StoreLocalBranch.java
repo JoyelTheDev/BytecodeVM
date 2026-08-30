@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.local;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
@@ -18,7 +18,7 @@ public class StoreLocalBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         Local localIndex = context.intLocal("localIndex", InterpretContext.RIGHT_VALUE);
         Local value = context.objectLocal("localValue", InterpretContext.LEFT_VALUE);

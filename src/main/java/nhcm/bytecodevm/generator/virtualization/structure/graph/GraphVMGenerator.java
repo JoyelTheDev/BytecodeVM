@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.graph;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
@@ -26,19 +26,19 @@ public final class GraphVMGenerator extends AbstractVMStructureGenerator impleme
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local action = runtime.intLocal("graphAction", InterpretContext.OPCODE);
         Local node = runtime.intLocal("graphNode", InterpretContext.DISPATCH_SELECTOR + 1);
-        ib.set(action, AdvInsnBuilder.constant(0));
+        ib.set(action, AdvIBdr.constant(0));
         ib.set(node, nodeToken(generation, runtime));
         ib.whileLoop(
-                AdvInsnBuilder.equal(action, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(action, AdvIBdr.constant(0)),
                 graph -> {
                     graph.set(action, generation.step(runtime, node));
                     graph.ifCondition(
-                            AdvInsnBuilder.equal(action, AdvInsnBuilder.constant(0)),
-                            edge -> edge.set(node, AdvInsnBuilder.bitXor(nodeToken(generation, runtime), node)));
+                            AdvIBdr.equal(action, AdvIBdr.constant(0)),
+                            edge -> edge.set(node, AdvIBdr.bitXor(nodeToken(generation, runtime), node)));
                 });
     }
 
@@ -48,7 +48,7 @@ public final class GraphVMGenerator extends AbstractVMStructureGenerator impleme
                 runtime.frameProgramCounter(),
                 runtime.frameBlockIndex(),
                 runtime.frameStateKey(),
-                AdvInsnBuilder.constant(generation.profile().saltBlock));
+                AdvIBdr.constant(generation.profile().saltBlock));
     }
 
     @Override
@@ -66,26 +66,26 @@ public final class GraphVMGenerator extends AbstractVMStructureGenerator impleme
         }
         dispatch.generation().onClassInitialize(initializer -> {
             Local layers = initializer.var("graphNodeLayers", "[Ljava/util/Map;");
-            initializer.set(layers, AdvInsnBuilder.newArray("java/util/Map", AdvInsnBuilder.constant(2)));
+            initializer.set(layers, AdvIBdr.newArray("java/util/Map", AdvIBdr.constant(2)));
             for (int layer = 0; layer < 2; layer++)
             {
                 Local graph = initializer.var("graphLayer" + layer, "java/util/Map");
-                initializer.set(graph, AdvInsnBuilder.newObject(layer == 0
+                initializer.set(graph, AdvIBdr.newObject(layer == 0
                         ? "java/util/HashMap"
                         : "java/util/LinkedHashMap"));
                 for (Map.Entry<Integer, VMDispatchTarget> entry : targets.entrySet())
                 {
                     initializer.directCall(mapPut(
                             graph,
-                            integer(AdvInsnBuilder.constant(entry.getKey())),
+                            integer(AdvIBdr.constant(entry.getKey())),
                             nodes.newHandler(entry.getValue().primaryKey(), layer)));
                 }
-                initializer.setArray(layers, AdvInsnBuilder.constant(layer), graph);
+                initializer.setArray(layers, AdvIBdr.constant(layer), graph);
             }
-            initializer.set(AdvInsnBuilder.staticField(layersField), layers);
+            initializer.set(AdvIBdr.staticField(layersField), layers);
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("graphOpcode", InterpretContext.DISPATCH_SELECTOR);
         Local layer = runtime.intLocal("graphLayer", InterpretContext.DISPATCH_SELECTOR + 1);
@@ -93,33 +93,33 @@ public final class GraphVMGenerator extends AbstractVMStructureGenerator impleme
         Local node = runtime.local("graphSemanticNode", nodes.interfaceName(), InterpretContext.DISPATCH_SELECTOR + 3);
         Local status = runtime.intLocal("graphStatus", InterpretContext.DISPATCH_SELECTOR + 4);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(layer, AdvInsnBuilder.bitAnd(
+        ib.set(layer, AdvIBdr.bitAnd(
                 dispatch.generation().mix(
                         runtime.structureState(), selector, runtime.frameBlockIndex(),
-                        AdvInsnBuilder.constant(dispatch.profile().saltBlock)),
-                AdvInsnBuilder.constant(1)));
-        ib.set(graph, AdvInsnBuilder.arrayAt(AdvInsnBuilder.staticField(layersField), layer));
-        ib.set(node, AdvInsnBuilder.cast(mapGet(graph, integer(selector)), nodes.interfaceName()));
-        ib.ifCondition(AdvInsnBuilder.isNull(node), missing -> missing.gotoLabel(dispatch.unknown()));
+                        AdvIBdr.constant(dispatch.profile().saltBlock)),
+                AdvIBdr.constant(1)));
+        ib.set(graph, AdvIBdr.arrayAt(AdvIBdr.staticField(layersField), layer));
+        ib.set(node, AdvIBdr.cast(mapGet(graph, integer(selector)), nodes.interfaceName()));
+        ib.ifCondition(AdvIBdr.isNull(node), missing -> missing.gotoLabel(dispatch.unknown()));
         ib.set(status, nodes.invoke(node, runtime));
         dispatch.finishExternal(ib, status);
     }
 
     private static Expr integer(Expr value)
     {
-        return AdvInsnBuilder.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
+        return AdvIBdr.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
     }
 
     private static Expr mapGet(Expr map, Expr key)
     {
-        return AdvInsnBuilder.callInterface(
-                map, "java/util/Map", "get", "java/lang/Object", AdvInsnBuilder.cast(key, "java/lang/Object"));
+        return AdvIBdr.callInterface(
+                map, "java/util/Map", "get", "java/lang/Object", AdvIBdr.cast(key, "java/lang/Object"));
     }
 
     private static Expr mapPut(Expr map, Expr key, Expr value)
     {
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 map, "java/util/Map", "put", "java/lang/Object",
-                AdvInsnBuilder.cast(key, "java/lang/Object"), AdvInsnBuilder.cast(value, "java/lang/Object"));
+                AdvIBdr.cast(key, "java/lang/Object"), AdvIBdr.cast(value, "java/lang/Object"));
     }
 }

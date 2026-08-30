@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.utils.builder;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 
 public record MethodRef(String owner, String name, String descriptor)
 {
@@ -9,12 +9,12 @@ public record MethodRef(String owner, String name, String descriptor)
         ib.invokeVirtual(this);
     }
 
-    public void invokeVirtual(AdvInsnBuilder ib)
+    public void invokeVirtual(AdvIBdr ib)
     {
         invokeVirtual(ib.rawBuilder());
     }
 
-    public void callVirtualMethod(AdvInsnBuilder ib)
+    public void callVirtualMethod(AdvIBdr ib)
     {
         invokeVirtual(ib);
     }
@@ -24,12 +24,12 @@ public record MethodRef(String owner, String name, String descriptor)
         ib.invokeStatic(this);
     }
 
-    public void invokeStatic(AdvInsnBuilder ib)
+    public void invokeStatic(AdvIBdr ib)
     {
         invokeStatic(ib.rawBuilder());
     }
 
-    public void callStaticMethod(AdvInsnBuilder ib)
+    public void callStaticMethod(AdvIBdr ib)
     {
         invokeStatic(ib);
     }
@@ -39,12 +39,12 @@ public record MethodRef(String owner, String name, String descriptor)
         ib.invokeSpecial(this);
     }
 
-    public void invokeSpecial(AdvInsnBuilder ib)
+    public void invokeSpecial(AdvIBdr ib)
     {
         invokeSpecial(ib.rawBuilder());
     }
 
-    public void callSpecialMethod(AdvInsnBuilder ib)
+    public void callSpecialMethod(AdvIBdr ib)
     {
         invokeSpecial(ib);
     }
@@ -54,12 +54,12 @@ public record MethodRef(String owner, String name, String descriptor)
         ib.invokeInterface(this);
     }
 
-    public void invokeInterface(AdvInsnBuilder ib)
+    public void invokeInterface(AdvIBdr ib)
     {
         invokeInterface(ib.rawBuilder());
     }
 
-    public void callInterfaceMethod(AdvInsnBuilder ib)
+    public void callInterfaceMethod(AdvIBdr ib)
     {
         invokeInterface(ib);
     }

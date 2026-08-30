@@ -1,8 +1,9 @@
-package nhcm.bytecodevm.generator.transformer;
+package nhcm.bytecodevm.generator.editor.transformers;
 
 import nhcm.bytecodevm.config.BytecodeVMConfig;
 import nhcm.bytecodevm.config.TargetMatcher;
 import nhcm.bytecodevm.config.sdk.SdkAnnotationReader;
+import nhcm.bytecodevm.generator.abstracts.Transformer;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
@@ -16,19 +17,14 @@ import org.objectweb.asm.tree.MethodNode;
 
 import java.util.Collection;
 
-public class ConstantFixTransformer
+public class ConstantFixTransformer extends Transformer
 {
-    private final BytecodeVMConfig config;
-    private final TargetMatcher include;
-    private final TargetMatcher exclude;
-
     public ConstantFixTransformer(BytecodeVMConfig config)
     {
-        this.config = config;
-        this.include = matcher(config.matchRules.includes("constantFix"));
-        this.exclude = matcher(config.matchRules.exclusions("constantFix"));
+        super(config, "constantFix");
     }
 
+    @Override
     public int transform(Collection<ClassNode> classes)
     {
         int changed = 0;
@@ -42,7 +38,7 @@ public class ConstantFixTransformer
             }
             for (FieldNode field : classNode.fields)
             {
-                if (!shouldFix(classNode, field, sdkOverride))
+                if (!shouldEncrypt(classNode, field, sdkOverride))
                 {
                     continue;
                 }
@@ -56,7 +52,8 @@ public class ConstantFixTransformer
         return changed;
     }
 
-    private boolean shouldFix(ClassNode owner, FieldNode field, Boolean sdkOverride)
+    @Override
+    protected boolean shouldEncrypt(ClassNode owner, FieldNode field, Boolean sdkOverride)
     {
         return field.value != null &&
                (field.access & Opcodes.ACC_STATIC) != 0 &&
@@ -64,23 +61,6 @@ public class ConstantFixTransformer
                (Boolean.TRUE.equals(sdkOverride) || includeMatches(owner, field)) &&
                !exclude.isClassMatched(owner) &&
                !exclude.isFieldMatched(owner, field);
-    }
-
-    private boolean includeMatches(ClassNode owner, FieldNode field)
-    {
-        return config.matchRules.includes("constantFix").length == 0 ||
-               include.isFieldMatched(owner, field) ||
-               include.isClassMatched(owner);
-    }
-
-    private static TargetMatcher matcher(String[] rules)
-    {
-        TargetMatcher matcher = new TargetMatcher();
-        for (String rule : rules)
-        {
-            matcher.add(rule);
-        }
-        return matcher;
     }
 
     private static MethodNode findOrCreateClinit(ClassNode classNode)

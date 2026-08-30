@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.continuation;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
@@ -25,7 +25,7 @@ public final class ContinuationPassingVMGenerator extends AbstractVMStructureGen
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         int key = generation.profile().saltHandler;
         int schedule = key;
@@ -34,24 +34,24 @@ public final class ContinuationPassingVMGenerator extends AbstractVMStructureGen
         Local continuation = runtime.intLocal("continuation", InterpretContext.DISPATCH_SELECTOR + 1);
         Local selector = runtime.intLocal("continuationSelector", InterpretContext.DISPATCH_SELECTOR + 2);
         Local action = runtime.intLocal("continuationAction", InterpretContext.OPCODE);
-        ib.set(continuation, AdvInsnBuilder.constant(execute));
+        ib.set(continuation, AdvIBdr.constant(execute));
         ib.whileLoop(
-                AdvInsnBuilder.notEqual(continuation, AdvInsnBuilder.constant(exit)),
+                AdvIBdr.notEqual(continuation, AdvIBdr.constant(exit)),
                 trampoline -> {
-                    trampoline.set(selector, AdvInsnBuilder.bitXor(continuation, AdvInsnBuilder.constant(key)));
+                    trampoline.set(selector, AdvIBdr.bitXor(continuation, AdvIBdr.constant(key)));
                     trampoline.ifElse(
-                            AdvInsnBuilder.equal(selector, AdvInsnBuilder.constant(0)),
-                            next -> next.set(continuation, AdvInsnBuilder.constant(execute)),
+                            AdvIBdr.equal(selector, AdvIBdr.constant(0)),
+                            next -> next.set(continuation, AdvIBdr.constant(execute)),
                             executeContinuation -> executeContinuation.ifElse(
-                                    AdvInsnBuilder.equal(selector, AdvInsnBuilder.constant(1)),
+                                    AdvIBdr.equal(selector, AdvIBdr.constant(1)),
                                     handler -> {
                                         handler.set(action, generation.step(runtime, continuation));
                                         handler.ifElse(
-                                                AdvInsnBuilder.equal(action, AdvInsnBuilder.constant(0)),
-                                                next -> next.set(continuation, AdvInsnBuilder.constant(schedule)),
-                                                done -> done.set(continuation, AdvInsnBuilder.constant(exit)));
+                                                AdvIBdr.equal(action, AdvIBdr.constant(0)),
+                                                next -> next.set(continuation, AdvIBdr.constant(schedule)),
+                                                done -> done.set(continuation, AdvIBdr.constant(exit)));
                                     },
-                                    invalid -> invalid.set(continuation, AdvInsnBuilder.constant(exit))));
+                                    invalid -> invalid.set(continuation, AdvIBdr.constant(exit))));
                 });
     }
 
@@ -70,24 +70,24 @@ public final class ContinuationPassingVMGenerator extends AbstractVMStructureGen
         }
         dispatch.generation().onClassInitialize(initializer -> {
             Local table = initializer.var("continuationTargets", "java/util/Map");
-            initializer.set(table, AdvInsnBuilder.newObject("java/util/HashMap"));
+            initializer.set(table, AdvIBdr.newObject("java/util/HashMap"));
             int ordinal = 0;
             for (Map.Entry<Integer, VMDispatchTarget> entry : targets.entrySet())
             {
                 Local pair = initializer.var(
                         "continuationPair" + ordinal++, "[L" + continuations.interfaceName() + ";");
-                initializer.set(pair, AdvInsnBuilder.newArray(
-                        continuations.interfaceName(), AdvInsnBuilder.constant(2)));
-                initializer.setArray(pair, AdvInsnBuilder.constant(0),
-                        continuations.newHandler(entry.getValue().primaryKey(), 0));
-                initializer.setArray(pair, AdvInsnBuilder.constant(1),
-                        continuations.newHandler(entry.getValue().primaryKey(), 1));
-                initializer.directCall(mapPut(table, integer(AdvInsnBuilder.constant(entry.getKey())), pair));
+                initializer.set(pair, AdvIBdr.newArray(
+                        continuations.interfaceName(), AdvIBdr.constant(2)));
+                initializer.setArray(pair, AdvIBdr.constant(0),
+                                     continuations.newHandler(entry.getValue().primaryKey(), 0));
+                initializer.setArray(pair, AdvIBdr.constant(1),
+                                     continuations.newHandler(entry.getValue().primaryKey(), 1));
+                initializer.directCall(mapPut(table, integer(AdvIBdr.constant(entry.getKey())), pair));
             }
-            initializer.set(AdvInsnBuilder.staticField(continuationTable), table);
+            initializer.set(AdvIBdr.staticField(continuationTable), table);
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("cpsOpcode", InterpretContext.DISPATCH_SELECTOR);
         Local pair = runtime.local(
@@ -98,27 +98,27 @@ public final class ContinuationPassingVMGenerator extends AbstractVMStructureGen
                 "cpsContinuationHandler", continuations.interfaceName(), InterpretContext.DISPATCH_SELECTOR + 3);
         Local result = runtime.intLocal("cpsResult", InterpretContext.DISPATCH_SELECTOR + 4);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(pair, AdvInsnBuilder.cast(
-                mapGet(AdvInsnBuilder.staticField(continuationTable), integer(selector)),
+        ib.set(pair, AdvIBdr.cast(
+                mapGet(AdvIBdr.staticField(continuationTable), integer(selector)),
                 "[L" + continuations.interfaceName() + ";"));
-        ib.ifCondition(AdvInsnBuilder.isNull(pair), missing -> missing.gotoLabel(dispatch.unknown()));
-        ib.set(lane, AdvInsnBuilder.bitAnd(
-                AdvInsnBuilder.bitXor(runtime.structureState(), runtime.frameStateKey()),
-                AdvInsnBuilder.constant(1)));
-        ib.set(handler, AdvInsnBuilder.arrayAt(pair, lane));
+        ib.ifCondition(AdvIBdr.isNull(pair), missing -> missing.gotoLabel(dispatch.unknown()));
+        ib.set(lane, AdvIBdr.bitAnd(
+                AdvIBdr.bitXor(runtime.structureState(), runtime.frameStateKey()),
+                AdvIBdr.constant(1)));
+        ib.set(handler, AdvIBdr.arrayAt(pair, lane));
         ib.set(result, continuations.invoke(handler, runtime));
         dispatch.finishExternal(ib, result);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr integer(nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
+        return AdvIBdr.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapGet(nhcm.bytecodevm.advInsn.Expr map, nhcm.bytecodevm.advInsn.Expr key)
     {
-        return AdvInsnBuilder.callInterface(
-                map, "java/util/Map", "get", "java/lang/Object", AdvInsnBuilder.cast(key, "java/lang/Object"));
+        return AdvIBdr.callInterface(
+                map, "java/util/Map", "get", "java/lang/Object", AdvIBdr.cast(key, "java/lang/Object"));
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapPut(
@@ -126,8 +126,8 @@ public final class ContinuationPassingVMGenerator extends AbstractVMStructureGen
             nhcm.bytecodevm.advInsn.Expr key,
             nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 map, "java/util/Map", "put", "java/lang/Object",
-                AdvInsnBuilder.cast(key, "java/lang/Object"), AdvInsnBuilder.cast(value, "java/lang/Object"));
+                AdvIBdr.cast(key, "java/lang/Object"), AdvIBdr.cast(value, "java/lang/Object"));
     }
 }

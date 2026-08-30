@@ -7,7 +7,9 @@ import nhcm.bytecodevm.config.sdk.SdkAnnotationReader;
 import nhcm.bytecodevm.config.sdk.SdkAnnotationRemover;
 import nhcm.bytecodevm.data.VirtualizationResult;
 import nhcm.bytecodevm.enums.VMStructure;
-import nhcm.bytecodevm.generator.transformer.ConstantFixTransformer;
+import nhcm.bytecodevm.generator.editor.transformers.ConstantFixTransformer;
+import nhcm.bytecodevm.generator.editor.transformers.NumberTransformer;
+import nhcm.bytecodevm.generator.editor.transformers.StringTransformer;
 import nhcm.bytecodevm.generator.globalclass.MethodFrameGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
@@ -177,14 +179,42 @@ public class Obfuscator
         outputResourceCount = context.resources.size();
     }
 
-    private void processJar(JarTransformer.JarContext context)
+    private int[] runPreTransformers(Collection<ClassNode> classNodes)
     {
-        logger.info("{}", LogColors.scan("Scanning input file for methods to obfuscate"));
-        int fixedConstants = new ConstantFixTransformer(config).transform(context.classes.values());
+        int[] result = new int[3];
+
+        int fixedConstants = new ConstantFixTransformer(config).transform(classNodes);
         if (fixedConstants != 0)
         {
             logger.info("{}", LogColors.scan("Moved " + LogColors.strong(fixedConstants) + " static final constant(s) into <clinit>"));
         }
+        result[0] = fixedConstants;
+
+        int encryptedStrings = new StringTransformer(config).transform(classNodes);
+        if(encryptedStrings != 0)
+        {
+            logger.info("{}", LogColors.scan("Encrypted " + LogColors.strong(encryptedStrings) + " strings before virtualization"));
+        }
+        result[1] = encryptedStrings;
+
+        int encryptedNumbers = new NumberTransformer(config).transform(classNodes);
+        if(encryptedNumbers != 0)
+        {
+            logger.info("{}", LogColors.scan("Encrypted " + LogColors.strong(encryptedNumbers) + " numbers before virtualization"));
+        }
+        result[2] = encryptedNumbers;
+
+        return result;
+    }
+
+    private void processJar(JarTransformer.JarContext context)
+    {
+        logger.info("{}", LogColors.scan("Scanning input file for methods to obfuscate"));
+
+        int[] changes = runPreTransformers(context.classes.values());
+        int fixedConstants = changes[0];
+        int encryptedStrings = changes[1];
+        int encryptedNumbers = changes[2];
 
         String globalLocation = "BytecodeVM";
 

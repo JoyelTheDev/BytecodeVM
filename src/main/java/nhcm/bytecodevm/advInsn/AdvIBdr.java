@@ -1,5 +1,6 @@
 package nhcm.bytecodevm.advInsn;
 
+import nhcm.bytecodevm.utils.RandomUtils;
 import nhcm.bytecodevm.utils.builder.FieldRef;
 import nhcm.bytecodevm.utils.builder.InsnBuilder;
 import nhcm.bytecodevm.utils.MethodUtils;
@@ -11,7 +12,9 @@ import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.TryCatchBlockNode;
 
 import java.util.*;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Instruction builder with an API closer to Java source code.
@@ -22,7 +25,7 @@ import java.util.function.Consumer;
  * Types can be passed as {@link Type}, {@link Class}, or strings:
  * {@code "I"}, {@code "java/lang/String"}, {@code "Ljava/lang/String;"}, {@code "[I"}.
  */
-public class AdvInsnBuilder
+public class AdvIBdr
 {
     // Wrapped low-level writer used only by this DSL implementation.
     private final InsnBuilder builder;
@@ -51,7 +54,7 @@ public class AdvInsnBuilder
     /**
      * Binds a MethodNode. All later source-like calls write directly into method.instructions.
      */
-    public AdvInsnBuilder(MethodNode method)
+    public AdvIBdr(MethodNode method)
     {
         this.builder = new InsnBuilder(method.instructions);
         this.method = method;
@@ -62,7 +65,7 @@ public class AdvInsnBuilder
     /**
      * Create a new AdvInsnBuilder without a MethodNode with fresh insn list.
      */
-    public AdvInsnBuilder(int nextLocal)
+    public AdvIBdr(int nextLocal)
     {
         this.builder = new InsnBuilder();
         this.method = null;
@@ -72,9 +75,9 @@ public class AdvInsnBuilder
     /**
      * Writes directly into the given MethodNode.
      */
-    public static AdvInsnBuilder into(MethodNode method)
+    public static AdvIBdr into(MethodNode method)
     {
-        return new AdvInsnBuilder(method);
+        return new AdvIBdr(method);
     }
 
     /**
@@ -88,7 +91,7 @@ public class AdvInsnBuilder
     /**
      * Runs raw InsnBuilder code for bytecode not yet wrapped by the high-level API.
      */
-    public AdvInsnBuilder raw(Consumer<InsnBuilder> emitter)
+    public AdvIBdr raw(Consumer<InsnBuilder> emitter)
     {
         emitter.accept(builder);
         appendView("// raw(builder);");
@@ -98,7 +101,7 @@ public class AdvInsnBuilder
     /**
      * Calls a no-argument super constructor from an instance constructor.
      */
-    public AdvInsnBuilder callNoArgSuperConstructor(String owner)
+    public AdvIBdr callNoArgSuperConstructor(String owner)
     {
         appendView("super();");
         builder.aload(0);
@@ -112,6 +115,12 @@ public class AdvInsnBuilder
     public String sourceView()
     {
         return sourceView.toString();
+    }
+
+    /** Returns the first unallocated JVM local slot. */
+    public int nextLocalIndex()
+    {
+        return nextLocal;
     }
 
     /**
@@ -188,7 +197,7 @@ public class AdvInsnBuilder
     /**
      * Emits a local declaration and assignment, for example {@code int x = 1;}.
      */
-    public AdvInsnBuilder createLocal(String name, Class<?> type, Expr value)
+    public AdvIBdr createLocal(String name, Class<?> type, Expr value)
     {
         return createLocal(name, AdvInsnSupport.type(type), value);
     }
@@ -196,7 +205,7 @@ public class AdvInsnBuilder
     /**
      * Emits a local declaration and assignment using a type string.
      */
-    public AdvInsnBuilder createLocal(String name, String type, Expr value)
+    public AdvIBdr createLocal(String name, String type, Expr value)
     {
         return createLocal(name, type(type), value);
     }
@@ -204,7 +213,7 @@ public class AdvInsnBuilder
     /**
      * Emits a local declaration and assignment using an ASM Type.
      */
-    public AdvInsnBuilder createLocal(String name, Type type, Expr value)
+    public AdvIBdr createLocal(String name, Type type, Expr value)
     {
         Local local = var(name, type);
         value = autoCastIfNeeded(local.type(), value);
@@ -218,7 +227,7 @@ public class AdvInsnBuilder
     /**
      * Short alias for createLocal, making chained code read more like a declaration.
      */
-    public AdvInsnBuilder let(String name, Class<?> type, Expr value)
+    public AdvIBdr let(String name, Class<?> type, Expr value)
     {
         return createLocal(name, type, value);
     }
@@ -226,7 +235,7 @@ public class AdvInsnBuilder
     /**
      * Short alias for createLocal using a type string.
      */
-    public AdvInsnBuilder let(String name, String type, Expr value)
+    public AdvIBdr let(String name, String type, Expr value)
     {
         return createLocal(name, type, value);
     }
@@ -234,7 +243,7 @@ public class AdvInsnBuilder
     /**
      * Short alias for createLocal using an ASM Type.
      */
-    public AdvInsnBuilder let(String name, Type type, Expr value)
+    public AdvIBdr let(String name, Type type, Expr value)
     {
         return createLocal(name, type, value);
     }
@@ -242,7 +251,7 @@ public class AdvInsnBuilder
     /**
      * Writes a value to a Local, for example {@code x = expr;}.
      */
-    public AdvInsnBuilder writeLocal(Local local, Expr value)
+    public AdvIBdr writeLocal(Local local, Expr value)
     {
         value = autoCastIfNeeded(local.type(), value);
         AdvInsnSupport.requireAssignable(local.type(), value.type());
@@ -255,7 +264,7 @@ public class AdvInsnBuilder
     /**
      * Writes a value to a registered local by name.
      */
-    public AdvInsnBuilder writeLocal(String localName, Expr value)
+    public AdvIBdr writeLocal(String localName, Expr value)
     {
         return writeLocal(getLocal(localName), value);
     }
@@ -266,7 +275,7 @@ public class AdvInsnBuilder
      * This is useful at DSL boundaries where an earlier operation intentionally
      * leaves a value on the stack.
      */
-    public AdvInsnBuilder storeTop(Local local)
+    public AdvIBdr storeTop(Local local)
     {
         appendView(local.name() + " = <stackTop>;");
         AdvInsnSupport.store(builder, local.type(), local.index());
@@ -276,7 +285,7 @@ public class AdvInsnBuilder
     /**
      * Short alias for writeLocal.
      */
-    public AdvInsnBuilder set(Local local, Expr value)
+    public AdvIBdr set(Local local, Expr value)
     {
         return writeLocal(local, value);
     }
@@ -284,7 +293,7 @@ public class AdvInsnBuilder
     /**
      * Short alias for writeLocal by local name.
      */
-    public AdvInsnBuilder set(String localName, Expr value)
+    public AdvIBdr set(String localName, Expr value)
     {
         return writeLocal(localName, value);
     }
@@ -292,7 +301,7 @@ public class AdvInsnBuilder
     /**
      * Writes an instance field, for example {@code obj.field = value;}.
      */
-    public AdvInsnBuilder writeLocal(FieldAccess field, Expr value)
+    public AdvIBdr writeLocal(FieldAccess field, Expr value)
     {
         value = autoCastIfNeeded(field.type(), value);
         AdvInsnSupport.requireAssignable(field.type(), value.type());
@@ -306,7 +315,7 @@ public class AdvInsnBuilder
     /**
      * Short alias for writing an instance field.
      */
-    public AdvInsnBuilder set(FieldAccess field, Expr value)
+    public AdvIBdr set(FieldAccess field, Expr value)
     {
         return writeLocal(field, value);
     }
@@ -314,7 +323,7 @@ public class AdvInsnBuilder
     /**
      * Writes a static field, for example {@code Owner.field = value;}.
      */
-    public AdvInsnBuilder writeLocal(StaticFieldAccess field, Expr value)
+    public AdvIBdr writeLocal(StaticFieldAccess field, Expr value)
     {
         value = autoCastIfNeeded(field.type(), value);
         AdvInsnSupport.requireAssignable(field.type(), value.type());
@@ -327,7 +336,7 @@ public class AdvInsnBuilder
     /**
      * Short alias for writing a static field.
      */
-    public AdvInsnBuilder set(StaticFieldAccess field, Expr value)
+    public AdvIBdr set(StaticFieldAccess field, Expr value)
     {
         return writeLocal(field, value);
     }
@@ -335,7 +344,7 @@ public class AdvInsnBuilder
     /**
      * Uses IINC on an int-like local, for example {@code i += 1;}.
      */
-    public AdvInsnBuilder increment(Local local, int amount)
+    public AdvIBdr increment(Local local, int amount)
     {
         if (!AdvInsnSupport.isIntLike(local.type()))
         {
@@ -349,7 +358,7 @@ public class AdvInsnBuilder
     /**
      * Uses IINC on an int-like local by name.
      */
-    public AdvInsnBuilder increment(String localName, int amount)
+    public AdvIBdr increment(String localName, int amount)
     {
         return increment(getLocal(localName), amount);
     }
@@ -357,7 +366,7 @@ public class AdvInsnBuilder
     /**
      * Evaluates an expression and drops the return value, useful for method-call statements.
      */
-    public AdvInsnBuilder directCall(Expr expression)
+    public AdvIBdr directCall(Expr expression)
     {
         appendView(expression.source() + ";");
         expression.emit(builder);
@@ -371,7 +380,7 @@ public class AdvInsnBuilder
     /**
      * Returns an expression value, choosing IRETURN/LRETURN/ARETURN/etc. by type.
      */
-    public AdvInsnBuilder returnValue(Expr value)
+    public AdvIBdr returnValue(Expr value)
     {
         if (method != null)
         {
@@ -388,7 +397,7 @@ public class AdvInsnBuilder
     /**
      * Emits a void return.
      */
-    public AdvInsnBuilder returnVoid()
+    public AdvIBdr returnVoid()
     {
         appendView("return;");
         builder._return();
@@ -398,7 +407,7 @@ public class AdvInsnBuilder
     /**
      * Throws a Throwable expression.
      */
-    public AdvInsnBuilder throwValue(Expr throwable)
+    public AdvIBdr throwValue(Expr throwable)
     {
         AdvInsnSupport.requireReference(throwable.type(), "throw value");
         appendView("throw " + throwable.source() + ";");
@@ -410,7 +419,7 @@ public class AdvInsnBuilder
     /**
      * Emits a single-branch if. thenBlock runs when the condition is true.
      */
-    public AdvInsnBuilder ifCondition(Condition condition, Consumer<AdvInsnBuilder> thenBlock)
+    public AdvIBdr ifCondition(Condition condition, Consumer<AdvIBdr> thenBlock)
     {
         LabelNode end = new LabelNode();
         appendView("if (" + condition.source() + ") {");
@@ -426,10 +435,10 @@ public class AdvInsnBuilder
     /**
      * Emits an if/else branch.
      */
-    public AdvInsnBuilder ifElse(
+    public AdvIBdr ifElse(
             Condition condition,
-            Consumer<AdvInsnBuilder> thenBlock,
-            Consumer<AdvInsnBuilder> elseBlock)
+            Consumer<AdvIBdr> thenBlock,
+            Consumer<AdvIBdr> elseBlock)
     {
         LabelNode elseLabel = new LabelNode();
         LabelNode end = new LabelNode();
@@ -452,10 +461,10 @@ public class AdvInsnBuilder
     /**
      * Semantic alias for ifElse, reading more like "when ... else ...".
      */
-    public AdvInsnBuilder whenElse(
+    public AdvIBdr whenElse(
             Condition condition,
-            Consumer<AdvInsnBuilder> thenBlock,
-            Consumer<AdvInsnBuilder> elseBlock)
+            Consumer<AdvIBdr> thenBlock,
+            Consumer<AdvIBdr> elseBlock)
     {
         return ifElse(condition, thenBlock, elseBlock);
     }
@@ -463,7 +472,7 @@ public class AdvInsnBuilder
     /**
      * Emits a while loop. The condition is checked before each body execution.
      */
-    public AdvInsnBuilder whileLoop(Condition condition, Consumer<AdvInsnBuilder> body)
+    public AdvIBdr whileLoop(Condition condition, Consumer<AdvIBdr> body)
     {
         LabelNode start = new LabelNode();
         LabelNode end = new LabelNode();
@@ -484,7 +493,7 @@ public class AdvInsnBuilder
     /**
      * Emits a do/while loop. The body runs once before the condition is checked.
      */
-    public AdvInsnBuilder doWhileLoop(Consumer<AdvInsnBuilder> body, Condition condition)
+    public AdvIBdr doWhileLoop(Consumer<AdvIBdr> body, Condition condition)
     {
         LabelNode start = new LabelNode();
         LabelNode conditionLabel = new LabelNode();
@@ -504,13 +513,72 @@ public class AdvInsnBuilder
     }
 
     /**
+     * Emits a source-like classic for(int i = 0; i < endIndex; i++) loop
+     */
+    public AdvIBdr forIndexLoop(
+            Expr endIndex,
+            BiConsumer<Local, AdvIBdr> body)
+    {
+        LabelNode start = new LabelNode();
+        LabelNode updateLabel = new LabelNode();
+        LabelNode end = new LabelNode();
+
+        appendView("for (...) {");
+        String tempIndexName = "tempIndex" + RandomUtils.randomInt();
+        Local local = this.createLocal(tempIndexName, int.class, constant(0)).getLocal(tempIndexName);
+        indent++;
+        builder.label(start);
+        lessThan(local, endIndex).jumpIfFalse(this, end);
+        flowScopes.push(new FlowScope(updateLabel, end));
+        body.accept(local, this);
+        flowScopes.pop();
+        builder.label(updateLabel);
+        increment(local, 1);
+        builder.goto_(start);
+        indent--;
+        appendView("}");
+        builder.label(end);
+        return this;
+    }
+
+    /**
+     * Emits a source-like classic for(int i = startIndex; i < endIndex; i++) loop
+     */
+    public AdvIBdr forIndexLoop(
+            Expr startIndex,
+            Expr endIndex,
+            BiConsumer<Local, AdvIBdr> body)
+    {
+        LabelNode start = new LabelNode();
+        LabelNode updateLabel = new LabelNode();
+        LabelNode end = new LabelNode();
+
+        appendView("for (...) {");
+        String tempIndexName = "tempIndex" + RandomUtils.randomInt();
+        Local local = this.createLocal(tempIndexName, int.class, startIndex).getLocal(tempIndexName);
+        indent++;
+        builder.label(start);
+        lessThan(local, endIndex).jumpIfFalse(this, end);
+        flowScopes.push(new FlowScope(updateLabel, end));
+        body.accept(local, this);
+        flowScopes.pop();
+        builder.label(updateLabel);
+        increment(local, 1);
+        builder.goto_(start);
+        indent--;
+        appendView("}");
+        builder.label(end);
+        return this;
+    }
+
+    /**
      * Emits a source-like for loop: init; condition; body; update.
      */
-    public AdvInsnBuilder forLoop(
-            Consumer<AdvInsnBuilder> init,
+    public AdvIBdr forLoop(
+            Consumer<AdvIBdr> init,
             Condition condition,
-            Consumer<AdvInsnBuilder> update,
-            Consumer<AdvInsnBuilder> body)
+            Consumer<AdvIBdr> update,
+            Consumer<AdvIBdr> body)
     {
         LabelNode start = new LabelNode();
         LabelNode updateLabel = new LabelNode();
@@ -536,7 +604,7 @@ public class AdvInsnBuilder
     /**
      * Jumps to the nearest enclosing loop/switch break target.
      */
-    public AdvInsnBuilder breakFlow()
+    public AdvIBdr breakFlow()
     {
         FlowScope scope = requireBreakScope();
         appendView("break;");
@@ -547,7 +615,7 @@ public class AdvInsnBuilder
     /**
      * Alias for breakFlow.
      */
-    public AdvInsnBuilder breakLoop()
+    public AdvIBdr breakLoop()
     {
         return breakFlow();
     }
@@ -555,7 +623,7 @@ public class AdvInsnBuilder
     /**
      * Jumps to the nearest enclosing loop continue target.
      */
-    public AdvInsnBuilder continueLoop()
+    public AdvIBdr continueLoop()
     {
         FlowScope scope = requireContinueScope();
         appendView("continue;");
@@ -566,7 +634,7 @@ public class AdvInsnBuilder
     /**
      * Emits a conditional jump when condition is true.
      */
-    public AdvInsnBuilder jumpIf(Condition condition, LabelNode target)
+    public AdvIBdr jumpIf(Condition condition, LabelNode target)
     {
         appendView("// if (" + condition.source() + ") goto label");
         condition.jumpIfTrue(this, target);
@@ -576,7 +644,7 @@ public class AdvInsnBuilder
     /**
      * Emits a conditional jump when condition is false.
      */
-    public AdvInsnBuilder jumpIfNot(Condition condition, LabelNode target)
+    public AdvIBdr jumpIfNot(Condition condition, LabelNode target)
     {
         appendView("// if (!(" + condition.source() + ")) goto label");
         condition.jumpIfFalse(this, target);
@@ -587,7 +655,7 @@ public class AdvInsnBuilder
      * Emits a monitorEnter/monitorExit synchronized block.
      * This does not currently add try/finally cleanup for exceptional exits; use raw for complex synchronization.
      */
-    public AdvInsnBuilder synchronizedBlock(Expr lock, Consumer<AdvInsnBuilder> body)
+    public AdvIBdr synchronizedBlock(Expr lock, Consumer<AdvIBdr> body)
     {
         AdvInsnSupport.requireReference(lock.type(), "synchronized lock");
         appendView("synchronized (" + lock.source() + ") {");
@@ -605,7 +673,7 @@ public class AdvInsnBuilder
     /**
      * Creates a catch block description for tryCatch.
      */
-    public static CatchBlock catchBlock(String exceptionType, String localName, Consumer<AdvInsnBuilder> body)
+    public static CatchBlock catchBlock(String exceptionType, String localName, Consumer<AdvIBdr> body)
     {
         return CatchBlock.catchType(exceptionType, localName, body);
     }
@@ -613,7 +681,7 @@ public class AdvInsnBuilder
     /**
      * Creates a catch-all block description for tryCatch.
      */
-    public static CatchBlock catchAny(String localName, Consumer<AdvInsnBuilder> body)
+    public static CatchBlock catchAny(String localName, Consumer<AdvIBdr> body)
     {
         return CatchBlock.catchAny(localName, body);
     }
@@ -621,7 +689,7 @@ public class AdvInsnBuilder
     /**
      * Emits a try/catch block. This requires the builder to be bound to a MethodNode.
      */
-    public AdvInsnBuilder tryCatch(Consumer<AdvInsnBuilder> tryBlock, CatchBlock... catches)
+    public AdvIBdr tryCatch(Consumer<AdvIBdr> tryBlock, CatchBlock... catches)
     {
         requireMethod("try/catch");
         if (catches.length == 0)
@@ -671,11 +739,11 @@ public class AdvInsnBuilder
     /**
      * Convenience overload for one typed catch block.
      */
-    public AdvInsnBuilder tryCatch(
-            Consumer<AdvInsnBuilder> tryBlock,
+    public AdvIBdr tryCatch(
+            Consumer<AdvIBdr> tryBlock,
             String exceptionType,
             String localName,
-            Consumer<AdvInsnBuilder> catchBlock)
+            Consumer<AdvIBdr> catchBlock)
     {
         return tryCatch(tryBlock, catchBlock(exceptionType, localName, catchBlock));
     }
@@ -684,9 +752,9 @@ public class AdvInsnBuilder
      * Emits a basic try/finally shape. Returns inside tryBlock will not be rewritten;
      * use raw bytecode for complex finally semantics.
      */
-    public AdvInsnBuilder tryFinally(
-            Consumer<AdvInsnBuilder> tryBlock,
-            Consumer<AdvInsnBuilder> finallyBlock)
+    public AdvIBdr tryFinally(
+            Consumer<AdvIBdr> tryBlock,
+            Consumer<AdvIBdr> finallyBlock)
     {
         requireMethod("try/finally");
         LabelNode start = new LabelNode();
@@ -721,7 +789,7 @@ public class AdvInsnBuilder
     /**
      * Writes an array element, for example {@code arr[index] = value;}.
      */
-    public AdvInsnBuilder setArray(Expr array, Expr index, Expr value)
+    public AdvIBdr setArray(Expr array, Expr index, Expr value)
     {
         Type arrayType = array.type();
         if (arrayType.getSort() != Type.ARRAY)
@@ -742,11 +810,11 @@ public class AdvInsnBuilder
     /**
      * Writes an array element when the value is easiest to produce inline.
      */
-    public AdvInsnBuilder setArray(
+    public AdvIBdr setArray(
             Expr array,
             Expr index,
             Type valueType,
-            Consumer<AdvInsnBuilder> valueEmitter,
+            Consumer<AdvIBdr> valueEmitter,
             String valueSource)
     {
         Type arrayType = array.type();
@@ -778,11 +846,11 @@ public class AdvInsnBuilder
     /**
      * Writes an array element when the value is easiest to produce inline, using a type string.
      */
-    public AdvInsnBuilder setArray(
+    public AdvIBdr setArray(
             Expr array,
             Expr index,
             String valueType,
-            Consumer<AdvInsnBuilder> valueEmitter,
+            Consumer<AdvIBdr> valueEmitter,
             String valueSource)
     {
         return setArray(array, index, type(valueType), valueEmitter, valueSource);
@@ -791,7 +859,7 @@ public class AdvInsnBuilder
     /**
      * Creates a switch case description.
      */
-    public static SwitchCase switchCase(int key, Consumer<AdvInsnBuilder> body)
+    public static SwitchCase switchCase(int key, Consumer<AdvIBdr> body)
     {
         return SwitchCase.of(key, body);
     }
@@ -799,7 +867,7 @@ public class AdvInsnBuilder
     /**
      * Emits a lookup switch for sparse int keys. Each case jumps to the end after its body.
      */
-    public AdvInsnBuilder switchLookup(Expr selector, Consumer<AdvInsnBuilder> defaultBlock, SwitchCase... cases)
+    public AdvIBdr switchLookup(Expr selector, Consumer<AdvIBdr> defaultBlock, SwitchCase... cases)
     {
         List<SwitchCase> sortedCases = new ArrayList<>(List.of(cases));
         sortedCases.sort((left, right) -> Integer.compare(left.key(), right.key()));
@@ -851,22 +919,22 @@ public class AdvInsnBuilder
      * Emits a table switch for dense int ranges. cases[0] corresponds to min.
      */
     @SafeVarargs
-    public final AdvInsnBuilder switchTable(
+    public final AdvIBdr switchTable(
             Expr selector,
             int min,
-            Consumer<AdvInsnBuilder> defaultBlock,
-            Consumer<AdvInsnBuilder>... cases)
+            Consumer<AdvIBdr> defaultBlock,
+            Consumer<AdvIBdr>... cases)
     {
-        List<Consumer<AdvInsnBuilder>> casesList = new ArrayList<>();
+        List<Consumer<AdvIBdr>> casesList = new ArrayList<>();
         Collections.addAll(casesList, cases);
         return switchTable(selector, min, defaultBlock, casesList);
     }
 
-    public final AdvInsnBuilder switchTable(
+    public final AdvIBdr switchTable(
             Expr selector,
             int min,
-            Consumer<AdvInsnBuilder> defaultBlock,
-            List<Consumer<AdvInsnBuilder>> cases)
+            Consumer<AdvIBdr> defaultBlock,
+            List<Consumer<AdvIBdr>> cases)
     {
         LabelNode defaultLabel = new LabelNode();
         LabelNode end = new LabelNode();
@@ -920,7 +988,7 @@ public class AdvInsnBuilder
     /**
      * Marks an existing ASM label while keeping the high-level source view readable.
      */
-    public AdvInsnBuilder mark(LabelNode label, String name)
+    public AdvIBdr mark(LabelNode label, String name)
     {
         appendView("// label " + name);
         builder.label(label);
@@ -930,7 +998,7 @@ public class AdvInsnBuilder
     /**
      * Jumps to an existing label.
      */
-    public AdvInsnBuilder gotoLabel(LabelNode label)
+    public AdvIBdr gotoLabel(LabelNode label)
     {
         appendView("// goto label");
         builder.goto_(label);
@@ -940,7 +1008,7 @@ public class AdvInsnBuilder
     /**
      * Inserts line-number debug metadata.
      */
-    public AdvInsnBuilder line(int line)
+    public AdvIBdr line(int line)
     {
         LabelNode start = builder.label();
         builder.line(line, start);
@@ -951,7 +1019,7 @@ public class AdvInsnBuilder
     /**
      * Appends the current instructions into another InsnBuilder.
      */
-    public AdvInsnBuilder writeTo(InsnBuilder target)
+    public AdvIBdr writeTo(InsnBuilder target)
     {
         target.toInsnList().add(builder.toInsnList());
         return this;

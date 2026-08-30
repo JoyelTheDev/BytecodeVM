@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.conversion;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
@@ -19,7 +19,7 @@ public class ConvertBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         NumericType sourceType = sourceType(opcode);
         NumericType targetType = targetType(opcode);
@@ -32,13 +32,13 @@ public class ConvertBranch extends InterpretBranch
     {
         return switch (opcode)
         {
-            case I2L, F2L, D2L -> AdvInsnBuilder.toLong(value);
-            case I2F, L2F, D2F -> AdvInsnBuilder.toFloat(value);
-            case I2D, L2D, F2D -> AdvInsnBuilder.toDouble(value);
-            case L2I, F2I, D2I -> AdvInsnBuilder.toInt(value);
-            case I2B -> AdvInsnBuilder.cast(value, "B");
-            case I2C -> AdvInsnBuilder.cast(value, "C");
-            case I2S -> AdvInsnBuilder.cast(value, "S");
+            case I2L, F2L, D2L -> AdvIBdr.toLong(value);
+            case I2F, L2F, D2F -> AdvIBdr.toFloat(value);
+            case I2D, L2D, F2D -> AdvIBdr.toDouble(value);
+            case L2I, F2I, D2I -> AdvIBdr.toInt(value);
+            case I2B -> AdvIBdr.cast(value, "B");
+            case I2C -> AdvIBdr.cast(value, "C");
+            case I2S -> AdvIBdr.cast(value, "S");
             default -> throw new IllegalArgumentException("Not a conversion opcode: " + opcode);
         };
     }

@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.utils.builder;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 
 public record FieldRef(String owner, String name, String descriptor)
 {
@@ -9,12 +9,12 @@ public record FieldRef(String owner, String name, String descriptor)
         ib.getField(this);
     }
 
-    public void get(AdvInsnBuilder ib)
+    public void get(AdvIBdr ib)
     {
         get(ib.rawBuilder());
     }
 
-    public void readField(AdvInsnBuilder ib)
+    public void readField(AdvIBdr ib)
     {
         get(ib);
     }
@@ -24,12 +24,12 @@ public record FieldRef(String owner, String name, String descriptor)
         ib.putField(this);
     }
 
-    public void put(AdvInsnBuilder ib)
+    public void put(AdvIBdr ib)
     {
         put(ib.rawBuilder());
     }
 
-    public void writeField(AdvInsnBuilder ib)
+    public void writeField(AdvIBdr ib)
     {
         put(ib);
     }
@@ -39,12 +39,12 @@ public record FieldRef(String owner, String name, String descriptor)
         ib.getStatic(this);
     }
 
-    public void getStatic(AdvInsnBuilder ib)
+    public void getStatic(AdvIBdr ib)
     {
         getStatic(ib.rawBuilder());
     }
 
-    public void readStaticField(AdvInsnBuilder ib)
+    public void readStaticField(AdvIBdr ib)
     {
         getStatic(ib);
     }
@@ -54,12 +54,12 @@ public record FieldRef(String owner, String name, String descriptor)
         ib.putStatic(this);
     }
 
-    public void putStatic(AdvInsnBuilder ib)
+    public void putStatic(AdvIBdr ib)
     {
         putStatic(ib.rawBuilder());
     }
 
-    public void writeStaticField(AdvInsnBuilder ib)
+    public void writeStaticField(AdvIBdr ib)
     {
         putStatic(ib);
     }

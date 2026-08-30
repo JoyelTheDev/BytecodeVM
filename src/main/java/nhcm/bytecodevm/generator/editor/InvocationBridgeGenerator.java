@@ -1,4 +1,4 @@
-package nhcm.bytecodevm.generator.transformer;
+package nhcm.bytecodevm.generator.editor;
 
 import nhcm.bytecodevm.generator.GeneratedMemberNamer;
 import nhcm.bytecodevm.utils.builder.InsnBuilder;

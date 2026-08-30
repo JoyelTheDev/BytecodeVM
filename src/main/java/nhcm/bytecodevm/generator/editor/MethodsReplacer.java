@@ -1,6 +1,6 @@
-package nhcm.bytecodevm.generator.transformer;
+package nhcm.bytecodevm.generator.editor;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.data.CompiledMethod;
@@ -85,7 +85,7 @@ public class MethodsReplacer
         method.maxStack = 0;
         method.maxLocals = sourceLocal;
 
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Type returnType = Type.getReturnType(method.desc);
         Local argArray = ib.var("args", "[Ljava/lang/Object;");
@@ -94,51 +94,51 @@ public class MethodsReplacer
         {
             parameterSlots += parameter.getSize();
         }
-        ib.set(argArray, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(parameterSlots)));
+        ib.set(argArray, AdvIBdr.newArray("java/lang/Object", AdvIBdr.constant(parameterSlots)));
         int parameterLocal = sourceLocal;
         for(int i = 0; i < parameters.length; i++)
         {
             Local value = ib.getLocal("DOES_NOT_MATTER" + i, parameters[i], parameterLocal);
-            ib.setArray(argArray, AdvInsnBuilder.constant(parameterLocal - sourceLocal), value);
+            ib.setArray(argArray, AdvIBdr.constant(parameterLocal - sourceLocal), value);
             parameterLocal += parameters[i].getSize();
         }
         Expr receiver = isStatic
-                ? AdvInsnBuilder.constant(null)
-                : AdvInsnBuilder.cast(AdvInsnBuilder.self(owner.name), "java/lang/Object");
+                ? AdvIBdr.constant(null)
+                : AdvIBdr.cast(AdvIBdr.self(owner.name), "java/lang/Object");
         Local integrityKey = null;
         if (usesIntegrityCheck())
         {
             integrityKey = ib.var("integrityKey", "I");
             if (usesIntegrityCheck(compiledMethod))
             {
-                ib.set(integrityKey, AdvInsnBuilder.callStatic(
+                ib.set(integrityKey, AdvIBdr.callStatic(
                         integrityPlan.owner(),
                         integrityPlan.methodName(),
                         "I"));
             }
             else
             {
-                ib.set(integrityKey, AdvInsnBuilder.constant(integrityPlan.expectedCapability()));
+                ib.set(integrityKey, AdvIBdr.constant(integrityPlan.expectedCapability()));
             }
         }
         Expr execute;
         if (compiledMethod.isSegmented())
         {
             Local codeIds = ib.var("codeIds", "[I");
-            ib.set(codeIds, AdvInsnBuilder.newArray("int", AdvInsnBuilder.constant(compiledMethod.codeIds.size())));
+            ib.set(codeIds, AdvIBdr.newArray("int", AdvIBdr.constant(compiledMethod.codeIds.size())));
             for (int index = 0; index < compiledMethod.codeIds.size(); index++)
             {
-                ib.setArray(codeIds, AdvInsnBuilder.constant(index), AdvInsnBuilder.constant(compiledMethod.codeIds.get(index)));
+                ib.setArray(codeIds, AdvIBdr.constant(index), AdvIBdr.constant(compiledMethod.codeIds.get(index)));
             }
             execute = integrityKey == null
-                    ? AdvInsnBuilder.callStatic(
+                    ? AdvIBdr.callStatic(
                             vmClassName,
                             "execute",
                             "Ljava/lang/Object;",
                             codeIds,
                             receiver,
                             argArray)
-                    : AdvInsnBuilder.callStatic(
+                    : AdvIBdr.callStatic(
                             vmClassName,
                             "execute",
                             "Ljava/lang/Object;",
@@ -150,21 +150,21 @@ public class MethodsReplacer
         else
         {
             execute = integrityKey == null
-                    ? AdvInsnBuilder.callStatic(
-                            vmClassName,
-                            "execute",
-                            "Ljava/lang/Object;",
-                            AdvInsnBuilder.constant(compiledMethod.codeId),
-                            receiver,
-                            argArray)
-                    : AdvInsnBuilder.callStatic(
-                            vmClassName,
-                            "execute",
-                            "Ljava/lang/Object;",
-                            AdvInsnBuilder.constant(compiledMethod.codeId),
-                            receiver,
-                            argArray,
-                            integrityKey);
+                    ? AdvIBdr.callStatic(
+                    vmClassName,
+                    "execute",
+                    "Ljava/lang/Object;",
+                    AdvIBdr.constant(compiledMethod.codeId),
+                    receiver,
+                    argArray)
+                    : AdvIBdr.callStatic(
+                    vmClassName,
+                    "execute",
+                    "Ljava/lang/Object;",
+                    AdvIBdr.constant(compiledMethod.codeId),
+                    receiver,
+                    argArray,
+                    integrityKey);
         }
         if(returnType.equals(Type.VOID_TYPE))
         {
@@ -172,7 +172,7 @@ public class MethodsReplacer
             ib.returnVoid();
         } else
         {
-            ib.returnValue(AdvInsnBuilder.cast(execute, returnType));
+            ib.returnValue(AdvIBdr.cast(execute, returnType));
         }
     }
 

@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.integrity;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.data.VMIntegrityPlan;
@@ -29,7 +29,7 @@ final class IntegrityCacheCodec
     }
 
     static Local emitEncode(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             Expr capability,
             VMIntegrityPlan.CacheLayout layout,
             String prefix)
@@ -37,32 +37,32 @@ final class IntegrityCacheCodec
         Local encoded = ib.var(prefix + "Encoded", "I");
         Local tag = ib.var(prefix + "Tag", "I");
         Local envelope = ib.var(prefix + "Envelope", "J");
-        ib.set(encoded, AdvInsnBuilder.plus(
-                AdvInsnBuilder.multiply(
+        ib.set(encoded, AdvIBdr.plus(
+                AdvIBdr.multiply(
                         rotateLeft(
-                                AdvInsnBuilder.bitXor(
+                                AdvIBdr.bitXor(
                                         capability,
-                                        AdvInsnBuilder.constant(layout.xorMask())),
+                                        AdvIBdr.constant(layout.xorMask())),
                                 layout.rotation()),
-                        AdvInsnBuilder.constant(layout.multiplier())),
-                AdvInsnBuilder.constant(layout.addend())));
+                        AdvIBdr.constant(layout.multiplier())),
+                AdvIBdr.constant(layout.addend())));
         ib.set(tag, tag(encoded, capability, layout));
-        ib.set(envelope, AdvInsnBuilder.bitOr(
-                AdvInsnBuilder.shiftLeft(
-                        AdvInsnBuilder.cast(encoded, "J"),
-                        AdvInsnBuilder.constant(32)),
-                AdvInsnBuilder.bitAnd(
-                        AdvInsnBuilder.cast(
-                                AdvInsnBuilder.bitOr(
-                                        AdvInsnBuilder.shiftLeft(tag, AdvInsnBuilder.constant(1)),
-                                        AdvInsnBuilder.constant(1)),
+        ib.set(envelope, AdvIBdr.bitOr(
+                AdvIBdr.shiftLeft(
+                        AdvIBdr.cast(encoded, "J"),
+                        AdvIBdr.constant(32)),
+                AdvIBdr.bitAnd(
+                        AdvIBdr.cast(
+                                AdvIBdr.bitOr(
+                                        AdvIBdr.shiftLeft(tag, AdvIBdr.constant(1)),
+                                        AdvIBdr.constant(1)),
                                 "J"),
-                        AdvInsnBuilder.constant(0xFFFF_FFFFL))));
+                        AdvIBdr.constant(0xFFFF_FFFFL))));
         return envelope;
     }
 
     static Local emitDecode(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             Expr envelope,
             VMIntegrityPlan.CacheLayout layout,
             String prefix)
@@ -73,30 +73,30 @@ final class IntegrityCacheCodec
         Local expectedTag = ib.var(prefix + "ExpectedTag", "I");
         Local mismatch = ib.var(prefix + "Mismatch", "I");
 
-        ib.set(encoded, AdvInsnBuilder.cast(
-                AdvInsnBuilder.unsignedShiftRight(envelope, AdvInsnBuilder.constant(32)),
+        ib.set(encoded, AdvIBdr.cast(
+                AdvIBdr.unsignedShiftRight(envelope, AdvIBdr.constant(32)),
                 "I"));
-        ib.set(metadata, AdvInsnBuilder.cast(envelope, "I"));
-        Expr unscaled = AdvInsnBuilder.multiply(
-                AdvInsnBuilder.minus(encoded, AdvInsnBuilder.constant(layout.addend())),
-                AdvInsnBuilder.constant(layout.inverseMultiplier()));
-        ib.set(capability, AdvInsnBuilder.bitXor(
+        ib.set(metadata, AdvIBdr.cast(envelope, "I"));
+        Expr unscaled = AdvIBdr.multiply(
+                AdvIBdr.minus(encoded, AdvIBdr.constant(layout.addend())),
+                AdvIBdr.constant(layout.inverseMultiplier()));
+        ib.set(capability, AdvIBdr.bitXor(
                 rotateRight(unscaled, layout.rotation()),
-                AdvInsnBuilder.constant(layout.xorMask())));
+                AdvIBdr.constant(layout.xorMask())));
         ib.set(expectedTag, tag(encoded, capability, layout));
-        ib.set(mismatch, AdvInsnBuilder.bitOr(
-                AdvInsnBuilder.bitXor(
-                        AdvInsnBuilder.unsignedShiftRight(metadata, AdvInsnBuilder.constant(1)),
+        ib.set(mismatch, AdvIBdr.bitOr(
+                AdvIBdr.bitXor(
+                        AdvIBdr.unsignedShiftRight(metadata, AdvIBdr.constant(1)),
                         expectedTag),
-                AdvInsnBuilder.bitXor(
-                        AdvInsnBuilder.bitAnd(metadata, AdvInsnBuilder.constant(1)),
-                        AdvInsnBuilder.constant(1))));
-        Expr nonZero = AdvInsnBuilder.unsignedShiftRight(
-                AdvInsnBuilder.bitOr(mismatch, AdvInsnBuilder.negative(mismatch)),
-                AdvInsnBuilder.constant(31));
-        ib.set(capability, AdvInsnBuilder.bitXor(
+                AdvIBdr.bitXor(
+                        AdvIBdr.bitAnd(metadata, AdvIBdr.constant(1)),
+                        AdvIBdr.constant(1))));
+        Expr nonZero = AdvIBdr.unsignedShiftRight(
+                AdvIBdr.bitOr(mismatch, AdvIBdr.negative(mismatch)),
+                AdvIBdr.constant(31));
+        ib.set(capability, AdvIBdr.bitXor(
                 capability,
-                AdvInsnBuilder.multiply(nonZero, AdvInsnBuilder.constant(layout.failMix()))));
+                AdvIBdr.multiply(nonZero, AdvIBdr.constant(layout.failMix()))));
         return capability;
     }
 
@@ -105,33 +105,33 @@ final class IntegrityCacheCodec
             Expr capability,
             VMIntegrityPlan.CacheLayout layout)
     {
-        Expr mixed = AdvInsnBuilder.bitXor(
+        Expr mixed = AdvIBdr.bitXor(
                 encoded,
                 rotateLeft(
-                        AdvInsnBuilder.plus(capability, AdvInsnBuilder.constant(layout.tagSalt())),
+                        AdvIBdr.plus(capability, AdvIBdr.constant(layout.tagSalt())),
                         layout.tagRotation()));
-        mixed = AdvInsnBuilder.bitXor(
+        mixed = AdvIBdr.bitXor(
                 mixed,
-                AdvInsnBuilder.unsignedShiftRight(mixed, AdvInsnBuilder.constant(16)));
-        mixed = AdvInsnBuilder.multiply(mixed, AdvInsnBuilder.constant(layout.tagMultiplier()));
-        mixed = AdvInsnBuilder.bitXor(
+                AdvIBdr.unsignedShiftRight(mixed, AdvIBdr.constant(16)));
+        mixed = AdvIBdr.multiply(mixed, AdvIBdr.constant(layout.tagMultiplier()));
+        mixed = AdvIBdr.bitXor(
                 mixed,
-                AdvInsnBuilder.unsignedShiftRight(mixed, AdvInsnBuilder.constant(13)));
-        return AdvInsnBuilder.bitAnd(mixed, AdvInsnBuilder.constant(Integer.MAX_VALUE));
+                AdvIBdr.unsignedShiftRight(mixed, AdvIBdr.constant(13)));
+        return AdvIBdr.bitAnd(mixed, AdvIBdr.constant(Integer.MAX_VALUE));
     }
 
     private static Expr rotateLeft(Expr value, int distance)
     {
-        return AdvInsnBuilder.bitOr(
-                AdvInsnBuilder.shiftLeft(value, AdvInsnBuilder.constant(distance)),
-                AdvInsnBuilder.unsignedShiftRight(value, AdvInsnBuilder.constant(32 - distance)));
+        return AdvIBdr.bitOr(
+                AdvIBdr.shiftLeft(value, AdvIBdr.constant(distance)),
+                AdvIBdr.unsignedShiftRight(value, AdvIBdr.constant(32 - distance)));
     }
 
     private static Expr rotateRight(Expr value, int distance)
     {
-        return AdvInsnBuilder.bitOr(
-                AdvInsnBuilder.unsignedShiftRight(value, AdvInsnBuilder.constant(distance)),
-                AdvInsnBuilder.shiftLeft(value, AdvInsnBuilder.constant(32 - distance)));
+        return AdvIBdr.bitOr(
+                AdvIBdr.unsignedShiftRight(value, AdvIBdr.constant(distance)),
+                AdvIBdr.shiftLeft(value, AdvIBdr.constant(32 - distance)));
     }
 
     private static int inverseOdd(int value)

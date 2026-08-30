@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.integrity;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.data.VMIntegrityPlan;
@@ -154,24 +154,24 @@ public class VMIntegrityGenerator
             int expectedCapability)
     {
         MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PUBLIC, Acc.STATIC}, name, "()I");
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local acc = ib.var("acc", "I");
         Local result = ib.var("result", "I");
-        ib.set(acc, AdvInsnBuilder.constant(0));
+        ib.set(acc, AdvIBdr.constant(0));
         for (MethodNode chunk : chunks)
         {
-            ib.set(acc, AdvInsnBuilder.callStatic(owner, chunk.name, "I", acc));
+            ib.set(acc, AdvIBdr.callStatic(owner, chunk.name, "I", acc));
         }
         ib.ifElse(
-                AdvInsnBuilder.equal(acc, AdvInsnBuilder.constant(0)),
-                ok -> ok.set(result, AdvInsnBuilder.constant(expectedCapability)),
-                fail -> fail.set(result, AdvInsnBuilder.bitXor(
-                        AdvInsnBuilder.constant(expectedCapability),
-                        AdvInsnBuilder.bitOr(
-                                AdvInsnBuilder.bitXor(
-                                        AdvInsnBuilder.multiply(acc, AdvInsnBuilder.constant(failMix)),
-                                        AdvInsnBuilder.unsignedShiftRight(acc, AdvInsnBuilder.constant(13))),
-                                AdvInsnBuilder.constant(1)))));
+                AdvIBdr.equal(acc, AdvIBdr.constant(0)),
+                ok -> ok.set(result, AdvIBdr.constant(expectedCapability)),
+                fail -> fail.set(result, AdvIBdr.bitXor(
+                        AdvIBdr.constant(expectedCapability),
+                        AdvIBdr.bitOr(
+                                AdvIBdr.bitXor(
+                                        AdvIBdr.multiply(acc, AdvIBdr.constant(failMix)),
+                                        AdvIBdr.unsignedShiftRight(acc, AdvIBdr.constant(13))),
+                                AdvIBdr.constant(1)))));
         ib.returnValue(result);
         return method;
     }
@@ -179,17 +179,17 @@ public class VMIntegrityGenerator
     private MethodNode genGatewayMethod(String owner, String name, String initializeName)
     {
         MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PUBLIC, Acc.STATIC}, name, "()I");
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local envelope = ib.var("stateEnvelope", "J");
-        ib.set(envelope, AdvInsnBuilder.staticField(owner, stateFieldName, "J"));
+        ib.set(envelope, AdvIBdr.staticField(owner, stateFieldName, "J"));
         ib.ifCondition(
-                AdvInsnBuilder.notEqual(envelope, AdvInsnBuilder.constant(0L)),
+                AdvIBdr.notEqual(envelope, AdvIBdr.constant(0L)),
                 hit -> hit.returnValue(IntegrityCacheCodec.emitDecode(
                         hit,
                         envelope,
                         cacheLayout,
                         "gateway")));
-        ib.returnValue(AdvInsnBuilder.callStatic(owner, initializeName, "I"));
+        ib.returnValue(AdvIBdr.callStatic(owner, initializeName, "I"));
         return method;
     }
 
@@ -199,24 +199,24 @@ public class VMIntegrityGenerator
                 new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.SYNCHRONIZED},
                 name,
                 "()I");
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local envelope = ib.var("stateEnvelope", "J");
-        ib.set(envelope, AdvInsnBuilder.staticField(owner, stateFieldName, "J"));
+        ib.set(envelope, AdvIBdr.staticField(owner, stateFieldName, "J"));
         ib.ifCondition(
-                AdvInsnBuilder.notEqual(envelope, AdvInsnBuilder.constant(0L)),
+                AdvIBdr.notEqual(envelope, AdvIBdr.constant(0L)),
                 hit -> hit.returnValue(IntegrityCacheCodec.emitDecode(
                         hit,
                         envelope,
                         cacheLayout,
                         "locked")));
         Local result = ib.var("integrityKey", "I");
-        ib.set(result, AdvInsnBuilder.callStatic(owner, deriveName, "I"));
+        ib.set(result, AdvIBdr.callStatic(owner, deriveName, "I"));
         Local encodedEnvelope = IntegrityCacheCodec.emitEncode(
                 ib,
                 result,
                 cacheLayout,
                 "published");
-        ib.set(AdvInsnBuilder.staticField(owner, stateFieldName, "J"), encodedEnvelope);
+        ib.set(AdvIBdr.staticField(owner, stateFieldName, "J"), encodedEnvelope);
         ib.returnValue(result);
         return method;
     }
@@ -234,21 +234,21 @@ public class VMIntegrityGenerator
             String descriptor = "(I)I";
             String name = namer.method(owner, "deriveIntegrityChunk$" + index, descriptor);
             MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, name, descriptor);
-            AdvInsnBuilder ib = new AdvInsnBuilder(method);
+            AdvIBdr ib = new AdvIBdr(method);
             Local acc = ib.getLocal("acc", "I", 0);
             for (int targetIndex = from; targetIndex < to; targetIndex++)
             {
                 HashTarget target = targets.get(targetIndex);
-                ib.set(acc, AdvInsnBuilder.bitOr(
+                ib.set(acc, AdvIBdr.bitOr(
                         acc,
-                        AdvInsnBuilder.bitXor(
-                                AdvInsnBuilder.callStatic(
+                        AdvIBdr.bitXor(
+                                AdvIBdr.callStatic(
                                         owner,
                                         hashMethodName,
                                         "I",
-                                        AdvInsnBuilder.constant(target.resourceName()),
-                                        AdvInsnBuilder.constant(target.seed())),
-                                AdvInsnBuilder.constant(target.expectedHash()))));
+                                        AdvIBdr.constant(target.resourceName()),
+                                        AdvIBdr.constant(target.seed())),
+                                AdvIBdr.constant(target.expectedHash()))));
             }
             ib.returnValue(acc);
             chunks.add(method);
@@ -258,7 +258,7 @@ public class VMIntegrityGenerator
             String descriptor = "(I)I";
             String name = namer.method(owner, "deriveIntegrityChunk$0", descriptor);
             MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, name, descriptor);
-            AdvInsnBuilder ib = new AdvInsnBuilder(method);
+            AdvIBdr ib = new AdvIBdr(method);
             Local acc = ib.getLocal("acc", "I", 0);
             ib.returnValue(acc);
             chunks.add(method);
@@ -272,77 +272,77 @@ public class VMIntegrityGenerator
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
                 probeMethodName,
                 "()V");
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local budget = ib.var("stateTicket", "I");
-        ib.set(budget, AdvInsnBuilder.minus(
-                AdvInsnBuilder.staticField(owner, probeBudgetFieldName, "I"),
-                AdvInsnBuilder.constant(1)));
-        ib.set(AdvInsnBuilder.staticField(owner, probeBudgetFieldName, "I"), budget);
+        ib.set(budget, AdvIBdr.minus(
+                AdvIBdr.staticField(owner, probeBudgetFieldName, "I"),
+                AdvIBdr.constant(1)));
+        ib.set(AdvIBdr.staticField(owner, probeBudgetFieldName, "I"), budget);
         ib.ifCondition(
-                AdvInsnBuilder.greaterThan(budget, AdvInsnBuilder.constant(0)),
+                AdvIBdr.greaterThan(budget, AdvIBdr.constant(0)),
                 hit -> hit.returnVoid());
 
         Local cursor = ib.var("stateLane", "I");
         Local nextCursor = ib.var("nextLane", "I");
         Local mismatch = ib.var("stateMismatch", "I");
-        ib.set(cursor, AdvInsnBuilder.staticField(owner, probeCursorFieldName, "I"));
-        ib.set(nextCursor, AdvInsnBuilder.plus(cursor, AdvInsnBuilder.constant(1)));
+        ib.set(cursor, AdvIBdr.staticField(owner, probeCursorFieldName, "I"));
+        ib.set(nextCursor, AdvIBdr.plus(cursor, AdvIBdr.constant(1)));
         ib.ifCondition(
-                AdvInsnBuilder.not(AdvInsnBuilder.lessThan(
+                AdvIBdr.not(AdvIBdr.lessThan(
                         nextCursor,
-                        AdvInsnBuilder.constant(chunks.size()))),
-                wrap -> wrap.set(nextCursor, AdvInsnBuilder.constant(0)));
-        ib.set(AdvInsnBuilder.staticField(owner, probeCursorFieldName, "I"), nextCursor);
+                        AdvIBdr.constant(chunks.size()))),
+                wrap -> wrap.set(nextCursor, AdvIBdr.constant(0)));
+        ib.set(AdvIBdr.staticField(owner, probeCursorFieldName, "I"), nextCursor);
 
         int jitterRange = Integer.highestOneBit(Math.max(1, recheckInterval / 4));
         int jitterMask = jitterRange - 1;
         int jitterMultiplier = nonZeroRandom() | 1;
         int jitterSalt = nonZeroRandom();
-        Expr jitter = AdvInsnBuilder.bitAnd(
-                AdvInsnBuilder.bitXor(
-                        AdvInsnBuilder.multiply(cursor, AdvInsnBuilder.constant(jitterMultiplier)),
-                        AdvInsnBuilder.constant(jitterSalt)),
-                AdvInsnBuilder.constant(jitterMask));
+        Expr jitter = AdvIBdr.bitAnd(
+                AdvIBdr.bitXor(
+                        AdvIBdr.multiply(cursor, AdvIBdr.constant(jitterMultiplier)),
+                        AdvIBdr.constant(jitterSalt)),
+                AdvIBdr.constant(jitterMask));
         ib.set(
-                AdvInsnBuilder.staticField(owner, probeBudgetFieldName, "I"),
-                AdvInsnBuilder.minus(AdvInsnBuilder.constant(recheckInterval), jitter));
+                AdvIBdr.staticField(owner, probeBudgetFieldName, "I"),
+                AdvIBdr.minus(AdvIBdr.constant(recheckInterval), jitter));
 
-        ib.set(mismatch, AdvInsnBuilder.constant(0));
+        ib.set(mismatch, AdvIBdr.constant(0));
         for (int index = 0; index < chunks.size(); index++)
         {
             MethodNode chunk = chunks.get(index);
             ib.ifCondition(
-                    AdvInsnBuilder.equal(cursor, AdvInsnBuilder.constant(index)),
-                    selected -> selected.set(mismatch, AdvInsnBuilder.callStatic(
+                    AdvIBdr.equal(cursor, AdvIBdr.constant(index)),
+                    selected -> selected.set(mismatch, AdvIBdr.callStatic(
                             owner,
                             chunk.name,
                             "I",
-                            AdvInsnBuilder.constant(0))));
+                            AdvIBdr.constant(0))));
         }
 
         int poisonMultiplier = nonZeroRandom() | 1;
         int poisonSalt = nonZeroRandom();
         ib.ifCondition(
-                AdvInsnBuilder.notEqual(mismatch, AdvInsnBuilder.constant(0)),
+                AdvIBdr.notEqual(mismatch, AdvIBdr.constant(0)),
                 failed -> {
                     Local envelope = failed.var("failedEnvelope", "J");
-                    failed.set(envelope, AdvInsnBuilder.staticField(owner, stateFieldName, "J"));
-                    Expr poison = AdvInsnBuilder.bitOr(
-                            AdvInsnBuilder.shiftLeft(
-                                    AdvInsnBuilder.cast(mismatch, "J"),
-                                    AdvInsnBuilder.constant(32)),
-                            AdvInsnBuilder.bitAnd(
-                                    AdvInsnBuilder.cast(
-                                            AdvInsnBuilder.bitXor(
-                                                    AdvInsnBuilder.multiply(
+                    failed.set(envelope, AdvIBdr.staticField(owner, stateFieldName, "J"));
+                    Expr poison = AdvIBdr.bitOr(
+                            AdvIBdr.shiftLeft(
+                                    AdvIBdr.cast(mismatch, "J"),
+                                    AdvIBdr.constant(32)),
+                            AdvIBdr.bitAnd(
+                                    AdvIBdr.cast(
+                                            AdvIBdr.bitXor(
+                                                    AdvIBdr.multiply(
                                                             mismatch,
-                                                            AdvInsnBuilder.constant(poisonMultiplier)),
-                                                    AdvInsnBuilder.constant(poisonSalt)),
+                                                            AdvIBdr.constant(poisonMultiplier)),
+                                                    AdvIBdr.constant(poisonSalt)),
                                             "J"),
-                                    AdvInsnBuilder.constant(0xFFFF_FFFFL)));
+                                    AdvIBdr.constant(0xFFFF_FFFFL)));
                     failed.set(
-                            AdvInsnBuilder.staticField(owner, stateFieldName, "J"),
-                            AdvInsnBuilder.bitXor(envelope, poison));
+                            AdvIBdr.staticField(owner, stateFieldName, "J"),
+                            AdvIBdr.bitXor(envelope, poison));
                 });
         ib.returnVoid();
         return method;
@@ -351,16 +351,16 @@ public class VMIntegrityGenerator
     private MethodNode genClinitMethod(String owner)
     {
         MethodNode method = MethodUtils.newMethodNode(new Acc[]{Acc.STATIC}, "<clinit>", "()V");
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
-        ib.set(AdvInsnBuilder.staticField(owner, stateFieldName, "J"), AdvInsnBuilder.constant(0L));
+        AdvIBdr ib = new AdvIBdr(method);
+        ib.set(AdvIBdr.staticField(owner, stateFieldName, "J"), AdvIBdr.constant(0L));
         if (recheckInterval != 0)
         {
             ib.set(
-                    AdvInsnBuilder.staticField(owner, probeBudgetFieldName, "I"),
-                    AdvInsnBuilder.constant(Math.max(1, recheckInterval / 2)));
+                    AdvIBdr.staticField(owner, probeBudgetFieldName, "I"),
+                    AdvIBdr.constant(Math.max(1, recheckInterval / 2)));
             ib.set(
-                    AdvInsnBuilder.staticField(owner, probeCursorFieldName, "I"),
-                    AdvInsnBuilder.constant(0));
+                    AdvIBdr.staticField(owner, probeCursorFieldName, "I"),
+                    AdvIBdr.constant(0));
         }
         ib.returnVoid();
         return method;

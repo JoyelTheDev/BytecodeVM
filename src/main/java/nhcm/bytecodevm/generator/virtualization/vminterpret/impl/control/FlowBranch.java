@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.control;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Condition;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.enums.Opcs;
@@ -20,7 +20,7 @@ public class FlowBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         var jumpTarget = context.intLocal("jumpTarget", InterpretContext.JUMP_TARGET);
         context.nextOperand(ib, jumpTarget);
@@ -29,7 +29,7 @@ public class FlowBranch extends InterpretBranch
         {
             case IFEQ, IFNE, IFLT, IFGE, IFGT, IFLE -> {
                 popInt(ib, context, InterpretContext.RIGHT_VALUE);
-                yield intCondition(opcode, context.rightValue(NumericType.INT), AdvInsnBuilder.constant(0));
+                yield intCondition(opcode, context.rightValue(NumericType.INT), AdvIBdr.constant(0));
             }
             case IF_ICMPEQ, IF_ICMPNE, IF_ICMPLT, IF_ICMPGE, IF_ICMPGT, IF_ICMPLE -> {
                 popInt(ib, context, InterpretContext.RIGHT_VALUE);
@@ -40,16 +40,16 @@ public class FlowBranch extends InterpretBranch
                 popObject(ib, context, InterpretContext.RIGHT_VALUE);
                 popObject(ib, context, InterpretContext.LEFT_VALUE);
                 yield opcode == Opcs.IF_ACMPEQ
-                        ? AdvInsnBuilder.equal(context.objectLocal("left", InterpretContext.LEFT_VALUE),
-                                               context.objectLocal("right", InterpretContext.RIGHT_VALUE))
-                        : AdvInsnBuilder.notEqual(context.objectLocal("left", InterpretContext.LEFT_VALUE),
-                                                  context.objectLocal("right", InterpretContext.RIGHT_VALUE));
+                        ? AdvIBdr.equal(context.objectLocal("left", InterpretContext.LEFT_VALUE),
+                                        context.objectLocal("right", InterpretContext.RIGHT_VALUE))
+                        : AdvIBdr.notEqual(context.objectLocal("left", InterpretContext.LEFT_VALUE),
+                                           context.objectLocal("right", InterpretContext.RIGHT_VALUE));
             }
             case IFNULL, IFNONNULL -> {
                 popObject(ib, context, InterpretContext.RIGHT_VALUE);
                 yield opcode == Opcs.IFNULL
-                        ? AdvInsnBuilder.isNull(context.objectLocal("value", InterpretContext.RIGHT_VALUE))
-                        : AdvInsnBuilder.notNull(context.objectLocal("value", InterpretContext.RIGHT_VALUE));
+                        ? AdvIBdr.isNull(context.objectLocal("value", InterpretContext.RIGHT_VALUE))
+                        : AdvIBdr.notNull(context.objectLocal("value", InterpretContext.RIGHT_VALUE));
             }
             default -> throw new IllegalArgumentException("Unsupported flow opcode: " + opcode);
         };
@@ -61,12 +61,12 @@ public class FlowBranch extends InterpretBranch
     {
         return switch (opcode)
         {
-            case IFEQ, IF_ICMPEQ -> AdvInsnBuilder.equal(left, right);
-            case IFNE, IF_ICMPNE -> AdvInsnBuilder.notEqual(left, right);
-            case IFLT, IF_ICMPLT -> AdvInsnBuilder.lessThan(left, right);
-            case IFGE, IF_ICMPGE -> AdvInsnBuilder.greaterOrEqual(left, right);
-            case IFGT, IF_ICMPGT -> AdvInsnBuilder.greaterThan(left, right);
-            case IFLE, IF_ICMPLE -> AdvInsnBuilder.lessOrEqual(left, right);
+            case IFEQ, IF_ICMPEQ -> AdvIBdr.equal(left, right);
+            case IFNE, IF_ICMPNE -> AdvIBdr.notEqual(left, right);
+            case IFLT, IF_ICMPLT -> AdvIBdr.lessThan(left, right);
+            case IFGE, IF_ICMPGE -> AdvIBdr.greaterOrEqual(left, right);
+            case IFGT, IF_ICMPGT -> AdvIBdr.greaterThan(left, right);
+            case IFLE, IF_ICMPLE -> AdvIBdr.lessOrEqual(left, right);
             default -> throw new IllegalArgumentException("Unsupported int flow opcode: " + opcode);
         };
     }

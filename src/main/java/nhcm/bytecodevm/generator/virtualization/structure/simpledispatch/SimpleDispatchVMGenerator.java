@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.simpledispatch;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.advInsn.SwitchCase;
 import nhcm.bytecodevm.enums.VMStructure;
@@ -28,26 +28,26 @@ public final class SimpleDispatchVMGenerator extends AbstractVMStructureGenerato
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local action = runtime.intLocal("simpleDispatchAction", InterpretContext.OPCODE);
-        ib.set(action, AdvInsnBuilder.constant(0));
+        ib.set(action, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(action, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(action, AdvIBdr.constant(0)),
                 loop -> loop.set(action, generation.step(runtime)));
     }
 
     @Override
     public void emitDispatch(VMDispatchGenerationContext dispatch)
     {
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("centralOpcodeSelector", InterpretContext.DISPATCH_SELECTOR);
         dispatch.setSelector(ib, runtime, selector);
         List<SwitchCase> cases = new ArrayList<>();
         for (VMDispatchTarget target : dispatch.targets())
         {
-            cases.add(AdvInsnBuilder.switchCase(target.key(), handler -> {
+            cases.add(AdvIBdr.switchCase(target.key(), handler -> {
                 dispatch.emitTarget(handler, runtime, target, runtime.instructionIndex());
                 handler.gotoLabel(dispatch.completed());
             }));

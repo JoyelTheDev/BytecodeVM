@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.invoke;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Condition;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
@@ -20,7 +20,7 @@ public class InvokeNormalBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         Local owner = context.local("invokeOwner", "java/lang/String", InterpretContext.INVOKE_OWNER);
         Local name = context.local("invokeName", "java/lang/String", InterpretContext.INVOKE_NAME);
@@ -33,7 +33,7 @@ public class InvokeNormalBranch extends InterpretBranch
 
         ib.set(owner, readConstantString(ib, context));
         ib.set(name, readConstantString(ib, context));
-        ib.set(type, AdvInsnBuilder.callStatic(
+        ib.set(type, AdvIBdr.callStatic(
                 context.vm.owner,
                 context.vm.methodType.name(),
                 "java/lang/invoke/MethodType",
@@ -41,12 +41,12 @@ public class InvokeNormalBranch extends InterpretBranch
 
         context.nextOperand(ib, ignoredInterfaceFlag);
 
-        ib.set(arguments, AdvInsnBuilder.newArray(
+        ib.set(arguments, AdvIBdr.newArray(
                 "java/lang/Object",
-                AdvInsnBuilder.callVirtual(type, "java/lang/invoke/MethodType", "parameterCount", "I")));
-        ib.set(index, AdvInsnBuilder.minus(AdvInsnBuilder.arrayLength(arguments), AdvInsnBuilder.constant(1)));
+                AdvIBdr.callVirtual(type, "java/lang/invoke/MethodType", "parameterCount", "I")));
+        ib.set(index, AdvIBdr.minus(AdvIBdr.arrayLength(arguments), AdvIBdr.constant(1)));
         ib.whileLoop(
-                AdvInsnBuilder.greaterOrEqual(index, AdvInsnBuilder.constant(0)),
+                AdvIBdr.greaterOrEqual(index, AdvIBdr.constant(0)),
                 b -> {
                     popObject(b, context);
                     b.setArray(arguments, index, context.stackObject());
@@ -55,7 +55,7 @@ public class InvokeNormalBranch extends InterpretBranch
 
         if (opcode == Opcs.INVOKESTATIC)
         {
-            ib.set(receiver, AdvInsnBuilder.nullValue("java/lang/Object"));
+            ib.set(receiver, AdvIBdr.nullValue("java/lang/Object"));
         }
         else
         {
@@ -68,21 +68,21 @@ public class InvokeNormalBranch extends InterpretBranch
             return;
         }
 
-        ib.set(result, AdvInsnBuilder.callStatic(
+        ib.set(result, AdvIBdr.callStatic(
                 context.vm.owner,
                 context.vm.invoke.name(),
                 "java/lang/Object",
                 owner,
                 name,
                 type,
-                AdvInsnBuilder.constant(opcode == Opcs.INVOKESTATIC),
+                AdvIBdr.constant(opcode == Opcs.INVOKESTATIC),
                 receiver,
                 arguments));
         pushResultUnlessVoid(ib, context, type, result);
     }
 
     private static void emitConstructorInvocation(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             InterpretContext context,
             Local owner,
             Local type,
@@ -90,14 +90,14 @@ public class InvokeNormalBranch extends InterpretBranch
             Local receiver,
             Local result)
     {
-        ib.set(result, AdvInsnBuilder.callStatic(
+        ib.set(result, AdvIBdr.callStatic(
                 context.vm.owner,
                 context.vm.construct.name(),
                 "java/lang/Object",
                 owner,
                 type,
                 arguments));
-        ib.directCall(AdvInsnBuilder.callVirtual(
+        ib.directCall(AdvIBdr.callVirtual(
                 context.frame(),
                 context.frameClassName,
                 context.frame.replaceIdentity.name(),
@@ -107,39 +107,39 @@ public class InvokeNormalBranch extends InterpretBranch
     }
 
     private static void pushResultUnlessVoid(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             InterpretContext context,
             Local type,
             Local result)
     {
         Local returnType = context.local("invokeReturnType", "java/lang/Class", InterpretContext.INVOKE_RETURN_TYPE);
-        ib.set(returnType, AdvInsnBuilder.callVirtual(
+        ib.set(returnType, AdvIBdr.callVirtual(
                 type,
                 "java/lang/invoke/MethodType",
                 "returnType",
                 "java/lang/Class"));
 
         ib.ifCondition(
-                AdvInsnBuilder.not(AdvInsnBuilder.equal(returnType, primitiveType("java/lang/Void"))),
+                AdvIBdr.not(AdvIBdr.equal(returnType, primitiveType("java/lang/Void"))),
                 b -> b.ifElse(
                         isCategory2Return(returnType),
-                        category2 -> pushObjectWithWidth(category2, context, result, AdvInsnBuilder.constant(2)),
+                        category2 -> pushObjectWithWidth(category2, context, result, AdvIBdr.constant(2)),
                         category1 -> pushObject(category1, context, result)));
     }
 
     private static Condition isCategory2Return(Local returnType)
     {
-        return AdvInsnBuilder.or(
-                AdvInsnBuilder.equal(returnType, primitiveType("java/lang/Long")),
-                AdvInsnBuilder.equal(returnType, primitiveType("java/lang/Double")));
+        return AdvIBdr.or(
+                AdvIBdr.equal(returnType, primitiveType("java/lang/Long")),
+                AdvIBdr.equal(returnType, primitiveType("java/lang/Double")));
     }
 
     private static Expr primitiveType(String boxedOwner)
     {
-        return AdvInsnBuilder.staticField(boxedOwner, "TYPE", "java/lang/Class");
+        return AdvIBdr.staticField(boxedOwner, "TYPE", "java/lang/Class");
     }
 
-    private static Expr readConstantString(AdvInsnBuilder ib, InterpretContext context)
+    private static Expr readConstantString(AdvIBdr ib, InterpretContext context)
     {
         Local token = context.intLocal("invokeToken", InterpretContext.JUMP_TARGET);
         context.nextOperand(ib, token);

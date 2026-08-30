@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.field;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Condition;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
@@ -20,7 +20,7 @@ public class ReadFieldBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         Local owner = context.local("fieldOwner", "java/lang/String", InterpretContext.FIELD_OWNER);
         Local name = context.local("fieldName", "java/lang/String", InterpretContext.FIELD_NAME);
@@ -34,30 +34,30 @@ public class ReadFieldBranch extends InterpretBranch
 
         if (opcode == Opcs.GETSTATIC)
         {
-            ib.set(receiver, AdvInsnBuilder.nullValue("java/lang/Object"));
+            ib.set(receiver, AdvIBdr.nullValue("java/lang/Object"));
         }
         else
         {
             popObject(ib, context, receiver);
         }
 
-        ib.set(result, AdvInsnBuilder.callStatic(
+        ib.set(result, AdvIBdr.callStatic(
                 context.vm.owner,
                 context.vm.getField.name(),
                 "java/lang/Object",
                 owner,
                 name,
                 descriptor,
-                AdvInsnBuilder.constant(opcode == Opcs.GETSTATIC),
+                AdvIBdr.constant(opcode == Opcs.GETSTATIC),
                 receiver));
 
         ib.ifElse(
                 isCategory2Descriptor(descriptor),
-                b -> pushObjectWithWidth(b, context, result, AdvInsnBuilder.constant(2)),
+                b -> pushObjectWithWidth(b, context, result, AdvIBdr.constant(2)),
                 b -> pushObject(b, context, result));
     }
 
-    private static Expr readConstantString(AdvInsnBuilder ib, InterpretContext context)
+    private static Expr readConstantString(AdvIBdr ib, InterpretContext context)
     {
         Local token = context.intLocal("fieldToken", InterpretContext.JUMP_TARGET);
         context.nextOperand(ib, token);
@@ -66,14 +66,14 @@ public class ReadFieldBranch extends InterpretBranch
 
     private static Condition isCategory2Descriptor(Local descriptor)
     {
-        Expr firstChar = AdvInsnBuilder.callVirtual(
+        Expr firstChar = AdvIBdr.callVirtual(
                 descriptor,
                 "java/lang/String",
                 "charAt",
                 "C",
-                AdvInsnBuilder.constant(0));
-        return AdvInsnBuilder.or(
-                AdvInsnBuilder.equal(firstChar, AdvInsnBuilder.constant('J')),
-                AdvInsnBuilder.equal(firstChar, AdvInsnBuilder.constant('D')));
+                AdvIBdr.constant(0));
+        return AdvIBdr.or(
+                AdvIBdr.equal(firstChar, AdvIBdr.constant('J')),
+                AdvIBdr.equal(firstChar, AdvIBdr.constant('D')));
     }
 }

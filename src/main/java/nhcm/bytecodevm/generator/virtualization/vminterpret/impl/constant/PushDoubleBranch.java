@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.constant;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
@@ -19,8 +19,8 @@ public class PushDoubleBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
-        pushNumber(ib, context, NumericType.DOUBLE, AdvInsnBuilder.constant((double) (opcode.opcode - Opcodes.DCONST_0)));
+        pushNumber(ib, context, NumericType.DOUBLE, AdvIBdr.constant((double) (opcode.opcode - Opcodes.DCONST_0)));
     }
 }

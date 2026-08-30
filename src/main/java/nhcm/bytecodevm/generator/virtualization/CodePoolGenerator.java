@@ -1,7 +1,7 @@
 package nhcm.bytecodevm.generator.virtualization;
 
 import lombok.Getter;
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.advInsn.SwitchCase;
@@ -183,7 +183,7 @@ public class CodePoolGenerator extends ClassObj
         cn.fields.add(FieldUtils.newFieldNode(new Acc[]{Acc.PRIVATE, Acc.STATIC, Acc.FINAL}, layout.maxStack.name(), layout.maxStack.descriptor()));
 
         MethodNode clinit = MethodUtils.newMethodNode(new Acc[]{Acc.STATIC}, "<clinit>", "()V");
-        AdvInsnBuilder clinitBuilder = new AdvInsnBuilder(0);
+        AdvIBdr clinitBuilder = new AdvIBdr(0);
         addClinitHelper(cn, clinitBuilder, 0, initOPCODE_STREAMS());
         addClinitHelper(cn, clinitBuilder, 1, initOPERAND_STREAMS());
         addClinitHelper(cn, clinitBuilder, 2, initLAYOUT_STREAMS());
@@ -194,7 +194,7 @@ public class CodePoolGenerator extends ClassObj
         addClinitHelper(cn, clinitBuilder, 7, initMETHOD_KEYS());
         addClinitHelper(cn, clinitBuilder, 8, initFEATURE_FLAGS());
         addClinitHelper(cn, clinitBuilder, 9, initMAX_LOCALS_MAX_STACK());
-        clinitBuilder.set(AdvInsnBuilder.staticField(layout.instance), AdvInsnBuilder.newObject(layout.owner));
+        clinitBuilder.set(AdvIBdr.staticField(layout.instance), AdvIBdr.newObject(layout.owner));
         clinitBuilder.returnVoid();
         clinit.instructions.add(clinitBuilder.toInsnList());
         cn.methods.add(clinit);
@@ -240,16 +240,16 @@ public class CodePoolGenerator extends ClassObj
         }
     }
 
-    private void addClinitHelper(ClassNode classNode, AdvInsnBuilder clinit, int index, InsnList body)
+    private void addClinitHelper(ClassNode classNode, AdvIBdr clinit, int index, InsnList body)
     {
         String name = namer.method(classNode.name, "codePoolInit$" + index, "()V");
         MethodNode helper = MethodUtils.newMethodNode(new Acc[]{Acc.PRIVATE, Acc.STATIC}, name, "()V");
         helper.instructions.add(body);
-        AdvInsnBuilder helperEnd = new AdvInsnBuilder(0);
+        AdvIBdr helperEnd = new AdvIBdr(0);
         helperEnd.returnVoid();
         helper.instructions.add(helperEnd.toInsnList());
         classNode.methods.add(helper);
-        clinit.directCall(AdvInsnBuilder.callStatic(layout.owner, name, "V"));
+        clinit.directCall(AdvIBdr.callStatic(layout.owner, name, "V"));
     }
 
     private MethodNode genMixMethod()
@@ -259,22 +259,22 @@ public class CodePoolGenerator extends ClassObj
                 layout.mix.name(), // mix
                 layout.mix.descriptor() // (IIII)I
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local key = ib.getLocal("key", "I", 0);
         Local a = ib.getLocal("a", "I", 1);
         Local b = ib.getLocal("b", "I", 2);
         Local c = ib.getLocal("c", "I", 3);
         Local x = ib.getLocal("x", "I", 4);
 
-        ib.set(x, AdvInsnBuilder.bitXor(key, AdvInsnBuilder.constant(profile.mixSeed)));
+        ib.set(x, AdvIBdr.bitXor(key, AdvIBdr.constant(profile.mixSeed)));
         mixRound(ib, x, a, profile.mixRoundA);
         mixRound(ib, x, b, profile.mixRoundB);
         mixRound(ib, x, c, profile.mixRoundC);
-        ib.set(x, AdvInsnBuilder.bitXor(x, AdvInsnBuilder.unsignedShiftRight(x, AdvInsnBuilder.constant(16))));
-        ib.set(x, AdvInsnBuilder.multiply(x, AdvInsnBuilder.constant(profile.mixMulA)));
-        ib.set(x, AdvInsnBuilder.bitXor(x, AdvInsnBuilder.unsignedShiftRight(x, AdvInsnBuilder.constant(15))));
-        ib.set(x, AdvInsnBuilder.multiply(x, AdvInsnBuilder.constant(profile.mixMulB)));
-        ib.set(x, AdvInsnBuilder.bitXor(x, AdvInsnBuilder.unsignedShiftRight(x, AdvInsnBuilder.constant(16))));
+        ib.set(x, AdvIBdr.bitXor(x, AdvIBdr.unsignedShiftRight(x, AdvIBdr.constant(16))));
+        ib.set(x, AdvIBdr.multiply(x, AdvIBdr.constant(profile.mixMulA)));
+        ib.set(x, AdvIBdr.bitXor(x, AdvIBdr.unsignedShiftRight(x, AdvIBdr.constant(15))));
+        ib.set(x, AdvIBdr.multiply(x, AdvIBdr.constant(profile.mixMulB)));
+        ib.set(x, AdvIBdr.bitXor(x, AdvIBdr.unsignedShiftRight(x, AdvIBdr.constant(16))));
         ib.returnValue(x);
         return method;
     }
@@ -286,17 +286,17 @@ public class CodePoolGenerator extends ClassObj
                 layout.arrayMix.name(), // arrayMix
                 layout.arrayMix.descriptor() // (II)I
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local key = ib.getLocal("key", "I", 0);
         Local index = ib.getLocal("index", "I", 1);
-        ib.returnValue(AdvInsnBuilder.callStatic(
+        ib.returnValue(AdvIBdr.callStatic(
                 layout.owner,
                 layout.mix.name(),
                 "I",
                 key,
                 index,
-                AdvInsnBuilder.constant(profile.saltArray),
-                AdvInsnBuilder.constant(0)));
+                AdvIBdr.constant(profile.saltArray),
+                AdvIBdr.constant(0)));
         return method;
     }
 
@@ -307,7 +307,7 @@ public class CodePoolGenerator extends ClassObj
                 layout.unpackInts.name(), // unpackInts
                 layout.unpackInts.descriptor() // ([JII)[I
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local packed = ib.getLocal("packed", "[J", 0);
         Local length = ib.getLocal("length", "I", 1);
         Local key = ib.getLocal("key", "I", 2);
@@ -316,32 +316,32 @@ public class CodePoolGenerator extends ClassObj
         Local outIndex = ib.getLocal("outIndex", "I", 5);
         Local word = ib.getLocal("word", "J", 6);
 
-        ib.set(result, AdvInsnBuilder.newArray("int", length));
-        ib.set(pair, AdvInsnBuilder.constant(0));
-        ib.set(outIndex, AdvInsnBuilder.constant(0));
+        ib.set(result, AdvIBdr.newArray("int", length));
+        ib.set(pair, AdvIBdr.constant(0));
+        ib.set(outIndex, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.lessThan(pair, AdvInsnBuilder.arrayLength(packed)),
+                AdvIBdr.lessThan(pair, AdvIBdr.arrayLength(packed)),
                 b -> {
-                    b.set(word, AdvInsnBuilder.arrayAt(packed, pair));
+                    b.set(word, AdvIBdr.arrayAt(packed, pair));
                     b.setArray(
                             result,
                             outIndex,
-                                    AdvInsnBuilder.bitXor(
-                                            AdvInsnBuilder.cast(AdvInsnBuilder.unsignedShiftRight(word, AdvInsnBuilder.constant(32)), "I"),
-                                    AdvInsnBuilder.callStatic(layout.owner, layout.arrayMix.name(), "I", key, outIndex)));
+                            AdvIBdr.bitXor(
+                                    AdvIBdr.cast(AdvIBdr.unsignedShiftRight(word, AdvIBdr.constant(32)), "I"),
+                                    AdvIBdr.callStatic(layout.owner, layout.arrayMix.name(), "I", key, outIndex)));
                     b.ifCondition(
-                            AdvInsnBuilder.lessThan(AdvInsnBuilder.plus(outIndex, AdvInsnBuilder.constant(1)), length),
+                            AdvIBdr.lessThan(AdvIBdr.plus(outIndex, AdvIBdr.constant(1)), length),
                             odd -> odd.setArray(
                                     result,
-                                    AdvInsnBuilder.plus(outIndex, AdvInsnBuilder.constant(1)),
-                                    AdvInsnBuilder.bitXor(
-                                            AdvInsnBuilder.cast(word, "I"),
-                                            AdvInsnBuilder.callStatic(
+                                    AdvIBdr.plus(outIndex, AdvIBdr.constant(1)),
+                                    AdvIBdr.bitXor(
+                                            AdvIBdr.cast(word, "I"),
+                                            AdvIBdr.callStatic(
                                                     layout.owner,
                                                     layout.arrayMix.name(),
                                                     "I",
                                                     key,
-                                                    AdvInsnBuilder.plus(outIndex, AdvInsnBuilder.constant(1))))));
+                                                    AdvIBdr.plus(outIndex, AdvIBdr.constant(1))))));
                     b.increment(pair, 1);
                     b.increment(outIndex, 2);
                 });
@@ -349,15 +349,15 @@ public class CodePoolGenerator extends ClassObj
         return method;
     }
 
-    private static void mixRound(AdvInsnBuilder ib, Local x, Expr value, int salt)
+    private static void mixRound(AdvIBdr ib, Local x, Expr value, int salt)
     {
-        ib.set(x, AdvInsnBuilder.bitXor(
+        ib.set(x, AdvIBdr.bitXor(
                 x,
                 add(
                         value,
-                        AdvInsnBuilder.constant(salt),
-                        AdvInsnBuilder.shiftLeft(x, AdvInsnBuilder.constant(6)),
-                        AdvInsnBuilder.unsignedShiftRight(x, AdvInsnBuilder.constant(2)))));
+                        AdvIBdr.constant(salt),
+                        AdvIBdr.shiftLeft(x, AdvIBdr.constant(6)),
+                        AdvIBdr.unsignedShiftRight(x, AdvIBdr.constant(2)))));
     }
 
     private InsnList initOPCODE_STREAMS()
@@ -407,27 +407,27 @@ public class CodePoolGenerator extends ClassObj
 
     private InsnList initMETHOD_KEYS()
     {
-        AdvInsnBuilder ib = new AdvInsnBuilder(0);
+        AdvIBdr ib = new AdvIBdr(0);
         int[] keys = new int[methodsByMethodKeyIndex.size()];
         for (int slot = 0; slot < methodsByMethodKeyIndex.size(); slot++)
         {
             keys[slot] = protectedMethodById.get(methodsByMethodKeyIndex.get(slot).codeId).methodKey;
         }
         Local methodKeys = emitIntArray(ib, "methodKeys", keys);
-        ib.set(AdvInsnBuilder.staticField(layout.methodKeys), methodKeys);
+        ib.set(AdvIBdr.staticField(layout.methodKeys), methodKeys);
         return ib.toInsnList();
     }
 
     private InsnList initFEATURE_FLAGS()
     {
-        AdvInsnBuilder ib = new AdvInsnBuilder(0);
+        AdvIBdr ib = new AdvIBdr(0);
         int[] flags = new int[methodsByFeatureFlagsIndex.size()];
         for (int slot = 0; slot < methodsByFeatureFlagsIndex.size(); slot++)
         {
             flags[slot] = protectedMethodById.get(methodsByFeatureFlagsIndex.get(slot).codeId).featureFlags;
         }
         Local featureFlags = emitIntArray(ib, "featureFlags", flags);
-        ib.set(AdvInsnBuilder.staticField(layout.featureFlags), featureFlags);
+        ib.set(AdvIBdr.staticField(layout.featureFlags), featureFlags);
         return ib.toInsnList();
     }
 
@@ -437,9 +437,9 @@ public class CodePoolGenerator extends ClassObj
             List<CompiledMethod> methods,
             Function<CompiledMethod, int[]> data)
     {
-        AdvInsnBuilder ib = new AdvInsnBuilder(0);
+        AdvIBdr ib = new AdvIBdr(0);
         Local table = ib.var(localName, "[[I");
-        ib.set(table, AdvInsnBuilder.newMultiArray("[[I", 1, AdvInsnBuilder.constant(methods.size())));
+        ib.set(table, AdvIBdr.newMultiArray("[[I", 1, AdvIBdr.constant(methods.size())));
         for (int slot = 0; slot < methods.size(); slot++)
         {
             CompiledMethod method = methods.get(slot);
@@ -448,45 +448,45 @@ public class CodePoolGenerator extends ClassObj
                     localName + slot,
                     data.apply(method),
                     methodConfig(method).dynamicCodePoolBuild);
-            ib.setArray(table, AdvInsnBuilder.constant(slot), row);
+            ib.setArray(table, AdvIBdr.constant(slot), row);
         }
-        ib.set(AdvInsnBuilder.staticField(target), table);
+        ib.set(AdvIBdr.staticField(target), table);
         return ib.toInsnList();
     }
 
-    private Local emitIntArray(AdvInsnBuilder ib, String name, int[] values)
+    private Local emitIntArray(AdvIBdr ib, String name, int[] values)
     {
         return emitIntArray(ib, name, values, config.dynamicCodePoolBuild);
     }
 
-    private Local emitIntArray(AdvInsnBuilder ib, String name, int[] values, boolean dynamicCodePoolBuild)
+    private Local emitIntArray(AdvIBdr ib, String name, int[] values, boolean dynamicCodePoolBuild)
     {
         if (dynamicCodePoolBuild)
         {
             int key = RandomUtils.randomInt();
             long[] packedValues = packInts(values, key, profile);
             Local packed = ib.var(name + "Packed", "[J");
-            ib.set(packed, AdvInsnBuilder.newArray("long", AdvInsnBuilder.constant(packedValues.length)));
+            ib.set(packed, AdvIBdr.newArray("long", AdvIBdr.constant(packedValues.length)));
             for (int index = 0; index < packedValues.length; index++)
             {
-                ib.setArray(packed, AdvInsnBuilder.constant(index), AdvInsnBuilder.constant(packedValues[index]));
+                ib.setArray(packed, AdvIBdr.constant(index), AdvIBdr.constant(packedValues[index]));
             }
             Local result = ib.var(name, "[I");
-            ib.set(result, AdvInsnBuilder.callStatic(
+            ib.set(result, AdvIBdr.callStatic(
                     layout.owner,
                     layout.unpackInts.name(),
                     "[I",
                     packed,
-                    AdvInsnBuilder.constant(values.length),
-                    AdvInsnBuilder.constant(key)));
+                    AdvIBdr.constant(values.length),
+                    AdvIBdr.constant(key)));
             return result;
         }
 
         Local result = ib.var(name, "[I");
-        ib.set(result, AdvInsnBuilder.newArray("int", AdvInsnBuilder.constant(values.length)));
+        ib.set(result, AdvIBdr.newArray("int", AdvIBdr.constant(values.length)));
         for (int index = 0; index < values.length; index++)
         {
-            ib.setArray(result, AdvInsnBuilder.constant(index), AdvInsnBuilder.constant(values[index]));
+            ib.setArray(result, AdvIBdr.constant(index), AdvIBdr.constant(values[index]));
         }
         return result;
     }
@@ -509,9 +509,9 @@ public class CodePoolGenerator extends ClassObj
 
     private InsnList initCONSTANTS()
     {
-        AdvInsnBuilder ib = new AdvInsnBuilder(0);
+        AdvIBdr ib = new AdvIBdr(0);
         Local constantsTable = ib.var("constants", "[[Ljava/lang/Object;");
-        ib.set(constantsTable, AdvInsnBuilder.newMultiArray(layout.constants.descriptor(), 1, AdvInsnBuilder.constant(methodsByConstantsIndex.size())));
+        ib.set(constantsTable, AdvIBdr.newMultiArray(layout.constants.descriptor(), 1, AdvIBdr.constant(methodsByConstantsIndex.size())));
 
         for (int slot = 0;
              slot < methodsByConstantsIndex.size();
@@ -520,7 +520,7 @@ public class CodePoolGenerator extends ClassObj
             Object[] constants = protectedMethodById.get(methodsByConstantsIndex.get(slot).codeId).constants;
 
             Local constantRow = ib.var("constants" + slot, "[Ljava/lang/Object;");
-            ib.set(constantRow, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(constants.length)));
+            ib.set(constantRow, AdvIBdr.newArray("java/lang/Object", AdvIBdr.constant(constants.length)));
 
             for (int constantIndex = 0;
                  constantIndex < constants.length;
@@ -529,19 +529,19 @@ public class CodePoolGenerator extends ClassObj
                 emitConstant(ib, constantRow, constantIndex, constants[constantIndex]);
             }
 
-            ib.setArray(constantsTable, AdvInsnBuilder.constant(slot), constantRow);
+            ib.setArray(constantsTable, AdvIBdr.constant(slot), constantRow);
         }
 
-        ib.set(AdvInsnBuilder.staticField(layout.constants), constantsTable);
+        ib.set(AdvIBdr.staticField(layout.constants), constantsTable);
 
         return ib.toInsnList();
     }
 
     private InsnList initEXCEPTION_HANDLERS()
     {
-        AdvInsnBuilder ib = new AdvInsnBuilder(0);
+        AdvIBdr ib = new AdvIBdr(0);
         Local exceptionHandlers = ib.var("exceptionHandlers", "[[I");
-        ib.set(exceptionHandlers, AdvInsnBuilder.newMultiArray(layout.exceptionHandlers.descriptor(), 1, AdvInsnBuilder.constant(methodsByExceptionHandlersIndex.size())));
+        ib.set(exceptionHandlers, AdvIBdr.newMultiArray(layout.exceptionHandlers.descriptor(), 1, AdvIBdr.constant(methodsByExceptionHandlersIndex.size())));
         for (int slot = 0; slot < methodsByExceptionHandlersIndex.size(); slot++)
         {
             int[] handlers = protectedMethodById.get(methodsByExceptionHandlersIndex.get(slot).codeId).exceptionHandlers;
@@ -551,34 +551,34 @@ public class CodePoolGenerator extends ClassObj
                     "exceptionHandlers" + slot,
                     handlers,
                     methodConfig(methodsByExceptionHandlersIndex.get(slot)).dynamicCodePoolBuild);
-            ib.setArray(exceptionHandlers, AdvInsnBuilder.constant(slot), handlerRow);
+            ib.setArray(exceptionHandlers, AdvIBdr.constant(slot), handlerRow);
         }
 
-        ib.set(AdvInsnBuilder.staticField(layout.exceptionHandlers), exceptionHandlers);
+        ib.set(AdvIBdr.staticField(layout.exceptionHandlers), exceptionHandlers);
         return ib.toInsnList();
     }
 
-    private void emitConstant(AdvInsnBuilder ib, Expr constants, int constantIndex, Object value)
+    private void emitConstant(AdvIBdr ib, Expr constants, int constantIndex, Object value)
     {
         switch (value)
         {
-            case null -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), AdvInsnBuilder.constant(null));
-            case ProtectedVMMethod.EncodedConstant encoded -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), encodedConstant(ib, encoded));
-            case String ignored -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), AdvInsnBuilder.constant(value));
-            case Integer integer -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), boxedInteger(integer));
-            case Long number -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), boxedLong(number));
-            case Float number -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), boxedFloat(number));
-            case Double number -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), boxedDouble(number));
-            case Type type -> ib.setArray(constants, AdvInsnBuilder.constant(constantIndex), typeConstant(ib, type));
+            case null -> ib.setArray(constants, AdvIBdr.constant(constantIndex), AdvIBdr.constant(null));
+            case ProtectedVMMethod.EncodedConstant encoded -> ib.setArray(constants, AdvIBdr.constant(constantIndex), encodedConstant(ib, encoded));
+            case String ignored -> ib.setArray(constants, AdvIBdr.constant(constantIndex), AdvIBdr.constant(value));
+            case Integer integer -> ib.setArray(constants, AdvIBdr.constant(constantIndex), boxedInteger(integer));
+            case Long number -> ib.setArray(constants, AdvIBdr.constant(constantIndex), boxedLong(number));
+            case Float number -> ib.setArray(constants, AdvIBdr.constant(constantIndex), boxedFloat(number));
+            case Double number -> ib.setArray(constants, AdvIBdr.constant(constantIndex), boxedDouble(number));
+            case Type type -> ib.setArray(constants, AdvIBdr.constant(constantIndex), typeConstant(ib, type));
             case Handle ignored -> ib.setArray(
                     constants,
-                    AdvInsnBuilder.constant(constantIndex),
+                    AdvIBdr.constant(constantIndex),
                     Type.getType(Object.class),
                     b -> b.raw(raw -> raw.ldc(value)),
                     "handle(" + value + ")");
             case ConstantDynamic dynamic -> ib.setArray(
                     constants,
-                    AdvInsnBuilder.constant(constantIndex),
+                    AdvIBdr.constant(constantIndex),
                     boxedDynamicType(dynamic),
                     b -> {
                         b.raw(raw -> raw.ldc(dynamic));
@@ -589,18 +589,18 @@ public class CodePoolGenerator extends ClassObj
         }
     }
 
-    private Expr encodedConstant(AdvInsnBuilder ib, ProtectedVMMethod.EncodedConstant value)
+    private Expr encodedConstant(AdvIBdr ib, ProtectedVMMethod.EncodedConstant value)
     {
         Local encoded = ib.var(
                 "encodedConstant" + Math.abs(Arrays.deepHashCode(value.variants())) + RandomUtils.randomInt(Integer.MAX_VALUE),
                 "[[I");
-        ib.set(encoded, AdvInsnBuilder.newMultiArray(
+        ib.set(encoded, AdvIBdr.newMultiArray(
                 "[[I",
                 1,
-                AdvInsnBuilder.constant(value.variants().length)));
+                AdvIBdr.constant(value.variants().length)));
         for (int index = 0; index < value.variants().length; index++)
         {
-            ib.setArray(encoded, AdvInsnBuilder.constant(index), emitIntArray(
+            ib.setArray(encoded, AdvIBdr.constant(index), emitIntArray(
                     ib,
                     "constantVariant" + RandomUtils.randomInt(Integer.MAX_VALUE),
                     value.variants()[index]));
@@ -608,36 +608,36 @@ public class CodePoolGenerator extends ClassObj
         return encoded;
     }
 
-    private Expr typeConstant(AdvInsnBuilder ib, Type type)
+    private Expr typeConstant(AdvIBdr ib, Type type)
     {
         Local encoded = ib.var(
                 "typeDescriptor" + Math.abs(type.getDescriptor().hashCode()) + RandomUtils.randomInt(Integer.MAX_VALUE),
                 "[Ljava/lang/String;");
-        ib.set(encoded, AdvInsnBuilder.newArray("java/lang/String", AdvInsnBuilder.constant(1)));
-        ib.setArray(encoded, AdvInsnBuilder.constant(0), AdvInsnBuilder.constant(type.getDescriptor()));
+        ib.set(encoded, AdvIBdr.newArray("java/lang/String", AdvIBdr.constant(1)));
+        ib.setArray(encoded, AdvIBdr.constant(0), AdvIBdr.constant(type.getDescriptor()));
         return encoded;
     }
 
     private InsnList initMAX_LOCALS_MAX_STACK()
     {
-        AdvInsnBuilder ib = new AdvInsnBuilder(0);
+        AdvIBdr ib = new AdvIBdr(0);
         Local maxLocals = ib.var("maxLocals", "[I");
-        ib.set(maxLocals, AdvInsnBuilder.newArray("int", AdvInsnBuilder.constant(methodsByMaxLocalsIndex.size())));
+        ib.set(maxLocals, AdvIBdr.newArray("int", AdvIBdr.constant(methodsByMaxLocalsIndex.size())));
         for (int slot = 0; slot < methodsByMaxLocalsIndex.size(); slot++)
         {
             VMMethod vmMethod = methodsByMaxLocalsIndex.get(slot).vmMethod;
-            ib.setArray(maxLocals, AdvInsnBuilder.constant(slot), AdvInsnBuilder.constant(vmMethod.maxLocals));
+            ib.setArray(maxLocals, AdvIBdr.constant(slot), AdvIBdr.constant(vmMethod.maxLocals));
         }
-        ib.set(AdvInsnBuilder.staticField(layout.maxLocals), maxLocals);
+        ib.set(AdvIBdr.staticField(layout.maxLocals), maxLocals);
 
         Local maxStack = ib.var("maxStack", "[I");
-        ib.set(maxStack, AdvInsnBuilder.newArray("int", AdvInsnBuilder.constant(methodsByMaxStackIndex.size())));
+        ib.set(maxStack, AdvIBdr.newArray("int", AdvIBdr.constant(methodsByMaxStackIndex.size())));
         for (int slot = 0; slot < methodsByMaxStackIndex.size(); slot++)
         {
             VMMethod vmMethod = methodsByMaxStackIndex.get(slot).vmMethod;
-            ib.setArray(maxStack, AdvInsnBuilder.constant(slot), AdvInsnBuilder.constant(vmMethod.maxStack));
+            ib.setArray(maxStack, AdvIBdr.constant(slot), AdvIBdr.constant(vmMethod.maxStack));
         }
-        ib.set(AdvInsnBuilder.staticField(layout.maxStack), maxStack);
+        ib.set(AdvIBdr.staticField(layout.maxStack), maxStack);
         return ib.toInsnList();
     }
 
@@ -647,7 +647,7 @@ public class CodePoolGenerator extends ClassObj
                 new Acc[]{Acc.PUBLIC},
                 layout.find.name(),
                 layout.find.descriptor());
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local codeIdLocal = ib.getLocal("codeId", "I", 1);
 
         List<CompiledMethod> methodsByCodeId = new ArrayList<>(compiledMethods);
@@ -656,19 +656,19 @@ public class CodePoolGenerator extends ClassObj
         for (int index = 0; index < methodsByCodeId.size(); index++)
         {
             int codeId = methodsByCodeId.get(index).codeId;
-            cases[index] = AdvInsnBuilder.switchCase(codeId, b -> b.returnValue(programFor(codeId)));
+            cases[index] = AdvIBdr.switchCase(codeId, b -> b.returnValue(programFor(codeId)));
         }
 
         ib.switchLookup(
                 codeIdLocal,
-                b -> b.returnValue(AdvInsnBuilder.nullValue(vmProgramGenerator.className())),
+                b -> b.returnValue(AdvIBdr.nullValue(vmProgramGenerator.className())),
                 cases);
         return method;
     }
 
     private Expr programFor(int codeId)
     {
-        return AdvInsnBuilder.newObject(
+        return AdvIBdr.newObject(
                 vmProgramGenerator.layout.owner,
                 opcodeStreamRow(codeId),
                 operandStreamRow(codeId),
@@ -685,115 +685,115 @@ public class CodePoolGenerator extends ClassObj
 
     private Expr opcodeStreamRow(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.opcodeStreams),
-                AdvInsnBuilder.constant(codeIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.opcodeStreams),
+                AdvIBdr.constant(codeIndexById.get(codeId)));
     }
 
     private Expr operandStreamRow(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.operandStreams),
-                AdvInsnBuilder.constant(operandIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.operandStreams),
+                AdvIBdr.constant(operandIndexById.get(codeId)));
     }
 
     private Expr layoutStreamRow(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.layoutStreams),
-                AdvInsnBuilder.constant(layoutIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.layoutStreams),
+                AdvIBdr.constant(layoutIndexById.get(codeId)));
     }
 
     private Expr blockStreamRow(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.blockStreams),
-                AdvInsnBuilder.constant(blockIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.blockStreams),
+                AdvIBdr.constant(blockIndexById.get(codeId)));
     }
 
     private Expr constantRow(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.constants),
-                AdvInsnBuilder.constant(constantsIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.constants),
+                AdvIBdr.constant(constantsIndexById.get(codeId)));
     }
 
     private Expr exceptionHandlerRow(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.exceptionHandlers),
-                AdvInsnBuilder.constant(exceptionHandlersIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.exceptionHandlers),
+                AdvIBdr.constant(exceptionHandlersIndexById.get(codeId)));
     }
 
     private Expr opcodeMapRow(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.opcodeMaps),
-                AdvInsnBuilder.constant(opcodeMapIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.opcodeMaps),
+                AdvIBdr.constant(opcodeMapIndexById.get(codeId)));
     }
 
     private Expr methodKeyValue(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.methodKeys),
-                AdvInsnBuilder.constant(methodKeyIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.methodKeys),
+                AdvIBdr.constant(methodKeyIndexById.get(codeId)));
     }
 
     private Expr featureFlagsValue(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.featureFlags),
-                AdvInsnBuilder.constant(featureFlagsIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.featureFlags),
+                AdvIBdr.constant(featureFlagsIndexById.get(codeId)));
     }
 
     private Expr maxLocalsValue(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.maxLocals),
-                AdvInsnBuilder.constant(maxLocalsIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.maxLocals),
+                AdvIBdr.constant(maxLocalsIndexById.get(codeId)));
     }
 
     private Expr maxStackValue(int codeId)
     {
-        return AdvInsnBuilder.arrayAt(
-                AdvInsnBuilder.staticField(layout.maxStack),
-                AdvInsnBuilder.constant(maxStackIndexById.get(codeId)));
+        return AdvIBdr.arrayAt(
+                AdvIBdr.staticField(layout.maxStack),
+                AdvIBdr.constant(maxStackIndexById.get(codeId)));
     }
 
     private static Expr boxedInteger(Integer value)
     {
-        return AdvInsnBuilder.callStatic(
+        return AdvIBdr.callStatic(
                 "java/lang/Integer",
                 "valueOf",
                 "java/lang/Integer",
-                AdvInsnBuilder.constant(value));
+                AdvIBdr.constant(value));
     }
 
     private static Expr boxedLong(Long value)
     {
-        return AdvInsnBuilder.callStatic(
+        return AdvIBdr.callStatic(
                 "java/lang/Long",
                 "valueOf",
                 "java/lang/Long",
-                AdvInsnBuilder.constant(value));
+                AdvIBdr.constant(value));
     }
 
     private static Expr boxedFloat(Float value)
     {
-        return AdvInsnBuilder.callStatic(
+        return AdvIBdr.callStatic(
                 "java/lang/Float",
                 "valueOf",
                 "java/lang/Float",
-                AdvInsnBuilder.constant(value));
+                AdvIBdr.constant(value));
     }
 
     private static Expr boxedDouble(Double value)
     {
-        return AdvInsnBuilder.callStatic(
+        return AdvIBdr.callStatic(
                 "java/lang/Double",
                 "valueOf",
                 "java/lang/Double",
-                AdvInsnBuilder.constant(value));
+                AdvIBdr.constant(value));
     }
 
     private static Type boxedDynamicType(ConstantDynamic dynamic)
@@ -864,7 +864,7 @@ public class CodePoolGenerator extends ClassObj
         Expr result = first;
         for (Expr value : rest)
         {
-            result = AdvInsnBuilder.plus(result, value);
+            result = AdvIBdr.plus(result, value);
         }
         return result;
     }

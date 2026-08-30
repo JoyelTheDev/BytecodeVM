@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.lowered;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.generator.virtualization.structure.LoweredInstructionPlanner;
@@ -18,7 +18,7 @@ public final class DataFlowRegionBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         Local nodeCount = context.intLocal("dataFlowNodeCount", InterpretContext.RIGHT_VALUE);
         Local finalDelta = context.intLocal("dataFlowFinalDelta", InterpretContext.LEFT_VALUE);
@@ -31,23 +31,23 @@ public final class DataFlowRegionBranch extends InterpretBranch
         context.nextOperand(ib, finalDelta);
         ib.set(
                 payloadSize,
-                AdvInsnBuilder.plus(
-                        AdvInsnBuilder.constant(LoweredInstructionPlanner.DATA_FLOW_HEADER_SIZE),
-                        AdvInsnBuilder.multiply(
+                AdvIBdr.plus(
+                        AdvIBdr.constant(LoweredInstructionPlanner.DATA_FLOW_HEADER_SIZE),
+                        AdvIBdr.multiply(
                                 nodeCount,
-                                AdvInsnBuilder.constant(LoweredInstructionPlanner.DATA_FLOW_NODE_SIZE))));
-        ib.set(payload, AdvInsnBuilder.newArray("int", payloadSize));
-        ib.setArray(payload, AdvInsnBuilder.constant(0), nodeCount);
-        ib.setArray(payload, AdvInsnBuilder.constant(1), finalDelta);
+                                AdvIBdr.constant(LoweredInstructionPlanner.DATA_FLOW_NODE_SIZE))));
+        ib.set(payload, AdvIBdr.newArray("int", payloadSize));
+        ib.setArray(payload, AdvIBdr.constant(0), nodeCount);
+        ib.setArray(payload, AdvIBdr.constant(1), finalDelta);
         ib.forLoop(
-                b -> b.set(index, AdvInsnBuilder.constant(LoweredInstructionPlanner.DATA_FLOW_HEADER_SIZE)),
-                AdvInsnBuilder.lessThan(index, payloadSize),
+                b -> b.set(index, AdvIBdr.constant(LoweredInstructionPlanner.DATA_FLOW_HEADER_SIZE)),
+                AdvIBdr.lessThan(index, payloadSize),
                 b -> b.increment(index, 1),
                 b -> {
                     context.nextOperand(b, value);
                     b.setArray(payload, index, value);
                 });
-        ib.directCall(AdvInsnBuilder.callStatic(
+        ib.directCall(AdvIBdr.callStatic(
                 context.vmClassName,
                 context.vm.executeDataFlow.name(),
                 "V",

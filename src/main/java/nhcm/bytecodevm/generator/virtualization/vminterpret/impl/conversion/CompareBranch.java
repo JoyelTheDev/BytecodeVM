@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.conversion;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Condition;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
@@ -21,7 +21,7 @@ public class CompareBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         NumericType type = NumericType.fromOpcode(opcode);
         Local result = context.intLocal("compareResult", InterpretContext.MIDDLE_VALUE);
@@ -42,7 +42,7 @@ public class CompareBranch extends InterpretBranch
     }
 
     private static void compareFloating(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             Opcs opcode,
             Local result,
             Expr left,
@@ -51,29 +51,29 @@ public class CompareBranch extends InterpretBranch
         boolean nanAsGreater = opcode == Opcs.FCMPG || opcode == Opcs.DCMPG;
         Condition hasNaN = switch (opcode)
         {
-            case FCMPL, FCMPG -> AdvInsnBuilder.or(
-                    AdvInsnBuilder.isTrue(AdvInsnBuilder.callStatic("java/lang/Float", "isNaN", "Z", left)),
-                    AdvInsnBuilder.isTrue(AdvInsnBuilder.callStatic("java/lang/Float", "isNaN", "Z", right)));
-            case DCMPL, DCMPG -> AdvInsnBuilder.or(
-                    AdvInsnBuilder.isTrue(AdvInsnBuilder.callStatic("java/lang/Double", "isNaN", "Z", left)),
-                    AdvInsnBuilder.isTrue(AdvInsnBuilder.callStatic("java/lang/Double", "isNaN", "Z", right)));
+            case FCMPL, FCMPG -> AdvIBdr.or(
+                    AdvIBdr.isTrue(AdvIBdr.callStatic("java/lang/Float", "isNaN", "Z", left)),
+                    AdvIBdr.isTrue(AdvIBdr.callStatic("java/lang/Float", "isNaN", "Z", right)));
+            case DCMPL, DCMPG -> AdvIBdr.or(
+                    AdvIBdr.isTrue(AdvIBdr.callStatic("java/lang/Double", "isNaN", "Z", left)),
+                    AdvIBdr.isTrue(AdvIBdr.callStatic("java/lang/Double", "isNaN", "Z", right)));
             default -> throw new IllegalArgumentException("Not a floating compare opcode: " + opcode);
         };
 
         ib.ifElse(
                 hasNaN,
-                b -> b.set(result, AdvInsnBuilder.constant(nanAsGreater ? 1 : -1)),
+                b -> b.set(result, AdvIBdr.constant(nanAsGreater ? 1 : -1)),
                 b -> compareOrdered(b, result, left, right));
     }
 
-    private static void compareOrdered(AdvInsnBuilder ib, Local result, Expr left, Expr right)
+    private static void compareOrdered(AdvIBdr ib, Local result, Expr left, Expr right)
     {
         ib.ifElse(
-                AdvInsnBuilder.greaterThan(left, right),
-                b -> b.set(result, AdvInsnBuilder.constant(1)),
+                AdvIBdr.greaterThan(left, right),
+                b -> b.set(result, AdvIBdr.constant(1)),
                 b -> b.ifElse(
-                        AdvInsnBuilder.equal(left, right),
-                        equal -> equal.set(result, AdvInsnBuilder.constant(0)),
-                        less -> less.set(result, AdvInsnBuilder.constant(-1))));
+                        AdvIBdr.equal(left, right),
+                        equal -> equal.set(result, AdvIBdr.constant(0)),
+                        less -> less.set(result, AdvIBdr.constant(-1))));
     }
 }

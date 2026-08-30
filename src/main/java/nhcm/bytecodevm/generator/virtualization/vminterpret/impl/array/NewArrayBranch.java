@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
@@ -21,7 +21,7 @@ public class NewArrayBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         switch (opcode)
         {
@@ -32,7 +32,7 @@ public class NewArrayBranch extends InterpretBranch
         }
     }
 
-    private static void generatePrimitiveArray(AdvInsnBuilder ib, InterpretContext context)
+    private static void generatePrimitiveArray(AdvIBdr ib, InterpretContext context)
     {
         Local atype = context.intLocal("arrayAType", InterpretContext.ARRAY_ATYPE);
         Local component = context.local("arrayComponent", "java/lang/Class", InterpretContext.ARRAY_COMPONENT);
@@ -40,22 +40,22 @@ public class NewArrayBranch extends InterpretBranch
         context.nextOperand(ib, atype);
         ib.switchLookup(
                 atype,
-                b -> b.throwValue(AdvInsnBuilder.newObject(
+                b -> b.throwValue(AdvIBdr.newObject(
                         "java/lang/IllegalArgumentException",
-                        AdvInsnBuilder.constant("Unknown NEWARRAY atype"))),
-                AdvInsnBuilder.switchCase(Opcodes.T_BOOLEAN, b -> b.set(component, primitiveType("java/lang/Boolean"))),
-                AdvInsnBuilder.switchCase(Opcodes.T_CHAR, b -> b.set(component, primitiveType("java/lang/Character"))),
-                AdvInsnBuilder.switchCase(Opcodes.T_FLOAT, b -> b.set(component, primitiveType("java/lang/Float"))),
-                AdvInsnBuilder.switchCase(Opcodes.T_DOUBLE, b -> b.set(component, primitiveType("java/lang/Double"))),
-                AdvInsnBuilder.switchCase(Opcodes.T_BYTE, b -> b.set(component, primitiveType("java/lang/Byte"))),
-                AdvInsnBuilder.switchCase(Opcodes.T_SHORT, b -> b.set(component, primitiveType("java/lang/Short"))),
-                AdvInsnBuilder.switchCase(Opcodes.T_INT, b -> b.set(component, primitiveType("java/lang/Integer"))),
-                AdvInsnBuilder.switchCase(Opcodes.T_LONG, b -> b.set(component, primitiveType("java/lang/Long"))));
+                        AdvIBdr.constant("Unknown NEWARRAY atype"))),
+                AdvIBdr.switchCase(Opcodes.T_BOOLEAN, b -> b.set(component, primitiveType("java/lang/Boolean"))),
+                AdvIBdr.switchCase(Opcodes.T_CHAR, b -> b.set(component, primitiveType("java/lang/Character"))),
+                AdvIBdr.switchCase(Opcodes.T_FLOAT, b -> b.set(component, primitiveType("java/lang/Float"))),
+                AdvIBdr.switchCase(Opcodes.T_DOUBLE, b -> b.set(component, primitiveType("java/lang/Double"))),
+                AdvIBdr.switchCase(Opcodes.T_BYTE, b -> b.set(component, primitiveType("java/lang/Byte"))),
+                AdvIBdr.switchCase(Opcodes.T_SHORT, b -> b.set(component, primitiveType("java/lang/Short"))),
+                AdvIBdr.switchCase(Opcodes.T_INT, b -> b.set(component, primitiveType("java/lang/Integer"))),
+                AdvIBdr.switchCase(Opcodes.T_LONG, b -> b.set(component, primitiveType("java/lang/Long"))));
 
         createSingleArray(ib, context, component);
     }
 
-    private static void generateReferenceArray(AdvInsnBuilder ib, InterpretContext context)
+    private static void generateReferenceArray(AdvIBdr ib, InterpretContext context)
     {
         Local classIndex = context.intLocal("arrayClassIndex", InterpretContext.ARRAY_ATYPE);
         Local component = context.local("arrayComponent", "java/lang/Class", InterpretContext.ARRAY_COMPONENT);
@@ -65,7 +65,7 @@ public class NewArrayBranch extends InterpretBranch
         createSingleArray(ib, context, component);
     }
 
-    private static void generateMultiArray(AdvInsnBuilder ib, InterpretContext context)
+    private static void generateMultiArray(AdvIBdr ib, InterpretContext context)
     {
         Local classIndex = context.intLocal("arrayClassIndex", InterpretContext.ARRAY_ATYPE);
         Local component = context.local("arrayComponent", "java/lang/Class", InterpretContext.ARRAY_COMPONENT);
@@ -77,21 +77,21 @@ public class NewArrayBranch extends InterpretBranch
         ib.set(component, context.loadClass(context.constantString(classIndex)));
 
         context.nextOperand(ib, dimensions);
-        ib.set(lengths, AdvInsnBuilder.newArray("I", dimensions));
-        ib.set(index, AdvInsnBuilder.minus(dimensions, AdvInsnBuilder.constant(1)));
+        ib.set(lengths, AdvIBdr.newArray("I", dimensions));
+        ib.set(index, AdvIBdr.minus(dimensions, AdvIBdr.constant(1)));
         ib.whileLoop(
-                AdvInsnBuilder.greaterOrEqual(index, AdvInsnBuilder.constant(0)),
+                AdvIBdr.greaterOrEqual(index, AdvIBdr.constant(0)),
                 b -> {
                     popInt(b, context, InterpretContext.RIGHT_VALUE);
                     b.setArray(lengths, index, context.rightValue(NumericType.INT));
                     b.increment(index, -1);
                 });
 
-        ib.set(index, AdvInsnBuilder.constant(0));
+        ib.set(index, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.lessThan(index, dimensions),
+                AdvIBdr.lessThan(index, dimensions),
                 b -> {
-                    b.set(component, AdvInsnBuilder.callVirtual(
+                    b.set(component, AdvIBdr.callVirtual(
                             component,
                             "java/lang/Class",
                             "getComponentType",
@@ -99,7 +99,7 @@ public class NewArrayBranch extends InterpretBranch
                     b.increment(index, 1);
                 });
 
-        pushObject(ib, context, AdvInsnBuilder.callStatic(
+        pushObject(ib, context, AdvIBdr.callStatic(
                 "java/lang/reflect/Array",
                 "newInstance",
                 "java/lang/Object",
@@ -107,10 +107,10 @@ public class NewArrayBranch extends InterpretBranch
                 lengths));
     }
 
-    private static void createSingleArray(AdvInsnBuilder ib, InterpretContext context, Expr component)
+    private static void createSingleArray(AdvIBdr ib, InterpretContext context, Expr component)
     {
         popInt(ib, context, InterpretContext.RIGHT_VALUE);
-        pushObject(ib, context, AdvInsnBuilder.callStatic(
+        pushObject(ib, context, AdvIBdr.callStatic(
                 "java/lang/reflect/Array",
                 "newInstance",
                 "java/lang/Object",
@@ -120,6 +120,6 @@ public class NewArrayBranch extends InterpretBranch
 
     private static Expr primitiveType(String boxedOwner)
     {
-        return AdvInsnBuilder.staticField(boxedOwner, "TYPE", "java/lang/Class");
+        return AdvIBdr.staticField(boxedOwner, "TYPE", "java/lang/Class");
     }
 }

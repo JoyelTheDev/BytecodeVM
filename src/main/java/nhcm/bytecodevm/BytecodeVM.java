@@ -65,6 +65,10 @@ public class BytecodeVM
 
             # Input transformations and call-graph expansion.
             constantFix: true
+            # Rewrites literal strings and primitive numbers into per-site encrypted data
+            # that is reconstructed by the code before that code is virtualized.
+            preEncryptStrings: true
+            preEncryptNumbers: true
             # Removes BytecodeVM SDK annotations from the output JAR.
             removeAnnotations: true
             includeMethodsCalledWithin: false

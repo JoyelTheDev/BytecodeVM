@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.registervm;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
@@ -25,12 +25,12 @@ public final class RegisterVMGenerator extends AbstractVMStructureGenerator impl
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local registerResult = runtime.intLocal("registerResult", InterpretContext.OPCODE);
-        ib.set(registerResult, AdvInsnBuilder.constant(0));
+        ib.set(registerResult, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(registerResult, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(registerResult, AdvIBdr.constant(0)),
                 registerMachine -> registerMachine.set(registerResult, generation.step(runtime)));
     }
 
@@ -53,22 +53,22 @@ public final class RegisterVMGenerator extends AbstractVMStructureGenerator impl
         dispatch.generation().onClassInitialize(initializer -> {
             Local keys = initializer.var("registerOpcodeKeys", "[I");
             Local table = initializer.var("registerOperations", operationsField.descriptor());
-            initializer.set(keys, AdvInsnBuilder.newArray("int", AdvInsnBuilder.constant(targets.size())));
-            initializer.set(table, AdvInsnBuilder.newArray(
-                    operations.interfaceName(), AdvInsnBuilder.constant(targets.size())));
+            initializer.set(keys, AdvIBdr.newArray("int", AdvIBdr.constant(targets.size())));
+            initializer.set(table, AdvIBdr.newArray(
+                    operations.interfaceName(), AdvIBdr.constant(targets.size())));
             int index = 0;
             for (Map.Entry<Integer, VMDispatchTarget> entry : targets.entrySet())
             {
-                initializer.setArray(keys, AdvInsnBuilder.constant(index), AdvInsnBuilder.constant(entry.getKey()));
-                initializer.setArray(table, AdvInsnBuilder.constant(index),
-                        operations.newHandler(entry.getValue().primaryKey()));
+                initializer.setArray(keys, AdvIBdr.constant(index), AdvIBdr.constant(entry.getKey()));
+                initializer.setArray(table, AdvIBdr.constant(index),
+                                     operations.newHandler(entry.getValue().primaryKey()));
                 index++;
             }
-            initializer.set(AdvInsnBuilder.staticField(keysField), keys);
-            initializer.set(AdvInsnBuilder.staticField(operationsField), table);
+            initializer.set(AdvIBdr.staticField(keysField), keys);
+            initializer.set(AdvIBdr.staticField(operationsField), table);
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("registerOpcode", InterpretContext.DISPATCH_SELECTOR);
         Local cursor = runtime.intLocal("registerOperationIndex", InterpretContext.DISPATCH_SELECTOR + 1);
@@ -76,21 +76,21 @@ public final class RegisterVMGenerator extends AbstractVMStructureGenerator impl
                 "registerOperation", operations.interfaceName(), InterpretContext.DISPATCH_SELECTOR + 2);
         Local status = runtime.intLocal("registerStatus", InterpretContext.DISPATCH_SELECTOR + 3);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(cursor, AdvInsnBuilder.constant(0));
-        ib.set(operation, AdvInsnBuilder.constant(null));
+        ib.set(cursor, AdvIBdr.constant(0));
+        ib.set(operation, AdvIBdr.constant(null));
         ib.whileLoop(
-                AdvInsnBuilder.and(
-                        AdvInsnBuilder.lessThan(cursor, AdvInsnBuilder.constant(targets.size())),
-                        AdvInsnBuilder.isNull(operation)),
+                AdvIBdr.and(
+                        AdvIBdr.lessThan(cursor, AdvIBdr.constant(targets.size())),
+                        AdvIBdr.isNull(operation)),
                 search -> {
                     search.ifCondition(
-                            AdvInsnBuilder.equal(
-                                    AdvInsnBuilder.arrayAt(AdvInsnBuilder.staticField(keysField), cursor), selector),
-                            found -> found.set(operation, AdvInsnBuilder.arrayAt(
-                                    AdvInsnBuilder.staticField(operationsField), cursor)));
+                            AdvIBdr.equal(
+                                    AdvIBdr.arrayAt(AdvIBdr.staticField(keysField), cursor), selector),
+                            found -> found.set(operation, AdvIBdr.arrayAt(
+                                    AdvIBdr.staticField(operationsField), cursor)));
                     search.increment(cursor, 1);
                 });
-        ib.ifCondition(AdvInsnBuilder.isNull(operation), missing -> missing.gotoLabel(dispatch.unknown()));
+        ib.ifCondition(AdvIBdr.isNull(operation), missing -> missing.gotoLabel(dispatch.unknown()));
         ib.set(status, operations.invoke(operation, runtime));
         dispatch.finishExternal(ib, status);
     }

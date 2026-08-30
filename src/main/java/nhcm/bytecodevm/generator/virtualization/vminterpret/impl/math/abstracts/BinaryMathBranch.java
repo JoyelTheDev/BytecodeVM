@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.math.abstracts;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
@@ -27,7 +27,7 @@ public abstract class BinaryMathBranch extends InterpretBranch
     }
 
     @Override
-    public final void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public final void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         if (!vmOpcode.contains(opcode))
         {

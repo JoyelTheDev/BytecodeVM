@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.distributeddispatch;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.advInsn.SwitchCase;
 import nhcm.bytecodevm.enums.VMStructure;
@@ -31,12 +31,12 @@ public final class DistributedDispatchVMGenerator extends AbstractVMStructureGen
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local pulse = runtime.intLocal("distributedPulse", InterpretContext.OPCODE);
-        ib.set(pulse, AdvInsnBuilder.constant(0));
+        ib.set(pulse, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(pulse, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(pulse, AdvIBdr.constant(0)),
                 shard -> shard.set(pulse, generation.step(runtime)));
     }
 
@@ -64,26 +64,26 @@ public final class DistributedDispatchVMGenerator extends AbstractVMStructureGen
             dispatch.generation().addMethod(createShard(dispatch, name, lanes.get(lane)));
         }
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("distributedSelector", InterpretContext.DISPATCH_SELECTOR);
         Local lane = runtime.intLocal("distributedLane", InterpretContext.DISPATCH_SELECTOR + 1);
         Local result = runtime.intLocal("distributedResult", InterpretContext.DISPATCH_SELECTOR + 2);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(lane, AdvInsnBuilder.callStatic(
+        ib.set(lane, AdvIBdr.callStatic(
                 "java/lang/Math",
                 "floorMod",
                 "I",
                 selector,
-                AdvInsnBuilder.constant(laneCount)));
+                AdvIBdr.constant(laneCount)));
         @SuppressWarnings("unchecked")
-        java.util.function.Consumer<AdvInsnBuilder>[] laneCases = new java.util.function.Consumer[laneCount];
+        java.util.function.Consumer<AdvIBdr>[] laneCases = new java.util.function.Consumer[laneCount];
         for (int index = 0; index < laneCount; index++)
         {
             String shard = shards.get(index);
             laneCases[index] = branch -> branch.set(result, dispatch.callDispatcher(shard, runtime));
         }
-        ib.switchTable(lane, 0, invalid -> invalid.set(result, AdvInsnBuilder.constant(0)), laneCases);
+        ib.switchTable(lane, 0, invalid -> invalid.set(result, AdvIBdr.constant(0)), laneCases);
         dispatch.finishExternal(ib, result);
     }
 
@@ -96,7 +96,7 @@ public final class DistributedDispatchVMGenerator extends AbstractVMStructureGen
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
                 name,
                 dispatch.dispatchDescriptor());
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         InterpretContext runtime = dispatch.generation().runtimeContext(null);
         Local passedInstructionIndex = ib.getLocal("instructionIndex", "I", 5);
         Local selector = ib.getLocal("shardSelector", "I", 6);
@@ -104,14 +104,14 @@ public final class DistributedDispatchVMGenerator extends AbstractVMStructureGen
         List<SwitchCase> cases = new ArrayList<>();
         for (VMDispatchTarget target : targets)
         {
-            cases.add(AdvInsnBuilder.switchCase(target.key(), handler -> {
+            cases.add(AdvIBdr.switchCase(target.key(), handler -> {
                 dispatch.emitTarget(handler, runtime, target, passedInstructionIndex);
-                handler.returnValue(AdvInsnBuilder.constant(1));
+                handler.returnValue(AdvIBdr.constant(1));
             }));
         }
         ib.switchLookup(
                 selector,
-                missing -> missing.returnValue(AdvInsnBuilder.constant(0)),
+                missing -> missing.returnValue(AdvIBdr.constant(0)),
                 cases.toArray(SwitchCase[]::new));
         return method;
     }

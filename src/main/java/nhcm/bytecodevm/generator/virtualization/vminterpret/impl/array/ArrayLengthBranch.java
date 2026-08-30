@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.array;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
@@ -17,10 +17,10 @@ public class ArrayLengthBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         popObject(ib, context);
-        pushInt(ib, context, AdvInsnBuilder.callStatic(
+        pushInt(ib, context, AdvIBdr.callStatic(
                 "java/lang/reflect/Array",
                 "getLength",
                 "I",

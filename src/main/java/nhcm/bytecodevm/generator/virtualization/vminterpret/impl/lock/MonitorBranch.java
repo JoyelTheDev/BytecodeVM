@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.lock;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
@@ -17,17 +17,17 @@ public class MonitorBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         popObject(ib, context);
         switch (opcode)
         {
-            case MONITORENTER -> ib.directCall(AdvInsnBuilder.callStatic(
+            case MONITORENTER -> ib.directCall(AdvIBdr.callStatic(
                     context.vm.owner,
                     context.vm.monitorEnter.name(),
                     "V",
                     context.stackObject()));
-            case MONITOREXIT -> ib.directCall(AdvInsnBuilder.callStatic(
+            case MONITOREXIT -> ib.directCall(AdvIBdr.callStatic(
                     context.vm.owner,
                     context.vm.monitorExit.name(),
                     "V",

@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.stack;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
@@ -18,7 +18,7 @@ public class DuplicateBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         switch (opcode)
         {
@@ -41,7 +41,7 @@ public class DuplicateBranch extends InterpretBranch
         }
     }
 
-    private static void generateDupX2(AdvInsnBuilder ib, InterpretContext context)
+    private static void generateDupX2(AdvIBdr ib, InterpretContext context)
     {
         pop(ib, context, InterpretContext.DUP_VALUE_1);
         pop(ib, context, InterpretContext.DUP_VALUE_2);
@@ -66,7 +66,7 @@ public class DuplicateBranch extends InterpretBranch
         ib.mark(done, "dupX2Done");
     }
 
-    private static void generateDup2(AdvInsnBuilder ib, InterpretContext context)
+    private static void generateDup2(AdvIBdr ib, InterpretContext context)
     {
         pop(ib, context, InterpretContext.DUP_VALUE_1);
 
@@ -89,7 +89,7 @@ public class DuplicateBranch extends InterpretBranch
         ib.mark(done, "dup2Done");
     }
 
-    private static void generateDup2X1(AdvInsnBuilder ib, InterpretContext context)
+    private static void generateDup2X1(AdvIBdr ib, InterpretContext context)
     {
         pop(ib, context, InterpretContext.DUP_VALUE_1);
 
@@ -116,7 +116,7 @@ public class DuplicateBranch extends InterpretBranch
         ib.mark(done, "dup2X1Done");
     }
 
-    private static void generateDup2X2(AdvInsnBuilder ib, InterpretContext context)
+    private static void generateDup2X2(AdvIBdr ib, InterpretContext context)
     {
         pop(ib, context, InterpretContext.DUP_VALUE_1);
 
@@ -169,12 +169,12 @@ public class DuplicateBranch extends InterpretBranch
         ib.mark(done, "dup2X2Done");
     }
 
-    private static void pop(AdvInsnBuilder ib, InterpretContext context, int local)
+    private static void pop(AdvIBdr ib, InterpretContext context, int local)
     {
         popObjectAndWidth(ib, context, local, widthLocal(local));
     }
 
-    private static void push(AdvInsnBuilder ib, InterpretContext context, int... locals)
+    private static void push(AdvIBdr ib, InterpretContext context, int... locals)
     {
         for (int local : locals)
         {
@@ -183,7 +183,7 @@ public class DuplicateBranch extends InterpretBranch
     }
 
     private static void jumpIfValueIsCategory2(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             InterpretContext context,
             int valueLocal,
             LabelNode target)

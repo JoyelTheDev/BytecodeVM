@@ -1,7 +1,7 @@
 package nhcm.bytecodevm.generator.globalclass;
 
 import lombok.Getter;
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.FieldAccess;
 import nhcm.bytecodevm.advInsn.Local;
@@ -91,18 +91,18 @@ public class MethodFrameGenerator extends ClassObj
                 layout.init.name(), // <init>
                 layout.init.descriptor() // (II)V
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local maxLocals = ib.getLocal("maxLocals", "I", 1);
         Local maxStack = ib.getLocal("maxStack", "I", 2);
         ib.callNoArgSuperConstructor("java/lang/Object");
-        ib.set(locals(), AdvInsnBuilder.newArray("java/lang/Object", maxLocals));
-        ib.set(stack(), AdvInsnBuilder.newArray("java/lang/Object", maxStack));
-        ib.set(stackWords(), AdvInsnBuilder.newArray("long", maxStack));
-        ib.set(stackTypes(), AdvInsnBuilder.newArray("int", maxStack));
-        ib.set(stackWidths(), AdvInsnBuilder.newArray("int", maxStack));
-        ib.set(stateKey(), AdvInsnBuilder.constant(0));
-        ib.set(integrityKey(), AdvInsnBuilder.constant(0));
-        ib.set(blockIndex(), AdvInsnBuilder.constant(-1));
+        ib.set(locals(), AdvIBdr.newArray("java/lang/Object", maxLocals));
+        ib.set(stack(), AdvIBdr.newArray("java/lang/Object", maxStack));
+        ib.set(stackWords(), AdvIBdr.newArray("long", maxStack));
+        ib.set(stackTypes(), AdvIBdr.newArray("int", maxStack));
+        ib.set(stackWidths(), AdvIBdr.newArray("int", maxStack));
+        ib.set(stateKey(), AdvIBdr.constant(0));
+        ib.set(integrityKey(), AdvIBdr.constant(0));
+        ib.set(blockIndex(), AdvIBdr.constant(-1));
         ib.returnVoid();
         return method;
     }
@@ -113,14 +113,14 @@ public class MethodFrameGenerator extends ClassObj
                 layout.push.name(), // push
                 layout.push.descriptor() // (Ljava/lang/Object;)V
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
-        ib.directCall(AdvInsnBuilder.callVirtual(
+        AdvIBdr ib = new AdvIBdr(method);
+        ib.directCall(AdvIBdr.callVirtual(
                 selfFrame(),
-                AdvInsnBuilder.object(layout.owner),
+                AdvIBdr.object(layout.owner),
                 layout.pushWithWidth.name(),
                 Type.VOID_TYPE,
-                AdvInsnBuilder.local("value", "java/lang/Object", 1),
-                AdvInsnBuilder.constant(1)));
+                AdvIBdr.local("value", "java/lang/Object", 1),
+                AdvIBdr.constant(1)));
         ib.returnVoid();
         return method;
     }
@@ -132,15 +132,15 @@ public class MethodFrameGenerator extends ClassObj
                 layout.pushWithWidth.name(), // push
                 layout.pushWithWidth.descriptor() // (Ljava/lang/Object;I)V
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Local element = ib.getLocal("element", "java/lang/Object", 1);
         Local width = ib.getLocal("width", "I", 2);
 
         ib.setArray(stack(), stackPointer(), element);
-        ib.setArray(stackTypes(), stackPointer(), AdvInsnBuilder.constant(0));
+        ib.setArray(stackTypes(), stackPointer(), AdvIBdr.constant(0));
         ib.setArray(stackWidths(), stackPointer(), width);
-        ib.set(stackPointer(), AdvInsnBuilder.plus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.set(stackPointer(), AdvIBdr.plus(stackPointer(), AdvIBdr.constant(1)));
         ib.returnVoid();
         return method;
     }
@@ -151,48 +151,48 @@ public class MethodFrameGenerator extends ClassObj
                 layout.pop.name(), // pop
                 layout.pop.descriptor() // ()Ljava/lang/Object;
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Local slot = ib.var("slot", "I");
-        ib.set(slot, AdvInsnBuilder.minus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.set(slot, AdvIBdr.minus(stackPointer(), AdvIBdr.constant(1)));
 
         Local valueType = ib.var("valueType", "I");
-        ib.set(valueType, AdvInsnBuilder.arrayAt(stackTypes(), slot));
+        ib.set(valueType, AdvIBdr.arrayAt(stackTypes(), slot));
 
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(0));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(0));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(0));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(0));
 
         Local objectValue = ib.var("objectValue", "java/lang/Object");
-        ib.set(objectValue, AdvInsnBuilder.arrayAt(stack(), slot));
-        ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
+        ib.set(objectValue, AdvIBdr.arrayAt(stack(), slot));
+        ib.setArray(stack(), slot, AdvIBdr.constant(null));
 
-        Expr target = AdvInsnBuilder.arrayAt(stackWords(), slot);
+        Expr target = AdvIBdr.arrayAt(stackWords(), slot);
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(valueType, AdvInsnBuilder.constant(1)),
-                b -> b.returnValue(AdvInsnBuilder.cast(target, "I"))
+                AdvIBdr.equal(valueType, AdvIBdr.constant(1)),
+                b -> b.returnValue(AdvIBdr.cast(target, "I"))
         );
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(valueType, AdvInsnBuilder.constant(2)),
+                AdvIBdr.equal(valueType, AdvIBdr.constant(2)),
                 b -> b.returnValue(target)
         );
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(valueType, AdvInsnBuilder.constant(3)),
+                AdvIBdr.equal(valueType, AdvIBdr.constant(3)),
                 b -> {
-                    b.returnValue(AdvInsnBuilder.callStatic(
+                    b.returnValue(AdvIBdr.callStatic(
                             "java/lang/Float",
                             "intBitsToFloat",
                             "F",
-                            AdvInsnBuilder.cast(target, "I")
+                            AdvIBdr.cast(target, "I")
                     ));
                 }
         );
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(valueType, AdvInsnBuilder.constant(4)),
-                b -> b.returnValue(AdvInsnBuilder.callStatic(
+                AdvIBdr.equal(valueType, AdvIBdr.constant(4)),
+                b -> b.returnValue(AdvIBdr.callStatic(
                         "java/lang/Double",
                         "longBitsToDouble",
                         "D",
@@ -212,14 +212,14 @@ public class MethodFrameGenerator extends ClassObj
                 layout.pushInt.name(), // pushInt
                 layout.pushInt.descriptor() // (I)V
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local value = ib.getLocal("value", "I", 1);
         FieldAccess slot = stackPointer();
-        ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
+        ib.setArray(stack(), slot, AdvIBdr.constant(null));
         ib.setArray(stackWords(), slot, value);
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(1));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(1));
-        ib.set(stackPointer(), AdvInsnBuilder.plus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(1));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(1));
+        ib.set(stackPointer(), AdvIBdr.plus(stackPointer(), AdvIBdr.constant(1)));
         ib.returnVoid();
         return method;
     }
@@ -231,14 +231,14 @@ public class MethodFrameGenerator extends ClassObj
                 layout.pushLong.name(), // pushLong
                 layout.pushLong.descriptor() // (J)V
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local value = ib.getLocal("value", "J", 1);
         FieldAccess slot = stackPointer();
-        ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
+        ib.setArray(stack(), slot, AdvIBdr.constant(null));
         ib.setArray(stackWords(), slot, value);
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(2));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(2));
-        ib.set(stackPointer(), AdvInsnBuilder.plus(slot, AdvInsnBuilder.constant(1)));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(2));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(2));
+        ib.set(stackPointer(), AdvIBdr.plus(slot, AdvIBdr.constant(1)));
         ib.returnVoid();
         return method;
     }
@@ -250,19 +250,19 @@ public class MethodFrameGenerator extends ClassObj
                 layout.pushFloat.name(), // pushFloat
                 layout.pushFloat.descriptor() // (F)V
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local value = ib.getLocal("value", "F", 1);
         FieldAccess slot = stackPointer();
-        ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
-        ib.setArray(stackWords(), slot, AdvInsnBuilder.callStatic(
+        ib.setArray(stack(), slot, AdvIBdr.constant(null));
+        ib.setArray(stackWords(), slot, AdvIBdr.callStatic(
                 "java/lang/Float",
                 "floatToRawIntBits",
                 "I",
                 value
         ));
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(3));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(1));
-        ib.set(stackPointer(), AdvInsnBuilder.plus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(3));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(1));
+        ib.set(stackPointer(), AdvIBdr.plus(stackPointer(), AdvIBdr.constant(1)));
         ib.returnVoid();
         return method;
     }
@@ -274,19 +274,19 @@ public class MethodFrameGenerator extends ClassObj
                 layout.pushDouble.name(), // pushDouble
                 layout.pushDouble.descriptor() // (D)V
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         Local value = ib.getLocal("value", "D", 1);
         FieldAccess slot = stackPointer();
-        ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
-        ib.setArray(stackWords(), slot, AdvInsnBuilder.callStatic(
+        ib.setArray(stack(), slot, AdvIBdr.constant(null));
+        ib.setArray(stackWords(), slot, AdvIBdr.callStatic(
                 "java/lang/Double",
                 "doubleToRawLongBits",
                 "J",
                 value
         ));
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(4));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(2));
-        ib.set(stackPointer(), AdvInsnBuilder.plus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(4));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(2));
+        ib.set(stackPointer(), AdvIBdr.plus(stackPointer(), AdvIBdr.constant(1)));
         ib.returnVoid();
         return method;
     }
@@ -298,40 +298,40 @@ public class MethodFrameGenerator extends ClassObj
                 layout.popInt.name(), // popInt
                 layout.popInt.descriptor() // ()I
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Local slot = ib.var("slot", "I");
-        ib.set(slot, AdvInsnBuilder.minus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.set(slot, AdvIBdr.minus(stackPointer(), AdvIBdr.constant(1)));
         Local type = ib.var("type", "I");
-        ib.set(type, AdvInsnBuilder.arrayAt(stackTypes(), slot));
+        ib.set(type, AdvIBdr.arrayAt(stackTypes(), slot));
 
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(0));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(0));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(0));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(0));
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(type, AdvInsnBuilder.constant(1)),
-                b -> b.returnValue(AdvInsnBuilder.cast(AdvInsnBuilder.arrayAt(stackWords(), slot), "I"))
+                AdvIBdr.equal(type, AdvIBdr.constant(1)),
+                b -> b.returnValue(AdvIBdr.cast(AdvIBdr.arrayAt(stackWords(), slot), "I"))
         );
 
         Local value = ib.var("value", "java/lang/Object");
-        ib.set(value, AdvInsnBuilder.arrayAt(stack(), slot));
+        ib.set(value, AdvIBdr.arrayAt(stack(), slot));
 
         ib.ifCondition(
-                AdvInsnBuilder.isInstanceOf(value, "java/lang/Boolean"),
+                AdvIBdr.isInstanceOf(value, "java/lang/Boolean"),
                 b -> b.ifElse(
-                        AdvInsnBuilder.equal(AdvInsnBuilder.cast(value, "java/lang/Boolean"), AdvInsnBuilder.constant(true)),
-                        b1 -> b1.returnValue(AdvInsnBuilder.constant(1)),
-                        b1 -> b1.returnValue(AdvInsnBuilder.constant(0))
+                        AdvIBdr.equal(AdvIBdr.cast(value, "java/lang/Boolean"), AdvIBdr.constant(true)),
+                        b1 -> b1.returnValue(AdvIBdr.constant(1)),
+                        b1 -> b1.returnValue(AdvIBdr.constant(0))
                 )
         );
 
         ib.ifCondition(
-                AdvInsnBuilder.isInstanceOf(value, "java/lang/Character"),
-                b -> b.returnValue(AdvInsnBuilder.cast(value, "C"))
+                AdvIBdr.isInstanceOf(value, "java/lang/Character"),
+                b -> b.returnValue(AdvIBdr.cast(value, "C"))
         );
 
-        ib.returnValue(AdvInsnBuilder.callVirtual(
-                AdvInsnBuilder.cast(value, "java/lang/Number"),
+        ib.returnValue(AdvIBdr.callVirtual(
+                AdvIBdr.cast(value, "java/lang/Number"),
                 "java/lang/Number",
                 "intValue",
                 "I"
@@ -346,27 +346,27 @@ public class MethodFrameGenerator extends ClassObj
                 layout.popLong.name(), // popLong
                 layout.popLong.descriptor() // ()J
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Local slot = ib.var("slot", "I");
-        ib.set(slot, AdvInsnBuilder.minus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.set(slot, AdvIBdr.minus(stackPointer(), AdvIBdr.constant(1)));
         Local type = ib.var("type", "I");
-        ib.set(type, AdvInsnBuilder.arrayAt(stackTypes(), slot));
+        ib.set(type, AdvIBdr.arrayAt(stackTypes(), slot));
 
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(0));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(0));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(0));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(0));
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(type, AdvInsnBuilder.constant(2)),
-                b -> b.returnValue(AdvInsnBuilder.arrayAt(stackWords(), slot))
+                AdvIBdr.equal(type, AdvIBdr.constant(2)),
+                b -> b.returnValue(AdvIBdr.arrayAt(stackWords(), slot))
         );
 
         Local value = ib.var("value", "java/lang/Object");
-        ib.set(value, AdvInsnBuilder.arrayAt(stack(), slot));
-        ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
+        ib.set(value, AdvIBdr.arrayAt(stack(), slot));
+        ib.setArray(stack(), slot, AdvIBdr.constant(null));
 
-        ib.returnValue(AdvInsnBuilder.callVirtual(
-                AdvInsnBuilder.cast(value, "java/lang/Number"),
+        ib.returnValue(AdvIBdr.callVirtual(
+                AdvIBdr.cast(value, "java/lang/Number"),
                 "java/lang/Number",
                 "longValue",
                 "J"
@@ -382,32 +382,32 @@ public class MethodFrameGenerator extends ClassObj
                 layout.popFloat.name(), // popFloat
                 layout.popFloat.descriptor() // ()F
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Local slot = ib.var("slot", "I");
-        ib.set(slot, AdvInsnBuilder.minus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.set(slot, AdvIBdr.minus(stackPointer(), AdvIBdr.constant(1)));
         Local type = ib.var("type", "I");
-        ib.set(type, AdvInsnBuilder.arrayAt(stackTypes(), slot));
+        ib.set(type, AdvIBdr.arrayAt(stackTypes(), slot));
 
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(0));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(0));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(0));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(0));
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(type, AdvInsnBuilder.constant(3)),
-                b -> b.returnValue(AdvInsnBuilder.callStatic(
+                AdvIBdr.equal(type, AdvIBdr.constant(3)),
+                b -> b.returnValue(AdvIBdr.callStatic(
                         "java/lang/Float",
                         "intBitsToFloat",
                         "(I)F",
-                        AdvInsnBuilder.cast(AdvInsnBuilder.arrayAt(stackWords(), slot), "I")
+                        AdvIBdr.cast(AdvIBdr.arrayAt(stackWords(), slot), "I")
                 ))
         );
 
         Local value = ib.var("value", "java/lang/Object");
-        ib.set(value, AdvInsnBuilder.arrayAt(stack(), slot));
-        ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
+        ib.set(value, AdvIBdr.arrayAt(stack(), slot));
+        ib.setArray(stack(), slot, AdvIBdr.constant(null));
 
-        ib.returnValue(AdvInsnBuilder.callVirtual(
-                AdvInsnBuilder.cast(value, "java/lang/Number"),
+        ib.returnValue(AdvIBdr.callVirtual(
+                AdvIBdr.cast(value, "java/lang/Number"),
                 "java/lang/Number",
                 "floatValue",
                 "F"
@@ -422,32 +422,32 @@ public class MethodFrameGenerator extends ClassObj
                 layout.popDouble.name(), // popDouble
                 layout.popDouble.descriptor() // ()D
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Local slot = ib.var("slot", "I");
-        ib.set(slot, AdvInsnBuilder.minus(stackPointer(), AdvInsnBuilder.constant(1)));
+        ib.set(slot, AdvIBdr.minus(stackPointer(), AdvIBdr.constant(1)));
         Local type = ib.var("type", "I");
-        ib.set(type, AdvInsnBuilder.arrayAt(stackTypes(), slot));
+        ib.set(type, AdvIBdr.arrayAt(stackTypes(), slot));
 
-        ib.setArray(stackTypes(), slot, AdvInsnBuilder.constant(0));
-        ib.setArray(stackWidths(), slot, AdvInsnBuilder.constant(0));
+        ib.setArray(stackTypes(), slot, AdvIBdr.constant(0));
+        ib.setArray(stackWidths(), slot, AdvIBdr.constant(0));
 
         ib.ifCondition(
-                AdvInsnBuilder.equal(type, AdvInsnBuilder.constant(4)),
-                b -> b.returnValue(AdvInsnBuilder.callStatic(
+                AdvIBdr.equal(type, AdvIBdr.constant(4)),
+                b -> b.returnValue(AdvIBdr.callStatic(
                         "java/lang/Double",
                         "longBitsToDouble",
                         "(J)D",
-                        AdvInsnBuilder.arrayAt(stackWords(), slot)
+                        AdvIBdr.arrayAt(stackWords(), slot)
                 ))
         );
 
         Local value = ib.var("value", "java/lang/Object");
-        ib.set(value, AdvInsnBuilder.arrayAt(stack(), slot));
-        ib.setArray(stack(), slot, AdvInsnBuilder.constant(null));
+        ib.set(value, AdvIBdr.arrayAt(stack(), slot));
+        ib.setArray(stack(), slot, AdvIBdr.constant(null));
 
-        ib.returnValue(AdvInsnBuilder.callVirtual(
-                AdvInsnBuilder.cast(value, "java/lang/Number"),
+        ib.returnValue(AdvIBdr.callVirtual(
+                AdvIBdr.cast(value, "java/lang/Number"),
                 "java/lang/Number",
                 "doubleValue",
                 "D"
@@ -461,8 +461,8 @@ public class MethodFrameGenerator extends ClassObj
                 new Acc[]{Acc.PUBLIC},
                 layout.peekWidth.name(),
                 layout.peekWidth.descriptor());
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
-        ib.returnValue(AdvInsnBuilder.arrayAt(stackWidths(), AdvInsnBuilder.minus(stackPointer(), AdvInsnBuilder.constant(1))));
+        AdvIBdr ib = new AdvIBdr(method);
+        ib.returnValue(AdvIBdr.arrayAt(stackWidths(), AdvIBdr.minus(stackPointer(), AdvIBdr.constant(1))));
         return method;
     }
 
@@ -473,31 +473,31 @@ public class MethodFrameGenerator extends ClassObj
                 layout.replaceIdentity.name(), // replaceIdentity
                 layout.replaceIdentity.descriptor() // (Ljava/lang/Object;Ljava/lang/Object;)V
         );
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Local index = ib.var("index", "I");
         Local input1 = ib.getLocal("input1","Ljava/lang/Object;", 1);
         Local input2 = ib.getLocal("input2","Ljava/lang/Object;", 2);
         ib.forLoop(
-                b -> b.set(index, AdvInsnBuilder.constant(0)),
-                AdvInsnBuilder.lessThan(index, AdvInsnBuilder.arrayLength(locals())),
+                b -> b.set(index, AdvIBdr.constant(0)),
+                AdvIBdr.lessThan(index, AdvIBdr.arrayLength(locals())),
                 b -> b.increment(index, 1),
                 b -> {
                     b.ifCondition(
-                            AdvInsnBuilder.notEqual(AdvInsnBuilder.arrayAt(locals(), index), input1),
-                            AdvInsnBuilder::continueLoop
+                            AdvIBdr.notEqual(AdvIBdr.arrayAt(locals(), index), input1),
+                            AdvIBdr::continueLoop
                     );
                     b.setArray(locals(), index, input2);
                 }
         );
         ib.forLoop(
-                b -> b.set(index, AdvInsnBuilder.constant(0)),
-                AdvInsnBuilder.lessThan(index, stackPointer()),
+                b -> b.set(index, AdvIBdr.constant(0)),
+                AdvIBdr.lessThan(index, stackPointer()),
                 b -> b.increment(index, 1),
                 b -> {
                     b.ifCondition(
-                            AdvInsnBuilder.notEqual(AdvInsnBuilder.arrayAt(stack(), index), input1),
-                            AdvInsnBuilder::continueLoop
+                            AdvIBdr.notEqual(AdvIBdr.arrayAt(stack(), index), input1),
+                            AdvIBdr::continueLoop
                     );
                     b.setArray(stack(), index, input2);
                 }
@@ -508,12 +508,12 @@ public class MethodFrameGenerator extends ClassObj
 
     private Expr selfFrame()
     {
-        return AdvInsnBuilder.self(layout.owner);
+        return AdvIBdr.self(layout.owner);
     }
 
     private FieldAccess frameField(FieldRef field)
     {
-        return AdvInsnBuilder.field(selfFrame(), field);
+        return AdvIBdr.field(selfFrame(), field);
     }
 
     private FieldAccess stackPointer()

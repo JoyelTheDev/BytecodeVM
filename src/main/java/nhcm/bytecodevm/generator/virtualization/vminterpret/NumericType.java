@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.enums.Opcs;
 import org.objectweb.asm.Type;
@@ -33,12 +33,12 @@ public enum NumericType
 
     public Expr unbox(Expr value)
     {
-        return AdvInsnBuilder.unbox(value, type());
+        return AdvIBdr.unbox(value, type());
     }
 
     public Expr box(Expr value)
     {
-        return AdvInsnBuilder.callStatic(wrapper, "valueOf", wrapper, value);
+        return AdvIBdr.callStatic(wrapper, "valueOf", wrapper, value);
     }
 
     public Type type()

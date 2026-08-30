@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.api;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretContext;
 
@@ -17,6 +17,6 @@ public interface VMStructureGenerator
 
     void emitScheduler(
             VMStructureGenerationContext generation,
-            AdvInsnBuilder instructions,
+            AdvIBdr instructions,
             InterpretContext runtime);
 }

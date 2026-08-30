@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.dataflow;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
@@ -25,12 +25,12 @@ public final class DataFlowVMGenerator extends AbstractVMStructureGenerator impl
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local graphResult = runtime.intLocal("dataFlowResult", InterpretContext.OPCODE);
-        ib.set(graphResult, AdvInsnBuilder.constant(0));
+        ib.set(graphResult, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(graphResult, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(graphResult, AdvIBdr.constant(0)),
                 readyQueue -> readyQueue.set(graphResult, generation.step(runtime)));
     }
 
@@ -49,11 +49,11 @@ public final class DataFlowVMGenerator extends AbstractVMStructureGenerator impl
         }
         dispatch.generation().onClassInitialize(initializer -> {
             Local buckets = initializer.var("dataFlowBuckets", "[Ljava/util/Map;");
-            initializer.set(buckets, AdvInsnBuilder.newArray("java/util/Map", AdvInsnBuilder.constant(bucketCount)));
+            initializer.set(buckets, AdvIBdr.newArray("java/util/Map", AdvIBdr.constant(bucketCount)));
             for (int bucket = 0; bucket < bucketCount; bucket++)
             {
                 Local nodesInBucket = initializer.var("dataFlowBucket" + bucket, "java/util/Map");
-                initializer.set(nodesInBucket, AdvInsnBuilder.newObject("java/util/HashMap"));
+                initializer.set(nodesInBucket, AdvIBdr.newObject("java/util/HashMap"));
                 for (Map.Entry<Integer, VMDispatchTarget> entry : targets.entrySet())
                 {
                     if (Math.floorMod(entry.getKey(), bucketCount) != bucket)
@@ -62,15 +62,15 @@ public final class DataFlowVMGenerator extends AbstractVMStructureGenerator impl
                     }
                     initializer.directCall(mapPut(
                             nodesInBucket,
-                            integer(AdvInsnBuilder.constant(entry.getKey())),
+                            integer(AdvIBdr.constant(entry.getKey())),
                             nodes.newHandler(entry.getValue().primaryKey())));
                 }
-                initializer.setArray(buckets, AdvInsnBuilder.constant(bucket), nodesInBucket);
+                initializer.setArray(buckets, AdvIBdr.constant(bucket), nodesInBucket);
             }
-            initializer.set(AdvInsnBuilder.staticField(bucketsField), buckets);
+            initializer.set(AdvIBdr.staticField(bucketsField), buckets);
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("dataFlowOpcode", InterpretContext.DISPATCH_SELECTOR);
         Local bucket = runtime.intLocal("dataFlowBucket", InterpretContext.DISPATCH_SELECTOR + 1);
@@ -78,26 +78,26 @@ public final class DataFlowVMGenerator extends AbstractVMStructureGenerator impl
         Local node = runtime.local("dataFlowNode", nodes.interfaceName(), InterpretContext.DISPATCH_SELECTOR + 3);
         Local status = runtime.intLocal("dataFlowStatus", InterpretContext.DISPATCH_SELECTOR + 4);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(bucket, AdvInsnBuilder.callStatic(
-                "java/lang/Math", "floorMod", "I", selector, AdvInsnBuilder.constant(bucketCount)));
-        ib.set(nodeMap, AdvInsnBuilder.arrayAt(AdvInsnBuilder.staticField(bucketsField), bucket));
-        ib.set(node, AdvInsnBuilder.cast(mapGet(nodeMap, integer(selector)), nodes.interfaceName()));
-        ib.ifCondition(AdvInsnBuilder.isNull(node), missing -> missing.gotoLabel(dispatch.unknown()));
+        ib.set(bucket, AdvIBdr.callStatic(
+                "java/lang/Math", "floorMod", "I", selector, AdvIBdr.constant(bucketCount)));
+        ib.set(nodeMap, AdvIBdr.arrayAt(AdvIBdr.staticField(bucketsField), bucket));
+        ib.set(node, AdvIBdr.cast(mapGet(nodeMap, integer(selector)), nodes.interfaceName()));
+        ib.ifCondition(AdvIBdr.isNull(node), missing -> missing.gotoLabel(dispatch.unknown()));
         ib.set(status, nodes.invoke(node, runtime));
         dispatch.finishExternal(ib, status);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr integer(nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
+        return AdvIBdr.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapGet(
             nhcm.bytecodevm.advInsn.Expr map,
             nhcm.bytecodevm.advInsn.Expr key)
     {
-        return AdvInsnBuilder.callInterface(
-                map, "java/util/Map", "get", "java/lang/Object", AdvInsnBuilder.cast(key, "java/lang/Object"));
+        return AdvIBdr.callInterface(
+                map, "java/util/Map", "get", "java/lang/Object", AdvIBdr.cast(key, "java/lang/Object"));
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapPut(
@@ -105,8 +105,8 @@ public final class DataFlowVMGenerator extends AbstractVMStructureGenerator impl
             nhcm.bytecodevm.advInsn.Expr key,
             nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 map, "java/util/Map", "put", "java/lang/Object",
-                AdvInsnBuilder.cast(key, "java/lang/Object"), AdvInsnBuilder.cast(value, "java/lang/Object"));
+                AdvIBdr.cast(key, "java/lang/Object"), AdvIBdr.cast(value, "java/lang/Object"));
     }
 }

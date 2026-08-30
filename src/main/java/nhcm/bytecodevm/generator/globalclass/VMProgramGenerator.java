@@ -1,7 +1,7 @@
 package nhcm.bytecodevm.generator.globalclass;
 
 import lombok.Getter;
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Acc;
 import nhcm.bytecodevm.generator.abstracts.ClassObj;
@@ -63,7 +63,7 @@ public class VMProgramGenerator extends ClassObj
                 layout.init.descriptor()
         );
 
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
 
         Local opcodeStream = ib.getLocal("opcodeStream", "[I", 1);
         Local operandStream = ib.getLocal("operandStream", "[I", 2);
@@ -78,17 +78,17 @@ public class VMProgramGenerator extends ClassObj
         Local maxStack = ib.getLocal("maxStack", "I", 11);
 
         ib.callNoArgSuperConstructor("java/lang/Object");
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.opcodeStreamField), opcodeStream);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.operandStreamField), operandStream);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.layoutStreamField), layoutStream);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.blockStreamField), blockStream);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.constantsField), constants);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.exceptionHandlersField), exceptionHandlers);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.opcodeMapField), opcodeMap);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.methodKeyField), methodKey);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.featureFlagsField), featureFlags);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.maxLocalsField), maxLocals);
-        ib.set(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), layout.maxStackField), maxStack);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.opcodeStreamField), opcodeStream);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.operandStreamField), operandStream);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.layoutStreamField), layoutStream);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.blockStreamField), blockStream);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.constantsField), constants);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.exceptionHandlersField), exceptionHandlers);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.opcodeMapField), opcodeMap);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.methodKeyField), methodKey);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.featureFlagsField), featureFlags);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.maxLocalsField), maxLocals);
+        ib.set(AdvIBdr.field(AdvIBdr.self(layout.owner), layout.maxStackField), maxStack);
         ib.returnVoid();
         return method;
     }
@@ -99,8 +99,8 @@ public class VMProgramGenerator extends ClassObj
                 new Acc[]{Acc.PUBLIC},
                 getter.name(),
                 getter.descriptor());
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
-        ib.returnValue(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), field));
+        AdvIBdr ib = new AdvIBdr(method);
+        ib.returnValue(AdvIBdr.field(AdvIBdr.self(layout.owner), field));
         return method;
     }
 
@@ -110,8 +110,8 @@ public class VMProgramGenerator extends ClassObj
                 new Acc[]{Acc.PUBLIC},
                 getter.name(),
                 getter.descriptor());
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
-        ib.returnValue(AdvInsnBuilder.field(AdvInsnBuilder.self(layout.owner), field));
+        AdvIBdr ib = new AdvIBdr(method);
+        ib.returnValue(AdvIBdr.field(AdvIBdr.self(layout.owner), field));
         return method;
     }
 }

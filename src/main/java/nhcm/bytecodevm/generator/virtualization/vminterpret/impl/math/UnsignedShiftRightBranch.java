@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.math;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.enums.VMOpcode;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.math.abstracts.ShiftMathBranch;
@@ -15,6 +15,6 @@ public class UnsignedShiftRightBranch extends ShiftMathBranch
     @Override
     protected Expr operation(Expr value, Expr distance)
     {
-        return AdvInsnBuilder.unsignedShiftRight(value, distance);
+        return AdvIBdr.unsignedShiftRight(value, distance);
     }
 }

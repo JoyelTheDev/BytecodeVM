@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.api;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.generator.virtualization.VMObfProfile;
@@ -17,7 +17,7 @@ public final class VMDispatchGenerationContext
     public interface TargetEmitter
     {
         void emit(
-                AdvInsnBuilder instructions,
+                AdvIBdr instructions,
                 InterpretContext runtime,
                 VMDispatchTarget target,
                 Expr instructionIndex);
@@ -26,11 +26,11 @@ public final class VMDispatchGenerationContext
     @FunctionalInterface
     public interface SelectorEmitter
     {
-        void emit(AdvInsnBuilder instructions, InterpretContext runtime, Local selector);
+        void emit(AdvIBdr instructions, InterpretContext runtime, Local selector);
     }
 
     private final VMStructureGenerationContext generation;
-    private final AdvInsnBuilder instructions;
+    private final AdvIBdr instructions;
     private final InterpretContext runtime;
     private final List<VMDispatchTarget> targets;
     private final LabelNode completed;
@@ -41,7 +41,7 @@ public final class VMDispatchGenerationContext
 
     public VMDispatchGenerationContext(
             VMStructureGenerationContext generation,
-            AdvInsnBuilder instructions,
+            AdvIBdr instructions,
             InterpretContext runtime,
             List<VMDispatchTarget> targets,
             LabelNode completed,
@@ -66,7 +66,7 @@ public final class VMDispatchGenerationContext
         return generation;
     }
 
-    public AdvInsnBuilder instructions()
+    public AdvIBdr instructions()
     {
         return instructions;
     }
@@ -106,13 +106,13 @@ public final class VMDispatchGenerationContext
         return dispatchDescriptor;
     }
 
-    public void setSelector(AdvInsnBuilder ib, InterpretContext context, Local selector)
+    public void setSelector(AdvIBdr ib, InterpretContext context, Local selector)
     {
         selectorEmitter.emit(ib, context, selector);
     }
 
     public void emitTarget(
-            AdvInsnBuilder ib,
+            AdvIBdr ib,
             InterpretContext context,
             VMDispatchTarget target,
             Expr instructionIndex)
@@ -122,7 +122,7 @@ public final class VMDispatchGenerationContext
 
     public Expr callDispatcher(String name, InterpretContext context)
     {
-        return AdvInsnBuilder.callStatic(
+        return AdvIBdr.callStatic(
                 generation.owner(),
                 name,
                 "I",
@@ -134,10 +134,10 @@ public final class VMDispatchGenerationContext
                 context.instructionIndex());
     }
 
-    public void finishExternal(AdvInsnBuilder ib, Local result)
+    public void finishExternal(AdvIBdr ib, Local result)
     {
         ib.ifCondition(
-                AdvInsnBuilder.equal(result, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(result, AdvIBdr.constant(0)),
                 missing -> missing.gotoLabel(unknown));
         ib.gotoLabel(completed);
     }
@@ -145,10 +145,10 @@ public final class VMDispatchGenerationContext
     public Expr variantSelector(Expr selector, int variant)
     {
         return generation.mix(
-                AdvInsnBuilder.constant(profile().saltHandler ^ variant),
+                AdvIBdr.constant(profile().saltHandler ^ variant),
                 selector,
-                AdvInsnBuilder.constant(variant),
-                AdvInsnBuilder.constant(profile().dispatchSalt));
+                AdvIBdr.constant(variant),
+                AdvIBdr.constant(profile().dispatchSalt));
     }
 
     public int variantKey(int key, int variant)

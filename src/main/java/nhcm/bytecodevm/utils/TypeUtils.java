@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.utils;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.utils.builder.InsnBuilder;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.LabelNode;
@@ -14,7 +14,7 @@ public class TypeUtils
         box(builder, type);
     }
 
-    public static void loadAndBox(AdvInsnBuilder builder, Type type, int localIndex)
+    public static void loadAndBox(AdvIBdr builder, Type type, int localIndex)
     {
         loadAndBox(builder.rawBuilder(), type, localIndex);
     }
@@ -53,7 +53,7 @@ public class TypeUtils
         }
     }
 
-    public static void load(AdvInsnBuilder builder, Type type, int localIndex)
+    public static void load(AdvIBdr builder, Type type, int localIndex)
     {
         load(builder.rawBuilder(), type, localIndex);
     }
@@ -103,7 +103,7 @@ public class TypeUtils
         }
     }
 
-    public static void box(AdvInsnBuilder builder, Type type)
+    public static void box(AdvIBdr builder, Type type)
     {
         box(builder.rawBuilder(), type);
     }
@@ -148,7 +148,7 @@ public class TypeUtils
     }
 
     public static void unbox(
-            AdvInsnBuilder builder,
+            AdvIBdr builder,
             Type type)
     {
         unbox(builder.rawBuilder(), type);
@@ -182,7 +182,7 @@ public class TypeUtils
         builder.label(done);
     }
 
-    public static void unboxIntLike(AdvInsnBuilder builder)
+    public static void unboxIntLike(AdvIBdr builder)
     {
         unboxIntLike(builder.rawBuilder());
     }
@@ -221,7 +221,7 @@ public class TypeUtils
     }
 
     public static void returnValue(
-            AdvInsnBuilder builder,
+            AdvIBdr builder,
             Type returnType)
     {
         returnValue(builder.rawBuilder(), returnType);

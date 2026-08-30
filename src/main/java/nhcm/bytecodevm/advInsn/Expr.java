@@ -9,7 +9,7 @@ public interface Expr
 
     void emit(InsnBuilder builder);
 
-    default void emit(AdvInsnBuilder builder)
+    default void emit(AdvIBdr builder)
     {
         emit(builder.rawBuilder());
     }

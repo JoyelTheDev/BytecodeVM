@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.multipledispatch;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.advInsn.SwitchCase;
 import nhcm.bytecodevm.enums.VMStructure;
@@ -32,12 +32,12 @@ public final class MultipleDispatchVMGenerator extends AbstractVMStructureGenera
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local result = runtime.intLocal("multipleDispatchResult", InterpretContext.OPCODE);
-        ib.set(result, AdvInsnBuilder.constant(0));
+        ib.set(result, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(result, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(result, AdvIBdr.constant(0)),
                 variant -> variant.set(result, generation.step(runtime)));
     }
 
@@ -57,32 +57,32 @@ public final class MultipleDispatchVMGenerator extends AbstractVMStructureGenera
             dispatch.generation().addMethod(createVariant(dispatch, name, order, variant + 1));
         }
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local variant = runtime.intLocal("activeDispatcherVariant", InterpretContext.DISPATCH_SELECTOR + 1);
         Local result = runtime.intLocal("variantDispatchResult", InterpretContext.DISPATCH_SELECTOR + 2);
-        ib.set(variant, AdvInsnBuilder.callStatic(
+        ib.set(variant, AdvIBdr.callStatic(
                 "java/lang/Math",
                 "floorMod",
                 "I",
                 dispatch.generation().mix(
                         runtime.frameStateKey(),
                         runtime.instructionIndex(),
-                        AdvInsnBuilder.callVirtual(
+                        AdvIBdr.callVirtual(
                                 runtime.program(),
                                 dispatch.generation().programLayout().owner,
                                 dispatch.generation().programLayout().methodKey.name(),
                                 "I"),
-                        AdvInsnBuilder.constant(dispatch.profile().saltHandler)),
-                AdvInsnBuilder.constant(variantCount)));
+                        AdvIBdr.constant(dispatch.profile().saltHandler)),
+                AdvIBdr.constant(variantCount)));
         @SuppressWarnings("unchecked")
-        java.util.function.Consumer<AdvInsnBuilder>[] choices = new java.util.function.Consumer[variantCount];
+        java.util.function.Consumer<AdvIBdr>[] choices = new java.util.function.Consumer[variantCount];
         for (int index = 0; index < variantCount; index++)
         {
             String name = variants.get(index);
             choices[index] = choice -> choice.set(result, dispatch.callDispatcher(name, runtime));
         }
-        ib.switchTable(variant, 0, invalid -> invalid.set(result, AdvInsnBuilder.constant(0)), choices);
+        ib.switchTable(variant, 0, invalid -> invalid.set(result, AdvIBdr.constant(0)), choices);
         dispatch.finishExternal(ib, result);
     }
 
@@ -96,7 +96,7 @@ public final class MultipleDispatchVMGenerator extends AbstractVMStructureGenera
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
                 name,
                 dispatch.dispatchDescriptor());
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         InterpretContext runtime = dispatch.generation().runtimeContext(null);
         Local passedInstructionIndex = ib.getLocal("instructionIndex", "I", 5);
         Local selector = ib.getLocal("variantSelector", "I", 6);
@@ -105,16 +105,16 @@ public final class MultipleDispatchVMGenerator extends AbstractVMStructureGenera
         List<SwitchCase> cases = new ArrayList<>();
         for (VMDispatchTarget target : targets)
         {
-            cases.add(AdvInsnBuilder.switchCase(
+            cases.add(AdvIBdr.switchCase(
                     dispatch.variantKey(target.key(), variant),
                     handler -> {
                         dispatch.emitTarget(handler, runtime, target, passedInstructionIndex);
-                        handler.returnValue(AdvInsnBuilder.constant(1));
+                        handler.returnValue(AdvIBdr.constant(1));
                     }));
         }
         ib.switchLookup(
                 selector,
-                missing -> missing.returnValue(AdvInsnBuilder.constant(0)),
+                missing -> missing.returnValue(AdvIBdr.constant(0)),
                 cases.toArray(SwitchCase[]::new));
         return method;
     }

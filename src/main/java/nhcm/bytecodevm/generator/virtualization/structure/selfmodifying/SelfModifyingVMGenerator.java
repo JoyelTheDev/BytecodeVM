@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.selfmodifying;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
@@ -25,12 +25,12 @@ public final class SelfModifyingVMGenerator extends AbstractVMStructureGenerator
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local mutationResult = runtime.intLocal("mutationResult", InterpretContext.OPCODE);
-        ib.set(mutationResult, AdvInsnBuilder.constant(0));
+        ib.set(mutationResult, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(mutationResult, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(mutationResult, AdvIBdr.constant(0)),
                 mutation -> mutation.set(mutationResult, generation.step(runtime)));
     }
 
@@ -55,21 +55,21 @@ public final class SelfModifyingVMGenerator extends AbstractVMStructureGenerator
         dispatch.generation().onClassInitialize(initializer -> {
             Local keys = initializer.var("mutableHandlerKeys", "[I");
             Local ring = initializer.var("mutableHandlerRing", handlersField.descriptor());
-            initializer.set(keys, AdvInsnBuilder.newArray("int", AdvInsnBuilder.constant(size)));
-            initializer.set(ring, AdvInsnBuilder.newArray(handlers.interfaceName(), AdvInsnBuilder.constant(size)));
+            initializer.set(keys, AdvIBdr.newArray("int", AdvIBdr.constant(size)));
+            initializer.set(ring, AdvIBdr.newArray(handlers.interfaceName(), AdvIBdr.constant(size)));
             int index = 0;
             for (Map.Entry<Integer, VMDispatchTarget> entry : targets.entrySet())
             {
-                initializer.setArray(keys, AdvInsnBuilder.constant(index), AdvInsnBuilder.constant(entry.getKey()));
-                initializer.setArray(ring, AdvInsnBuilder.constant(index),
-                        handlers.newHandler(entry.getValue().primaryKey()));
+                initializer.setArray(keys, AdvIBdr.constant(index), AdvIBdr.constant(entry.getKey()));
+                initializer.setArray(ring, AdvIBdr.constant(index),
+                                     handlers.newHandler(entry.getValue().primaryKey()));
                 index++;
             }
-            initializer.set(AdvInsnBuilder.staticField(keysField), keys);
-            initializer.set(AdvInsnBuilder.staticField(handlersField), ring);
+            initializer.set(AdvIBdr.staticField(keysField), keys);
+            initializer.set(AdvIBdr.staticField(handlersField), ring);
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("mutableSelector", InterpretContext.DISPATCH_SELECTOR);
         Local cursor = runtime.intLocal("mutableCursor", InterpretContext.DISPATCH_SELECTOR + 1);
@@ -78,32 +78,32 @@ public final class SelfModifyingVMGenerator extends AbstractVMStructureGenerator
                 "mutableHandler", handlers.interfaceName(), InterpretContext.DISPATCH_SELECTOR + 3);
         Local result = runtime.intLocal("mutableResult", InterpretContext.DISPATCH_SELECTOR + 4);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(cursor, AdvInsnBuilder.callStatic(
+        ib.set(cursor, AdvIBdr.callStatic(
                 "java/lang/Math", "floorMod", "I",
                 dispatch.generation().mix(
                         selector, runtime.frameStateKey(), runtime.instructionIndex(),
-                        AdvInsnBuilder.constant(dispatch.profile().saltHandler)),
-                AdvInsnBuilder.constant(size)));
-        ib.set(probes, AdvInsnBuilder.constant(0));
-        ib.set(handler, AdvInsnBuilder.constant(null));
+                        AdvIBdr.constant(dispatch.profile().saltHandler)),
+                AdvIBdr.constant(size)));
+        ib.set(probes, AdvIBdr.constant(0));
+        ib.set(handler, AdvIBdr.constant(null));
         ib.whileLoop(
-                AdvInsnBuilder.and(
-                        AdvInsnBuilder.lessThan(probes, AdvInsnBuilder.constant(size)),
-                        AdvInsnBuilder.isNull(handler)),
+                AdvIBdr.and(
+                        AdvIBdr.lessThan(probes, AdvIBdr.constant(size)),
+                        AdvIBdr.isNull(handler)),
                 probe -> {
                     probe.ifCondition(
-                            AdvInsnBuilder.equal(
-                                    AdvInsnBuilder.arrayAt(AdvInsnBuilder.staticField(keysField), cursor),
+                            AdvIBdr.equal(
+                                    AdvIBdr.arrayAt(AdvIBdr.staticField(keysField), cursor),
                                     selector),
-                            found -> found.set(handler, AdvInsnBuilder.arrayAt(
-                                    AdvInsnBuilder.staticField(handlersField), cursor)));
-                    probe.set(cursor, AdvInsnBuilder.callStatic(
+                            found -> found.set(handler, AdvIBdr.arrayAt(
+                                    AdvIBdr.staticField(handlersField), cursor)));
+                    probe.set(cursor, AdvIBdr.callStatic(
                             "java/lang/Math", "floorMod", "I",
-                            AdvInsnBuilder.plus(cursor, AdvInsnBuilder.constant(1)),
-                            AdvInsnBuilder.constant(size)));
+                            AdvIBdr.plus(cursor, AdvIBdr.constant(1)),
+                            AdvIBdr.constant(size)));
                     probe.increment(probes, 1);
                 });
-        ib.ifCondition(AdvInsnBuilder.isNull(handler), missing -> missing.gotoLabel(dispatch.unknown()));
+        ib.ifCondition(AdvIBdr.isNull(handler), missing -> missing.gotoLabel(dispatch.unknown()));
         ib.set(result, handlers.invoke(handler, runtime));
         dispatch.finishExternal(ib, result);
     }

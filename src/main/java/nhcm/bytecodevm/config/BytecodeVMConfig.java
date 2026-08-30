@@ -21,8 +21,8 @@ public class BytecodeVMConfig
             "vmStructure","vmCount",
             "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
-            "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey",
-            "virtualControlFlowGraph", "constantFix", "fixConstants", "removeAnnotations",
+            "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey", "virtualControlFlowGraph",
+            "constantFix", "preEncryptStrings", "preEncryptNumbers", "removeAnnotations",
             "includeMethodsCalledWithin", "excludeMethodsCalledWithin", "virtualizeInvocationBridges",
             "vmIntegrityCheck", "vmIntegrityCheckRatio", "vmIntegrityRecheckInterval", "superInstruction",
             "superinstrcution", "superInstructionCombineRange", "superinstrcutioncombinerange",
@@ -33,7 +33,9 @@ public class BytecodeVMConfig
             "all", "protectCodePool", "dynamicConstantDecrypt", "virtualizeInstructionAddresses", "encryptOperands",
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
             "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey",
-            "virtualControlFlowGraph", "constantFix", "superInstruction", "obfuscateInterpretBranch");
+            "virtualControlFlowGraph",
+            "constantFix", "preEncryptStrings", "preEncryptNumbers",
+            "superInstruction", "obfuscateInterpretBranch");
 
     public final Path inputFile;
     public final Path outputFile;
@@ -56,8 +58,12 @@ public class BytecodeVMConfig
     public final boolean dynamicCodePoolBuild;
     public final boolean dynamicStateKey;
     public final boolean virtualControlFlowGraph;
+
     public final boolean constantFix;
+    public final boolean preEncryptStrings;
+    public final boolean preEncryptNumbers;
     public final boolean removeAnnotations;
+
     public final boolean includeMethodsCalledWithin;
     public final boolean excludeMethodsCalledWithin;
     public final boolean virtualizeInvocationBridges;
@@ -165,7 +171,9 @@ public class BytecodeVMConfig
                 .dynamicCodePoolBuild(optionalBoolean(yaml, "dynamicCodePoolBuild", true))
                 .dynamicStateKey(optionalBoolean(yaml, "dynamicStateKey", true))
                 .virtualControlFlowGraph(optionalBoolean(yaml, "virtualControlFlowGraph", true))
-                .constantFix(optionalBoolean(yaml, "constantFix", false, "fixConstants"))
+                .constantFix(optionalBoolean(yaml, "constantFix", true))
+                .preEncryptStrings(optionalBoolean(yaml, "preEncryptStrings", true))
+                .preEncryptNumbers(optionalBoolean(yaml, "preEncryptNumbers", true))
                 .removeAnnotations(optionalBoolean(yaml, "removeAnnotations", true))
                 .includeMethodsCalledWithin(optionalBoolean(yaml, "includeMethodsCalledWithin", false))
                 .excludeMethodsCalledWithin(optionalBoolean(yaml, "excludeMethodsCalledWithin", false))
@@ -243,6 +251,8 @@ public class BytecodeVMConfig
         values.put("dynamicStateKey", dynamicStateKey);
         values.put("virtualControlFlowGraph", virtualControlFlowGraph);
         values.put("constantFix", constantFix);
+        values.put("preEncryptStrings", preEncryptStrings);
+        values.put("preEncryptNumbers", preEncryptNumbers);
         values.put("removeAnnotations", removeAnnotations);
         values.put("includeMethodsCalledWithin", includeMethodsCalledWithin);
         values.put("excludeMethodsCalledWithin", excludeMethodsCalledWithin);
@@ -317,6 +327,8 @@ public class BytecodeVMConfig
                         method))
                 .interpretBranchCases(interpretBranchCases)
                 .constantFix(constantFix)
+                .preEncryptStrings(statementEnabled("preEncryptStrings", preEncryptStrings, owner, method))
+                .preEncryptNumbers(statementEnabled("preEncryptNumbers", preEncryptNumbers, owner, method))
                 .removeAnnotations(removeAnnotations)
                 .includeMethodsCalledWithin(includeMethodsCalledWithin)
                 .excludeMethodsCalledWithin(excludeMethodsCalledWithin)
@@ -365,6 +377,8 @@ public class BytecodeVMConfig
                 .obfuscateInterpretBranch(obfuscateInterpretBranch)
                 .interpretBranchCases(Math.min(interpretBranchCases, 3))
                 .constantFix(false)
+                .preEncryptStrings(false)
+                .preEncryptNumbers(false)
                 .removeAnnotations(removeAnnotations)
                 .includeMethodsCalledWithin(false)
                 .excludeMethodsCalledWithin(false)

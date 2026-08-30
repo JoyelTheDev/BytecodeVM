@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.callthreaded;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
@@ -29,7 +29,7 @@ public final class CallThreadedVMGenerator extends AbstractVMStructureGenerator 
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         int laneCount = generation.plan().laneCount();
         List<String> segments = new ArrayList<>(laneCount);
@@ -44,10 +44,10 @@ public final class CallThreadedVMGenerator extends AbstractVMStructureGenerator 
         }
 
         Local action = runtime.intLocal("callThreadAction", InterpretContext.OPCODE);
-        ib.set(action, AdvInsnBuilder.constant(0));
+        ib.set(action, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(action, AdvInsnBuilder.constant(0)),
-                trampoline -> trampoline.set(action, AdvInsnBuilder.callStatic(
+                AdvIBdr.equal(action, AdvIBdr.constant(0)),
+                trampoline -> trampoline.set(action, AdvIBdr.callStatic(
                         generation.owner(),
                         segments.getFirst(),
                         "I",
@@ -67,20 +67,20 @@ public final class CallThreadedVMGenerator extends AbstractVMStructureGenerator 
                 new Acc[]{Acc.PRIVATE, Acc.STATIC},
                 segments.get(lane),
                 descriptor);
-        AdvInsnBuilder ib = new AdvInsnBuilder(method);
+        AdvIBdr ib = new AdvIBdr(method);
         InterpretContext runtime = generation.runtimeContext(null);
         Local action = runtime.intLocal("tailAction", InterpretContext.OPCODE);
         ib.set(action, generation.step(runtime));
         ib.ifCondition(
-                AdvInsnBuilder.notEqual(action, AdvInsnBuilder.constant(0)),
+                AdvIBdr.notEqual(action, AdvIBdr.constant(0)),
                 done -> done.returnValue(action));
         if (lane + 1 == segments.size())
         {
-            ib.returnValue(AdvInsnBuilder.constant(0));
+            ib.returnValue(AdvIBdr.constant(0));
         }
         else
         {
-            ib.returnValue(AdvInsnBuilder.callStatic(
+            ib.returnValue(AdvIBdr.callStatic(
                     generation.owner(),
                     segments.get(lane + 1),
                     "I",
@@ -108,41 +108,41 @@ public final class CallThreadedVMGenerator extends AbstractVMStructureGenerator 
         }
         dispatch.generation().onClassInitialize(initializer -> {
             Local calls = initializer.var("callThreadTargets", "java/util/Map");
-            initializer.set(calls, AdvInsnBuilder.newObject("java/util/HashMap"));
+            initializer.set(calls, AdvIBdr.newObject("java/util/HashMap"));
             for (Map.Entry<Integer, VMDispatchTarget> entry : targets.entrySet())
             {
                 initializer.directCall(mapPut(
                         calls,
-                        integer(AdvInsnBuilder.constant(entry.getKey())),
+                        integer(AdvIBdr.constant(entry.getKey())),
                         handlers.newHandler(entry.getValue().primaryKey())));
             }
-            initializer.set(AdvInsnBuilder.staticField(callsField), calls);
+            initializer.set(AdvIBdr.staticField(callsField), calls);
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("callThreadSelector", InterpretContext.DISPATCH_SELECTOR);
         Local callee = runtime.local(
                 "callThreadCallee", handlers.interfaceName(), InterpretContext.DISPATCH_SELECTOR + 1);
         Local status = runtime.intLocal("callThreadStatus", InterpretContext.DISPATCH_SELECTOR + 2);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(callee, AdvInsnBuilder.cast(
-                mapGet(AdvInsnBuilder.staticField(callsField), integer(selector)),
+        ib.set(callee, AdvIBdr.cast(
+                mapGet(AdvIBdr.staticField(callsField), integer(selector)),
                 handlers.interfaceName()));
-        ib.ifCondition(AdvInsnBuilder.isNull(callee), missing -> missing.gotoLabel(dispatch.unknown()));
+        ib.ifCondition(AdvIBdr.isNull(callee), missing -> missing.gotoLabel(dispatch.unknown()));
         ib.set(status, handlers.invoke(callee, runtime));
         dispatch.finishExternal(ib, status);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr integer(nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
+        return AdvIBdr.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapGet(nhcm.bytecodevm.advInsn.Expr map, nhcm.bytecodevm.advInsn.Expr key)
     {
-        return AdvInsnBuilder.callInterface(
-                map, "java/util/Map", "get", "java/lang/Object", AdvInsnBuilder.cast(key, "java/lang/Object"));
+        return AdvIBdr.callInterface(
+                map, "java/util/Map", "get", "java/lang/Object", AdvIBdr.cast(key, "java/lang/Object"));
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapPut(
@@ -150,8 +150,8 @@ public final class CallThreadedVMGenerator extends AbstractVMStructureGenerator 
             nhcm.bytecodevm.advInsn.Expr key,
             nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 map, "java/util/Map", "put", "java/lang/Object",
-                AdvInsnBuilder.cast(key, "java/lang/Object"), AdvInsnBuilder.cast(value, "java/lang/Object"));
+                AdvIBdr.cast(key, "java/lang/Object"), AdvIBdr.cast(value, "java/lang/Object"));
     }
 }

@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.threadeddirect;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.enums.Acc;
@@ -25,12 +25,12 @@ public final class DirectThreadedVMGenerator extends AbstractVMStructureGenerato
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         Local handlerToken = runtime.intLocal("directHandlerToken", InterpretContext.OPCODE);
-        ib.set(handlerToken, AdvInsnBuilder.constant(0));
+        ib.set(handlerToken, AdvIBdr.constant(0));
         ib.whileLoop(
-                AdvInsnBuilder.equal(handlerToken, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(handlerToken, AdvIBdr.constant(0)),
                 handler -> handler.set(handlerToken, generation.step(runtime)));
     }
 
@@ -52,24 +52,24 @@ public final class DirectThreadedVMGenerator extends AbstractVMStructureGenerato
         }
         dispatch.generation().onClassInitialize(initializer -> {
             Local table = initializer.var("directThreadedHandlers", "java/util/Map");
-            initializer.set(table, AdvInsnBuilder.newObject("java/util/HashMap"));
+            initializer.set(table, AdvIBdr.newObject("java/util/HashMap"));
             for (Map.Entry<Integer, VMDispatchTarget> entry : targetByKey.entrySet())
             {
                 initializer.directCall(mapPut(
                         table,
-                        integer(AdvInsnBuilder.constant(entry.getKey())),
+                        integer(AdvIBdr.constant(entry.getKey())),
                         handlers.newHandler(entry.getValue().primaryKey())));
             }
             initializer.set(
-                    AdvInsnBuilder.staticField(tableField),
-                    AdvInsnBuilder.callStatic(
+                    AdvIBdr.staticField(tableField),
+                    AdvIBdr.callStatic(
                             "java/util/Collections",
                             "unmodifiableMap",
                             "java/util/Map",
                             table));
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("directThreadSelector", InterpretContext.DISPATCH_SELECTOR);
         Local handler = runtime.local(
@@ -78,29 +78,29 @@ public final class DirectThreadedVMGenerator extends AbstractVMStructureGenerato
                 InterpretContext.DISPATCH_SELECTOR + 1);
         Local result = runtime.intLocal("directThreadResult", InterpretContext.DISPATCH_SELECTOR + 2);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(handler, AdvInsnBuilder.cast(
-                mapGet(AdvInsnBuilder.staticField(tableField), integer(selector)),
+        ib.set(handler, AdvIBdr.cast(
+                mapGet(AdvIBdr.staticField(tableField), integer(selector)),
                 handlers.interfaceName()));
-        ib.ifCondition(AdvInsnBuilder.isNull(handler), missing -> missing.gotoLabel(dispatch.unknown()));
+        ib.ifCondition(AdvIBdr.isNull(handler), missing -> missing.gotoLabel(dispatch.unknown()));
         ib.set(result, handlers.invoke(handler, runtime));
         dispatch.finishExternal(ib, result);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr integer(nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
+        return AdvIBdr.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapGet(
             nhcm.bytecodevm.advInsn.Expr map,
             nhcm.bytecodevm.advInsn.Expr key)
     {
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 map,
                 "java/util/Map",
                 "get",
                 "java/lang/Object",
-                AdvInsnBuilder.cast(key, "java/lang/Object"));
+                AdvIBdr.cast(key, "java/lang/Object"));
     }
 
     private static nhcm.bytecodevm.advInsn.Expr mapPut(
@@ -108,12 +108,12 @@ public final class DirectThreadedVMGenerator extends AbstractVMStructureGenerato
             nhcm.bytecodevm.advInsn.Expr key,
             nhcm.bytecodevm.advInsn.Expr value)
     {
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 map,
                 "java/util/Map",
                 "put",
                 "java/lang/Object",
-                AdvInsnBuilder.cast(key, "java/lang/Object"),
-                AdvInsnBuilder.cast(value, "java/lang/Object"));
+                AdvIBdr.cast(key, "java/lang/Object"),
+                AdvIBdr.cast(value, "java/lang/Object"));
     }
 }

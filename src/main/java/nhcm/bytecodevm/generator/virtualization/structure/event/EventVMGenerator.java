@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.event;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.VMStructure;
@@ -26,7 +26,7 @@ public final class EventVMGenerator extends AbstractVMStructureGenerator impleme
     }
 
     @Override
-    public void emitScheduler(VMStructureGenerationContext generation, AdvInsnBuilder ib, InterpretContext runtime)
+    public void emitScheduler(VMStructureGenerationContext generation, AdvIBdr ib, InterpretContext runtime)
     {
         int queueSize = generation.plan().laneCount();
         Local action = runtime.intLocal("eventAction", InterpretContext.OPCODE);
@@ -34,26 +34,26 @@ public final class EventVMGenerator extends AbstractVMStructureGenerator impleme
         Local head = runtime.intLocal("eventHead", InterpretContext.DISPATCH_SELECTOR + 2);
         Local tail = runtime.intLocal("eventTail", InterpretContext.DISPATCH_SELECTOR + 3);
         Local event = runtime.intLocal("currentEvent", InterpretContext.DISPATCH_SELECTOR + 4);
-        ib.set(events, AdvInsnBuilder.newArray("int", AdvInsnBuilder.constant(queueSize)));
-        ib.set(head, AdvInsnBuilder.constant(0));
-        ib.set(tail, AdvInsnBuilder.constant(1));
-        ib.set(action, AdvInsnBuilder.constant(0));
-        ib.setArray(events, AdvInsnBuilder.constant(0), eventToken(generation, runtime));
+        ib.set(events, AdvIBdr.newArray("int", AdvIBdr.constant(queueSize)));
+        ib.set(head, AdvIBdr.constant(0));
+        ib.set(tail, AdvIBdr.constant(1));
+        ib.set(action, AdvIBdr.constant(0));
+        ib.setArray(events, AdvIBdr.constant(0), eventToken(generation, runtime));
         ib.whileLoop(
-                AdvInsnBuilder.equal(action, AdvInsnBuilder.constant(0)),
+                AdvIBdr.equal(action, AdvIBdr.constant(0)),
                 eventLoop -> {
-                    eventLoop.set(event, AdvInsnBuilder.arrayAt(
+                    eventLoop.set(event, AdvIBdr.arrayAt(
                             events,
-                            AdvInsnBuilder.bitAnd(head, AdvInsnBuilder.constant(queueSize - 1))));
+                            AdvIBdr.bitAnd(head, AdvIBdr.constant(queueSize - 1))));
                     eventLoop.increment(head, 1);
                     eventLoop.set(action, generation.step(runtime, event));
                     eventLoop.ifCondition(
-                            AdvInsnBuilder.equal(action, AdvInsnBuilder.constant(0)),
+                            AdvIBdr.equal(action, AdvIBdr.constant(0)),
                             emit -> {
                                 emit.setArray(
                                         events,
-                                        AdvInsnBuilder.bitAnd(tail, AdvInsnBuilder.constant(queueSize - 1)),
-                                        AdvInsnBuilder.bitXor(eventToken(generation, runtime), event));
+                                        AdvIBdr.bitAnd(tail, AdvIBdr.constant(queueSize - 1)),
+                                        AdvIBdr.bitXor(eventToken(generation, runtime), event));
                                 emit.increment(tail, 1);
                             });
                 });
@@ -65,7 +65,7 @@ public final class EventVMGenerator extends AbstractVMStructureGenerator impleme
                 runtime.frameStateKey(),
                 runtime.frameProgramCounter(),
                 runtime.frameBlockIndex(),
-                AdvInsnBuilder.constant(generation.profile().saltHandler));
+                AdvIBdr.constant(generation.profile().saltHandler));
     }
 
     @Override
@@ -82,23 +82,23 @@ public final class EventVMGenerator extends AbstractVMStructureGenerator impleme
         }
         dispatch.generation().onClassInitialize(initializer -> {
             Local listenerMap = initializer.var("eventListeners", "java/util/Map");
-            initializer.set(listenerMap, AdvInsnBuilder.newObject("java/util/concurrent/ConcurrentHashMap"));
+            initializer.set(listenerMap, AdvIBdr.newObject("java/util/concurrent/ConcurrentHashMap"));
             int ordinal = 0;
             for (Map.Entry<Integer, VMDispatchTarget> entry : targets.entrySet())
             {
                 Local pair = initializer.var(
                         "listenerPair" + ordinal++, "[L" + listeners.interfaceName() + ";");
-                initializer.set(pair, AdvInsnBuilder.newArray(listeners.interfaceName(), AdvInsnBuilder.constant(2)));
-                initializer.setArray(pair, AdvInsnBuilder.constant(0),
-                        listeners.newHandler(entry.getValue().primaryKey(), 0));
-                initializer.setArray(pair, AdvInsnBuilder.constant(1),
-                        listeners.newHandler(entry.getValue().primaryKey(), 1));
-                initializer.directCall(mapPut(listenerMap, integer(AdvInsnBuilder.constant(entry.getKey())), pair));
+                initializer.set(pair, AdvIBdr.newArray(listeners.interfaceName(), AdvIBdr.constant(2)));
+                initializer.setArray(pair, AdvIBdr.constant(0),
+                                     listeners.newHandler(entry.getValue().primaryKey(), 0));
+                initializer.setArray(pair, AdvIBdr.constant(1),
+                                     listeners.newHandler(entry.getValue().primaryKey(), 1));
+                initializer.directCall(mapPut(listenerMap, integer(AdvIBdr.constant(entry.getKey())), pair));
             }
-            initializer.set(AdvInsnBuilder.staticField(listenersField), listenerMap);
+            initializer.set(AdvIBdr.staticField(listenersField), listenerMap);
         });
 
-        AdvInsnBuilder ib = dispatch.instructions();
+        AdvIBdr ib = dispatch.instructions();
         InterpretContext runtime = dispatch.runtime();
         Local selector = runtime.intLocal("eventOpcode", InterpretContext.DISPATCH_SELECTOR);
         Local pair = runtime.local(
@@ -109,35 +109,35 @@ public final class EventVMGenerator extends AbstractVMStructureGenerator impleme
                 "eventListener", listeners.interfaceName(), InterpretContext.DISPATCH_SELECTOR + 3);
         Local status = runtime.intLocal("eventStatus", InterpretContext.DISPATCH_SELECTOR + 4);
         dispatch.setSelector(ib, runtime, selector);
-        ib.set(pair, AdvInsnBuilder.cast(
-                mapGet(AdvInsnBuilder.staticField(listenersField), integer(selector)),
+        ib.set(pair, AdvIBdr.cast(
+                mapGet(AdvIBdr.staticField(listenersField), integer(selector)),
                 "[L" + listeners.interfaceName() + ";"));
-        ib.ifCondition(AdvInsnBuilder.isNull(pair), missing -> missing.gotoLabel(dispatch.unknown()));
-        ib.set(channel, AdvInsnBuilder.bitAnd(
+        ib.ifCondition(AdvIBdr.isNull(pair), missing -> missing.gotoLabel(dispatch.unknown()));
+        ib.set(channel, AdvIBdr.bitAnd(
                 dispatch.generation().mix(
                         runtime.structureState(), runtime.frameStateKey(), selector,
-                        AdvInsnBuilder.constant(dispatch.profile().saltHandler)),
-                AdvInsnBuilder.constant(1)));
-        ib.set(listener, AdvInsnBuilder.arrayAt(pair, channel));
+                        AdvIBdr.constant(dispatch.profile().saltHandler)),
+                AdvIBdr.constant(1)));
+        ib.set(listener, AdvIBdr.arrayAt(pair, channel));
         ib.set(status, listeners.invoke(listener, runtime));
         dispatch.finishExternal(ib, status);
     }
 
     private static Expr integer(Expr value)
     {
-        return AdvInsnBuilder.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
+        return AdvIBdr.callStatic("java/lang/Integer", "valueOf", "java/lang/Integer", value);
     }
 
     private static Expr mapGet(Expr map, Expr key)
     {
-        return AdvInsnBuilder.callInterface(
-                map, "java/util/Map", "get", "java/lang/Object", AdvInsnBuilder.cast(key, "java/lang/Object"));
+        return AdvIBdr.callInterface(
+                map, "java/util/Map", "get", "java/lang/Object", AdvIBdr.cast(key, "java/lang/Object"));
     }
 
     private static Expr mapPut(Expr map, Expr key, Expr value)
     {
-        return AdvInsnBuilder.callInterface(
+        return AdvIBdr.callInterface(
                 map, "java/util/Map", "put", "java/lang/Object",
-                AdvInsnBuilder.cast(key, "java/lang/Object"), AdvInsnBuilder.cast(value, "java/lang/Object"));
+                AdvIBdr.cast(key, "java/lang/Object"), AdvIBdr.cast(value, "java/lang/Object"));
     }
 }

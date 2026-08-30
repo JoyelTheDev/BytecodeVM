@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.field;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
@@ -19,7 +19,7 @@ public class WriteFieldBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         Local owner = context.local("fieldOwner", "java/lang/String", InterpretContext.FIELD_OWNER);
         Local name = context.local("fieldName", "java/lang/String", InterpretContext.FIELD_NAME);
@@ -30,7 +30,7 @@ public class WriteFieldBranch extends InterpretBranch
         popObject(ib, context, value);
         if (opcode == Opcs.PUTSTATIC)
         {
-            ib.set(receiver, AdvInsnBuilder.nullValue("java/lang/Object"));
+            ib.set(receiver, AdvIBdr.nullValue("java/lang/Object"));
         }
         else
         {
@@ -41,19 +41,19 @@ public class WriteFieldBranch extends InterpretBranch
         ib.set(name, readConstantString(ib, context));
         ib.set(descriptor, readConstantString(ib, context));
 
-        ib.directCall(AdvInsnBuilder.callStatic(
+        ib.directCall(AdvIBdr.callStatic(
                 context.vm.owner,
                 context.vm.setField.name(),
                 "V",
                 owner,
                 name,
                 descriptor,
-                AdvInsnBuilder.constant(opcode == Opcs.PUTSTATIC),
+                AdvIBdr.constant(opcode == Opcs.PUTSTATIC),
                 receiver,
                 value));
     }
 
-    private static Expr readConstantString(AdvInsnBuilder ib, InterpretContext context)
+    private static Expr readConstantString(AdvIBdr ib, InterpretContext context)
     {
         Local token = context.intLocal("fieldToken", InterpretContext.JUMP_TARGET);
         context.nextOperand(ib, token);

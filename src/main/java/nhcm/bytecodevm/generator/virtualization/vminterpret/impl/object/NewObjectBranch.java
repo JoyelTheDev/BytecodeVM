@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret.impl.object;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
@@ -17,14 +17,14 @@ public class NewObjectBranch extends InterpretBranch
     }
 
     @Override
-    public void generate(AdvInsnBuilder ib, InterpretContext context, Opcs opcode)
+    public void generate(AdvIBdr ib, InterpretContext context, Opcs opcode)
     {
         var classIndex = context.intLocal("classIndex", InterpretContext.JUMP_TARGET);
         var marker = context.local("identityMarker", "[Ljava/lang/Object;", InterpretContext.FIELD_VALUE);
 
         context.nextOperand(ib, classIndex);
-        ib.set(marker, AdvInsnBuilder.newArray("java/lang/Object", AdvInsnBuilder.constant(1)));
-        ib.setArray(marker, AdvInsnBuilder.constant(0), AdvInsnBuilder.arrayAt(context.constants(), classIndex));
+        ib.set(marker, AdvIBdr.newArray("java/lang/Object", AdvIBdr.constant(1)));
+        ib.setArray(marker, AdvIBdr.constant(0), AdvIBdr.arrayAt(context.constants(), classIndex));
         pushObject(ib, context, marker);
     }
 }

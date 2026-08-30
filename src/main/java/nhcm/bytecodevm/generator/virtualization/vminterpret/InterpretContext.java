@@ -1,6 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.vminterpret;
 
-import nhcm.bytecodevm.advInsn.AdvInsnBuilder;
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.FieldAccess;
 import nhcm.bytecodevm.advInsn.Local;
@@ -15,7 +15,7 @@ public final class InterpretContext
     @FunctionalInterface
     public interface OperandDecoder
     {
-        void emit(AdvInsnBuilder instructions, InterpretContext context, Local target);
+        void emit(AdvIBdr instructions, InterpretContext context, Local target);
     }
 
     public static final int PROGRAM = 0;
@@ -139,22 +139,22 @@ public final class InterpretContext
         {
             throw new IllegalStateException("programClassName is required for program() access");
         }
-        return AdvInsnBuilder.local("program", programClassName, PROGRAM);
+        return AdvIBdr.local("program", programClassName, PROGRAM);
     }
 
     public Local frame()
     {
-        return AdvInsnBuilder.local("frame", frameClassName, FRAME);
+        return AdvIBdr.local("frame", frameClassName, FRAME);
     }
 
     public Local code()
     {
-        return AdvInsnBuilder.local("code", "[I", CODE);
+        return AdvIBdr.local("code", "[I", CODE);
     }
 
     public Local constants()
     {
-        return AdvInsnBuilder.local("constants", "[Ljava/lang/Object;", CONSTANTS);
+        return AdvIBdr.local("constants", "[Ljava/lang/Object;", CONSTANTS);
     }
 
     public Local opcode()
@@ -224,7 +224,7 @@ public final class InterpretContext
 
     public Local local(String name, String type, int slot)
     {
-        return AdvInsnBuilder.local(name, type, slot);
+        return AdvIBdr.local(name, type, slot);
     }
 
     public Local localForSlot(String name, int slot)
@@ -276,7 +276,7 @@ public final class InterpretContext
 
     public FieldAccess frameField(FieldRef field)
     {
-        return AdvInsnBuilder.field(frame(), field);
+        return AdvIBdr.field(frame(), field);
     }
 
     public FieldAccess frameProgramCounter()
@@ -331,12 +331,12 @@ public final class InterpretContext
 
     public Expr tokenAtProgramCounter()
     {
-        return AdvInsnBuilder.arrayAt(code(), frameProgramCounter());
+        return AdvIBdr.arrayAt(code(), frameProgramCounter());
     }
 
     public Expr constantString(Expr index)
     {
-        return AdvInsnBuilder.callStatic(
+        return AdvIBdr.callStatic(
                 vm.owner,
                 vm.constantString.name(),
                 "java/lang/String",
@@ -350,23 +350,23 @@ public final class InterpretContext
 
     public Expr loadClass(Expr className)
     {
-        return AdvInsnBuilder.callStatic(
+        return AdvIBdr.callStatic(
                 vm.owner,
                 vm.loadOwner.name(),
                 "java/lang/Class",
                 className);
     }
 
-    public void nextToken(AdvInsnBuilder ib, Local target)
+    public void nextToken(AdvIBdr ib, Local target)
     {
         nextOperand(ib, target);
     }
 
-    public void nextOperand(AdvInsnBuilder ib, Local target)
+    public void nextOperand(AdvIBdr ib, Local target)
     {
         if (operandDecoder == null)
         {
-            ib.set(target, AdvInsnBuilder.callStatic(
+            ib.set(target, AdvIBdr.callStatic(
                     vm.owner,
                     vm.decodeOperand.name(),
                     "I",

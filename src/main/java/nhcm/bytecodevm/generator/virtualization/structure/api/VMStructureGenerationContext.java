@@ -1,5 +1,6 @@
 package nhcm.bytecodevm.generator.virtualization.structure.api;
 
+import nhcm.bytecodevm.advInsn.AdvIBdr;
 import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.generator.globalclass.MethodFrameLayout;
 import nhcm.bytecodevm.generator.globalclass.VMProgramLayout;
@@ -44,7 +45,7 @@ public final class VMStructureGenerationContext
     private final Function<Void, String> coroutineDescriptor;
     private final MixEmitter mixEmitter;
     private final List<ClassNode> auxiliaryClasses;
-    private final List<Consumer<nhcm.bytecodevm.advInsn.AdvInsnBuilder>> classInitializers = new ArrayList<>();
+    private final List<Consumer<AdvIBdr>> classInitializers = new ArrayList<>();
 
     public VMStructureGenerationContext(
             String owner,
@@ -119,7 +120,7 @@ public final class VMStructureGenerationContext
 
     public Expr step(InterpretContext runtime)
     {
-        return step(runtime, nhcm.bytecodevm.advInsn.AdvInsnBuilder.constant(0));
+        return step(runtime, AdvIBdr.constant(0));
     }
 
     public Expr step(InterpretContext runtime, Expr structureState)
@@ -182,14 +183,14 @@ public final class VMStructureGenerationContext
         auxiliaryClasses.add(auxiliaryClass);
     }
 
-    public void onClassInitialize(Consumer<nhcm.bytecodevm.advInsn.AdvInsnBuilder> initializer)
+    public void onClassInitialize(Consumer<AdvIBdr> initializer)
     {
         classInitializers.add(Objects.requireNonNull(initializer, "initializer"));
     }
 
-    public void emitClassInitializers(nhcm.bytecodevm.advInsn.AdvInsnBuilder instructions)
+    public void emitClassInitializers(AdvIBdr instructions)
     {
-        for (Consumer<nhcm.bytecodevm.advInsn.AdvInsnBuilder> initializer : classInitializers)
+        for (Consumer<AdvIBdr> initializer : classInitializers)
         {
             initializer.accept(instructions);
         }
