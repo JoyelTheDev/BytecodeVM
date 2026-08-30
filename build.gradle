@@ -22,6 +22,7 @@ repositories {
 }
 
 dependencies {
+    implementation project(':sdk')
     implementation 'info.picocli:picocli:4.7.7'
     implementation 'com.google.code.gson:gson:2.14.0'
 

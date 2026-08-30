@@ -71,6 +71,10 @@ public class BytecodeVM
             preEncryptNumbers: true
             # Removes BytecodeVM SDK annotations from the output JAR.
             removeAnnotations: true
+            # Custom watermark fields. Leave empty to use the built-in default watermark.
+            # Required tracking fields such as protection time, artifact ID, version, and
+            # input SHA-256 are always added automatically.
+            watermark: {}
             includeMethodsCalledWithin: false
             excludeMethodsCalledWithin: false
             virtualizeInvocationBridges: true

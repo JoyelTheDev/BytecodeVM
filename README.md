@@ -54,6 +54,7 @@ Inspect exactly what will be protected without generating an output JAR:
 ```powershell
 java -jar BytecodeVM.jar inspect config.yml
 java -jar BytecodeVM.jar inspect config.yml --report inspection.json
+java -jar BytecodeVM.jar watermark protected.jar
 ```
 
 `inspect` applies the configured `includes` and `exclusions` through the same selection and VM
@@ -70,6 +71,7 @@ java -jar BytecodeVM.jar protect config.yml
 default settings. The command always comes first, followed by its arguments and options.
 `--config` remains available for scripts. The commands also support `--input`, `--output`,
 and `--report <report.json>`.
+`protect` also accepts repeatable `--watermark key=value` options for CI and release scripts.
 Existing output, report, and initialized config files are overwritten automatically.
 
 Lifecycle logs are printed to the terminal with colors. `--verbose` adds detailed planning and
@@ -169,6 +171,9 @@ constantFix: true
 preEncryptStrings: true
 preEncryptNumbers: true
 removeAnnotations: true # Remove BytecodeVM SDK annotations from output classes.
+watermark:               # Optional custom fields; an embedded default is used when empty.
+  owner: NHCM
+  channel: release
 includeMethodsCalledWithin: false
 excludeMethodsCalledWithin: false
 virtualizeInvocationBridges: true
@@ -235,6 +240,7 @@ exclusions:
 | `preEncryptStrings` | `true`, `false` | `true` | Replaces string constants with per-site encrypted integer data and an inline runtime decoder before virtualization. |
 | `preEncryptNumbers` | `true`, `false` | `true` | Replaces integer, long, float, and double constants with per-site encrypted bit patterns reconstructed at runtime before virtualization. |
 | `removeAnnotations` | `true`, `false` | `true` | Removes BytecodeVM SDK annotations from classes and methods after their options have been applied. Other application annotations are untouched. |
+| `watermark` | key/value map | `{}` | Adds custom fields to the mandatory bytecode-embedded watermark. Empty maps receive a default label. |
 | `includeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively includes target-jar methods called from explicitly included methods. |
 | `excludeMethodsCalledWithin` | `true`, `false` | `false`  | Recursively excludes target-jar methods called from explicitly included methods. |
 | `virtualizeInvocationBridges` | `true`, `true` | `true` | Virtualizes generated `$vm$invoke$N` bridge methods when their bytecode can be represented by the VM. String concat invokedynamic bridges are lowered to normal `StringBuilder` bytecode first. |
@@ -254,7 +260,7 @@ exclusions:
 
 ## Annotation SDK
 
-The `sdk` subproject is a dependency-free Java 8 annotation library published on [Maven Central](https://central.sonatype.com/artifact/io.github.nhcm-dev/bytecodevm-sdk/2.0.0). SDK classes are not required at runtime, so `compileOnly` is recommended instead of packaging them into the application.
+The `sdk` subproject is a dependency-free Java 8 annotation and watermark utility library published on Maven Central. Use `compileOnly` when only annotations are needed; watermark-reading tools must keep the SDK on their runtime classpath.
 
 ```groovy
 repositories {
@@ -262,7 +268,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly 'io.github.nhcm-dev:bytecodevm-sdk:2.0.0'
+    compileOnly 'io.github.nhcm-dev:bytecodevm-sdk:2.1.0'
 }
 ```
 
@@ -272,7 +278,7 @@ For Maven projects, use `provided` scope:
 <dependency>
     <groupId>io.github.nhcm-dev</groupId>
     <artifactId>bytecodevm-sdk</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.0</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -341,6 +347,35 @@ public boolean verifyLicense(String key) {
 ```
 
 `CallPolicy.INCLUDE` recursively virtualizes target-JAR methods reachable from that root. `EXCLUDE` recursively excludes them, `NONE` disables expansion for that root, and `CONFIG` uses the YAML call-expansion settings. Invalid SDK numeric ranges report the annotated class and method. With the default `removeAnnotations: true`, all BytecodeVM SDK declaration annotations are removed after their settings have been applied.
+
+## Watermarks
+
+Every protected JAR receives a watermark, even when `watermark: {}` is left empty. BytecodeVM always
+records the UTC protection time, unique artifact ID, tool version, and input SHA-256. Custom YAML fields
+are stored under `user.*`; command-line values merge with YAML and win on duplicate keys:
+
+```powershell
+java -jar BytecodeVM.jar protect app.jar --watermark owner=NHCM --watermark channel=release
+java -jar BytecodeVM.jar watermark app-bytecodevm.jar
+java -jar BytecodeVM.jar watermark app-bytecodevm.jar --json
+```
+
+The watermark is not a JAR resource. An AES-GCM capsule is embedded in a generated method's bytecode,
+with generated class, method, and field names following `renameMode`. Every VM resolves code IDs through
+the authenticated carrier. Removing the carrier or changing its capsule prevents virtualized methods from
+running. The JSON obfuscation report contains the same generated tracking fields.
+
+The SDK can verify and read a protected JAR without loading or executing its classes:
+
+```java
+import java.nio.file.Paths;
+import nhcm.bytecodevm.sdk.watermark.WatermarkInfo;
+import nhcm.bytecodevm.sdk.watermark.WatermarkReader;
+
+WatermarkInfo watermark = WatermarkReader.read(Paths.get("app-bytecodevm.jar"));
+String artifactId = watermark.artifactId();
+String owner = watermark.get("user.owner");
+```
 
 ## Rename Mode
 

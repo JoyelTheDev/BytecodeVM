@@ -23,6 +23,7 @@ public class BytecodeVMConfig
             "perMethodOpcodeMap", "shuffleConstants", "bindConstantsToOperands", "splitCodeStreams",
             "shuffleInstructionBlocks", "obfuscateDispatch", "dynamicCodePoolBuild", "dynamicStateKey", "virtualControlFlowGraph",
             "constantFix", "preEncryptStrings", "preEncryptNumbers", "removeAnnotations",
+            "watermark",
             "includeMethodsCalledWithin", "excludeMethodsCalledWithin", "virtualizeInvocationBridges",
             "vmIntegrityCheck", "vmIntegrityCheckRatio", "vmIntegrityRecheckInterval", "superInstruction",
             "superinstrcution", "superInstructionCombineRange", "superinstrcutioncombinerange",
@@ -63,6 +64,7 @@ public class BytecodeVMConfig
     public final boolean preEncryptStrings;
     public final boolean preEncryptNumbers;
     public final boolean removeAnnotations;
+    public final Map<String, String> watermark;
 
     public final boolean includeMethodsCalledWithin;
     public final boolean excludeMethodsCalledWithin;
@@ -175,6 +177,7 @@ public class BytecodeVMConfig
                 .preEncryptStrings(optionalBoolean(yaml, "preEncryptStrings", true))
                 .preEncryptNumbers(optionalBoolean(yaml, "preEncryptNumbers", true))
                 .removeAnnotations(optionalBoolean(yaml, "removeAnnotations", true))
+                .watermark(optionalStringMap(yaml, "watermark"))
                 .includeMethodsCalledWithin(optionalBoolean(yaml, "includeMethodsCalledWithin", false))
                 .excludeMethodsCalledWithin(optionalBoolean(yaml, "excludeMethodsCalledWithin", false))
                 .virtualizeInvocationBridges(optionalBoolean(yaml, "virtualizeInvocationBridges", false))
@@ -254,6 +257,7 @@ public class BytecodeVMConfig
         values.put("preEncryptStrings", preEncryptStrings);
         values.put("preEncryptNumbers", preEncryptNumbers);
         values.put("removeAnnotations", removeAnnotations);
+        values.put("watermark", new LinkedHashMap<>(watermark));
         values.put("includeMethodsCalledWithin", includeMethodsCalledWithin);
         values.put("excludeMethodsCalledWithin", excludeMethodsCalledWithin);
         values.put("virtualizeInvocationBridges", virtualizeInvocationBridges);
@@ -330,6 +334,7 @@ public class BytecodeVMConfig
                 .preEncryptStrings(statementEnabled("preEncryptStrings", preEncryptStrings, owner, method))
                 .preEncryptNumbers(statementEnabled("preEncryptNumbers", preEncryptNumbers, owner, method))
                 .removeAnnotations(removeAnnotations)
+                .watermark(watermark)
                 .includeMethodsCalledWithin(includeMethodsCalledWithin)
                 .excludeMethodsCalledWithin(excludeMethodsCalledWithin)
                 .virtualizeInvocationBridges(virtualizeInvocationBridges)
@@ -380,6 +385,7 @@ public class BytecodeVMConfig
                 .preEncryptStrings(false)
                 .preEncryptNumbers(false)
                 .removeAnnotations(removeAnnotations)
+                .watermark(watermark)
                 .includeMethodsCalledWithin(false)
                 .excludeMethodsCalledWithin(false)
                 .virtualizeInvocationBridges(false)
@@ -489,6 +495,37 @@ public class BytecodeVMConfig
                     "Config value " + key + " must be between " + minValue + " and " + maxValue);
         }
         return result;
+    }
+
+    private static Map<String, String> optionalStringMap(
+            Map<String, Object> yaml,
+            String key)
+    {
+        Object value = yaml.get(key);
+        if (value == null)
+        {
+            return Map.of();
+        }
+        if (!(value instanceof Map<?, ?> source))
+        {
+            throw typeError(key, "a key/value map");
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet())
+        {
+            if (!(entry.getKey() instanceof String name) || name.isBlank())
+            {
+                throw new IllegalArgumentException("Config value " + key + " contains an empty or non-string key");
+            }
+            Object fieldValue = entry.getValue();
+            if (!(fieldValue instanceof String || fieldValue instanceof Number || fieldValue instanceof Boolean))
+            {
+                throw new IllegalArgumentException(
+                        "Config value " + key + "." + name + " must be a string, number, or boolean");
+            }
+            result.put(name, String.valueOf(fieldValue));
+        }
+        return Collections.unmodifiableMap(result);
     }
 
     private static <T extends Enum<T>> T optionalEnum(

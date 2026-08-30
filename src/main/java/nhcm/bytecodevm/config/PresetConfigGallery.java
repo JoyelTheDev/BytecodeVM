@@ -5,6 +5,7 @@ import nhcm.bytecodevm.enums.VMStructure;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.stream.Collectors;
 
@@ -215,6 +216,7 @@ public final class PresetConfigGallery
                 .preEncryptStrings(true)
                 .preEncryptNumbers(true)
                 .removeAnnotations(true)
+                .watermark(Map.of())
                 .includeMethodsCalledWithin(false)
                 .excludeMethodsCalledWithin(false)
                 .virtualizeInvocationBridges(true)

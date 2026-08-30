@@ -20,6 +20,7 @@ import nhcm.bytecodevm.generator.virtualization.superinstruction.SuperInstructio
 import nhcm.bytecodevm.generator.virtualization.VMGenerator;
 import nhcm.bytecodevm.generator.virtualization.VMMethodSegmenter;
 import nhcm.bytecodevm.generator.virtualization.VMObfProfile;
+import nhcm.bytecodevm.generator.watermark.WatermarkPlan;
 import nhcm.bytecodevm.progress.ProgressStage;
 import nhcm.bytecodevm.progress.VirtualizationProgress;
 import nhcm.bytecodevm.tools.JarTransformer;
@@ -62,6 +63,7 @@ public class VMSetGenerator
     private final VMObfProfile protectionProfile;
     private final SuperInstructionRegistry superInstructions;
     private final int integrityCapability;
+    private final WatermarkPlan watermarkPlan;
 
     public VMSetGenerator(
             String name, String location,
@@ -83,6 +85,20 @@ public class VMSetGenerator
             BytecodeVMConfig config,
             GeneratedMemberNamer namer)
     {
+        this(name, location, opcMutator, methodFrameGenerator, vmProgramGenerator,
+                vmCodePoolGenerator, config, namer, null);
+    }
+
+    public VMSetGenerator(
+            String name, String location,
+            OpcMutator opcMutator,
+            MethodFrameGenerator methodFrameGenerator,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            GeneratedMemberNamer namer,
+            WatermarkPlan watermarkPlan)
+    {
         this.vmClassName = namer.className(location, name);
         this.codePoolClassName = namer.className(classPackage(vmClassName), classSimpleName(vmClassName) + "$CodePool");
         this.opcMutator = opcMutator;
@@ -92,6 +108,7 @@ public class VMSetGenerator
         this.config = config.resolveVMStructure();
         this.vmStructure = this.config.vmStructure;
         this.integrityCapability = nonZeroRandom();
+        this.watermarkPlan = watermarkPlan;
         this.namer = namer;
         this.invocationBridgeGenerator = new InvocationBridgeGenerator(namer);
         this.protectionProfile = VMObfProfile.random();
@@ -183,7 +200,8 @@ public class VMSetGenerator
                     namer,
                     protectionProfile,
                     superInstructions,
-                    integrityCapability);
+                    integrityCapability,
+                    watermarkPlan);
             stage.setDetail("Collecting runtime classes");
             vmClass = vmGenerator.getClassNode();
             vmAuxiliaryClasses = vmGenerator.getAuxiliaryClasses();
@@ -349,7 +367,8 @@ public class VMSetGenerator
                 vmProgramGenerator,
                 vmCodePoolGenerator,
                 config.integrityConfig(),
-                namer);
+                namer,
+                watermarkPlan);
         for (IntegrityEntryTransformer.GeneratedColdEntry coldEntry : integrityEntries.coldEntries())
         {
             integrityVm.addMethod(coldEntry.method(), coldEntry.owner());

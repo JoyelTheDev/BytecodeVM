@@ -10,6 +10,8 @@ import nhcm.bytecodevm.enums.VMStructure;
 import nhcm.bytecodevm.generator.editor.transformers.ConstantFixTransformer;
 import nhcm.bytecodevm.generator.editor.transformers.NumberTransformer;
 import nhcm.bytecodevm.generator.editor.transformers.StringTransformer;
+import nhcm.bytecodevm.generator.watermark.WatermarkGenerator;
+import nhcm.bytecodevm.generator.watermark.WatermarkPlan;
 import nhcm.bytecodevm.generator.globalclass.MethodFrameGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMCodePoolGenerator;
 import nhcm.bytecodevm.generator.globalclass.VMProgramGenerator;
@@ -55,6 +57,7 @@ public class Obfuscator
     private int inputResourceCount;
     private int outputClassCount;
     private int outputResourceCount;
+    private WatermarkPlan watermarkPlan;
 
     public Obfuscator(BytecodeVMConfig config)
     {
@@ -105,6 +108,7 @@ public class Obfuscator
         inputClassCount = context.classes.size();
         inputResourceCount = context.resources.size();
         namer.reserveClassNames(context.classes.keySet());
+        watermarkPlan = createWatermark(context);
         processJar(context);
         outputClassCount = inputClassCount;
         outputResourceCount = inputResourceCount;
@@ -132,6 +136,7 @@ public class Obfuscator
         inputResourceCount = 0;
         outputClassCount = 0;
         outputResourceCount = 0;
+        watermarkPlan = null;
     }
 
     private void obfuscateProcess(JarTransformer.JarContext context)
@@ -139,7 +144,9 @@ public class Obfuscator
         inputClassCount = context.classes.size();
         inputResourceCount = context.resources.size();
         namer.reserveClassNames(context.classes.keySet());
+        watermarkPlan = createWatermark(context);
         processJar(context);
+        context.addClass(watermarkPlan.runtimeClassNode());
         logger.info("{}", LogColors.lifecycle("Adding required VM support classes"));
         logger.debug("{}", LogColors.success("VM support classes are isolated per VM set"));
         List<VMSetGenerator> generators = new ArrayList<>(this.VMSetGenerators);
@@ -431,6 +438,7 @@ public class Obfuscator
                 "protect".equals(mode) ? sha256(config.outputFile) : null,
                 0L,
                 config.toMap(),
+                watermarkPlan == null ? Map.of() : watermarkPlan.metadata(),
                 inputClassCount,
                 inputResourceCount,
                 planningStats.totalMethods,
@@ -502,7 +510,33 @@ public class Obfuscator
                 vmProgramGenerator,
                 vmCodePoolGenerator,
                 resolvedConfig,
-                namer);
+                namer,
+                watermarkPlan);
+    }
+
+    private WatermarkPlan createWatermark(JarTransformer.JarContext context)
+    {
+        GeneratedMemberNamer watermarkNamer = namer;
+        if (!namer.enabled())
+        {
+            watermarkNamer = new GeneratedMemberNamer(config.toBuilder()
+                    .renameMode(BytecodeVMConfig.RenameMode.ENABLE)
+                    .build());
+            watermarkNamer.reserveClassNames(context.classes.keySet());
+        }
+        String className = watermarkNamer.className("BytecodeVM", "Watermark");
+        try
+        {
+            return WatermarkGenerator.generate(
+                    className,
+                    config.watermark,
+                    sha256(config.inputFile),
+                    watermarkNamer);
+        }
+        catch (IOException exception)
+        {
+            throw new IllegalStateException("Cannot create BytecodeVM watermark", exception);
+        }
     }
 
     private List<VMSetGenerator> newVMSetGenerators(

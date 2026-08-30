@@ -49,6 +49,7 @@ import nhcm.bytecodevm.generator.virtualization.vminterpret.impl.lock.MonitorBra
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretContext;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.NumericType;
+import nhcm.bytecodevm.generator.watermark.WatermarkPlan;
 import nhcm.bytecodevm.tools.OpcMutator;
 import nhcm.bytecodevm.utils.*;
 import org.objectweb.asm.tree.ClassNode;
@@ -174,6 +175,7 @@ public class VMGenerator extends ClassObj
     private final VMObfProfile profile;
     private final SuperInstructionRegistry superInstructions;
     private final int integrityCapability;
+    private final WatermarkPlan watermarkPlan;
     private final VMStructurePlan structurePlan;
     private final VMStructureGenerator structureGenerator;
     private final VMStructureGenerationContext structureGeneration;
@@ -245,7 +247,8 @@ public class VMGenerator extends ClassObj
                 namer,
                 profile,
                 superInstructions,
-                0);
+                0,
+                null);
     }
 
     public VMGenerator(
@@ -260,6 +263,25 @@ public class VMGenerator extends ClassObj
             VMObfProfile profile,
             SuperInstructionRegistry superInstructions,
             int integrityCapability)
+    {
+        this(className, codePoolGenerators, opcMutator, methodFrameGenerator,
+                vmProgramGenerator, vmCodePoolGenerator, config, namer, profile,
+                superInstructions, integrityCapability, null);
+    }
+
+    public VMGenerator(
+            String className,
+            List<CodePoolGenerator> codePoolGenerators,
+            OpcMutator opcMutator,
+            MethodFrameGenerator methodFrameGenerator,
+            VMProgramGenerator vmProgramGenerator,
+            VMCodePoolGenerator vmCodePoolGenerator,
+            BytecodeVMConfig config,
+            GeneratedMemberNamer namer,
+            VMObfProfile profile,
+            SuperInstructionRegistry superInstructions,
+            int integrityCapability,
+            WatermarkPlan watermarkPlan)
     {
         super(className);
         this.codePoolGenerators = List.copyOf(codePoolGenerators);
@@ -280,6 +302,7 @@ public class VMGenerator extends ClassObj
         this.profile = Objects.requireNonNull(profile, "profile");
         this.superInstructions = Objects.requireNonNull(superInstructions, "superInstructions");
         this.integrityCapability = integrityCapability;
+        this.watermarkPlan = watermarkPlan;
         this.structurePlan = VMStructurePlan.forStructure(config.vmStructure);
         this.structureGenerator = VMStructureGeneratorFactory.create(config.vmStructure);
         ClassNode cn = ClassUtils.newClassNode(new Acc[]{Acc.PUBLIC, Acc.FINAL}, className);
@@ -2968,6 +2991,16 @@ public class VMGenerator extends ClassObj
         Local resolved = ib.getLocal("resolved", programLayout.owner, 1);
         Local iterator = ib.getLocal("iterator", "java/util/Iterator", 2);
         Local candidate = ib.getLocal("candidate", programLayout.owner, 3);
+
+        if (watermarkPlan != null)
+        {
+            ib.set(codeId, AdvIBdr.bitXor(
+                    codeId,
+                    AdvIBdr.callStatic(
+                            watermarkPlan.runtimeClass(),
+                            watermarkPlan.guardMethod(),
+                            "I")));
+        }
 
         ib.set(resolved, AdvIBdr.nullValue(programLayout.owner));
         ib.set(iterator, AdvIBdr.callInterface(

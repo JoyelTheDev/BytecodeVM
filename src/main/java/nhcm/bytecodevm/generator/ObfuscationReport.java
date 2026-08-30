@@ -22,6 +22,7 @@ public record ObfuscationReport(
         String outputSha256,
         long elapsedMillis,
         Map<String, Object> effectiveConfig,
+        Map<String, String> watermark,
         int inputClasses,
         int inputResources,
         int totalMethods,
@@ -50,6 +51,7 @@ public record ObfuscationReport(
         methods = List.copyOf(methods);
         diagnostics = List.copyOf(diagnostics);
         effectiveConfig = immutableOrderedMap(effectiveConfig);
+        watermark = immutableOrderedMap(watermark);
         skippedMethods = immutableOrderedMap(skippedMethods);
     }
 
@@ -62,7 +64,7 @@ public record ObfuscationReport(
     {
         return new ObfuscationReport(
                 mode, version, input, output, seed, inputSha256, outputSha256, value,
-                effectiveConfig,
+                effectiveConfig, watermark,
                 inputClasses, inputResources, totalMethods, eligibleMethods,
                 explicitlyIncludedMethods, explicitlyExcludedMethods, matchedMethods,
                 calledMethodsIncluded, calledMethodsExcluded, fixedConstants,
@@ -76,7 +78,7 @@ public record ObfuscationReport(
     {
         return new ObfuscationReport(
                 mode, version, input, output, seed, inputSha256, outputSha256, elapsedMillis,
-                effectiveConfig,
+                effectiveConfig, watermark,
                 inputClasses, inputResources, totalMethods, eligibleMethods,
                 explicitlyIncludedMethods, explicitlyExcludedMethods, matchedMethods,
                 calledMethodsIncluded, calledMethodsExcluded, fixedConstants,
