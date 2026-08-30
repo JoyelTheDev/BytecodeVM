@@ -60,6 +60,7 @@ public class VMRuntimeLayout
     public final MethodRef monitorEnter;
     public final MethodRef monitorExit;
     public final MethodRef rethrow;
+    public final MethodRef invokeDynamic;
 
     public VMRuntimeLayout(String owner, String frameDescriptor)
     {
@@ -191,6 +192,9 @@ public class VMRuntimeLayout
         this.monitorEnter = method("monitorEnter", "(Ljava/lang/Object;)V");
         this.monitorExit = method("monitorExit", "(Ljava/lang/Object;)V");
         this.rethrow = method("rethrow", "(Ljava/lang/Throwable;)Ljava/lang/RuntimeException;");
+        this.invokeDynamic = method(
+                "invokeDynamic",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/invoke/MethodHandle;[Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
     }
 
     private FieldRef field(String name, String descriptor)

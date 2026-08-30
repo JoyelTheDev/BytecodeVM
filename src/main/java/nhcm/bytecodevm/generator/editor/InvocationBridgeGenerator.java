@@ -168,16 +168,10 @@ public class InvocationBridgeGenerator
     {
         for (AbstractInsnNode instruction : method.instructions)
         {
-            if (instruction instanceof InvokeDynamicInsnNode)
-            {
-                return false;
-            }
             if (instruction instanceof MethodInsnNode methodInsn &&
                 methodInsn.getOpcode() == Opcodes.INVOKESPECIAL &&
                 !"<init>".equals(methodInsn.name))
             {
-                // Keep JVM invokespecial lookup semantics in the bridge. Treating a
-                // super/private call as a constructor or invokevirtual is incorrect.
                 return false;
             }
             if (instruction instanceof MethodInsnNode methodInsn && requiresCallerContextBridge(methodInsn))

@@ -109,7 +109,7 @@ public class VMGenerator extends ClassObj
                 new WriteFieldBranch()
         );
         List<InterpretBranch> invoke = List.of(
-                //new InvokeDynamicBranch(),
+                new InvokeDynamicBranch(),
                 new InvokeNormalBranch()
         );
         List<InterpretBranch> local = List.of(
@@ -372,6 +372,7 @@ public class VMGenerator extends ClassObj
         cn.methods.add(genAdaptMethodHandleMethod());
         cn.methods.add(genAdaptDirectMethodHandleMethod());
         cn.methods.add(genAdaptConstructorHandleMethod());
+        cn.methods.add(genInvokeDynamicMethod());
         cn.methods.add(genCoerceArgumentMethod());
         cn.methods.add(genCloneArrayMethod());
         cn.methods.add(genLoadOwnerMethod());
@@ -4292,6 +4293,100 @@ public class VMGenerator extends ClassObj
                 parameterCount));
         dropLeadingObjectArgument(ib, handle);
         ib.returnValue(asInvokerHandle(handle, classArray(ib, "constructorInvokerParameters", objectArrayClass())));
+        return method;
+    }
+
+    private MethodNode genInvokeDynamicMethod()
+    {
+        MethodNode method = MethodUtils.newMethodNode(
+                new Acc[]{Acc.PRIVATE, Acc.STATIC},
+                vmLayout.invokeDynamic.name(),
+                vmLayout.invokeDynamic.descriptor());
+        AdvIBdr ib = new AdvIBdr(method);
+
+        Local name = ib.getLocal("dynName", "java/lang/String", 0);
+        Local descriptor = ib.getLocal("dynDescriptor", "java/lang/String", 1);
+        Local bootstrapHandle = ib.getLocal("bootstrapHandle", "java/lang/invoke/MethodHandle", 2);
+        Local bootstrapArgs = ib.getLocal("bootstrapArgs", "[Ljava/lang/Object;", 3);
+        Local callArguments = ib.getLocal("callArguments", "[Ljava/lang/Object;", 4);
+        Local cacheKey = ib.getLocal("cacheKey", "java/lang/String", 5);
+        Local target = ib.getLocal("target", "java/lang/invoke/MethodHandle", 6);
+        Local callSite = ib.getLocal("callSite", "java/lang/invoke/CallSite", 7);
+        Local lookup = ib.getLocal("lookup", "java/lang/invoke/MethodHandles$Lookup", 8);
+        Local methodType = ib.getLocal("methodType", "java/lang/invoke/MethodType", 9);
+        Local spreader = ib.getLocal("spreader", "java/lang/invoke/MethodHandle", 10);
+
+        ib.set(cacheKey, stringConcat(name, AdvIBdr.constant(":"), descriptor));
+
+        ib.set(target, AdvIBdr.cast(
+                mapGet(AdvIBdr.staticField(vmLayout.methodHandles), cacheKey),
+                "java/lang/invoke/MethodHandle"));
+
+        ib.ifCondition(
+                AdvIBdr.isNull(target),
+                b -> b.tryCatch(
+                        resolve -> {
+                            resolve.set(lookup, AdvIBdr.callStatic(
+                                    "java/lang/invoke/MethodHandles",
+                                    "lookup",
+                                    "java/lang/invoke/MethodHandles$Lookup"));
+                            resolve.set(methodType, AdvIBdr.callStatic(
+                                    "java/lang/invoke/MethodType",
+                                    "fromMethodDescriptorString",
+                                    "java/lang/invoke/MethodType",
+                                    descriptor,
+                                    AdvIBdr.nullValue("java/lang/ClassLoader")));
+                            resolve.set(callSite, AdvIBdr.cast(
+                                    AdvIBdr.callVirtual(
+                                            AdvIBdr.callVirtual(
+                                                    bootstrapHandle,
+                                                    "java/lang/invoke/MethodHandle",
+                                                    "asSpreader",
+                                                    "java/lang/invoke/MethodHandle",
+                                                    objectArrayClass(),
+                                                    AdvIBdr.arrayLength(bootstrapArgs)),
+                                            "java/lang/invoke/MethodHandle",
+                                            "invoke",
+                                            "java/lang/Object",
+                                            lookup,
+                                            name,
+                                            methodType,
+                                            bootstrapArgs),
+                                    "java/lang/invoke/CallSite"));
+                            resolve.set(target, AdvIBdr.callVirtual(
+                                    callSite,
+                                    "java/lang/invoke/CallSite",
+                                    "dynamicInvoker",
+                                    "java/lang/invoke/MethodHandle"));
+                            resolve.directCall(mapPut(
+                                    AdvIBdr.staticField(vmLayout.methodHandles),
+                                    cacheKey,
+                                    target));
+                        },
+                        "java/lang/Throwable",
+                        "exception",
+                        caught -> caught.throwValue(rethrow(caught.getLocal("exception")))));
+
+        ib.set(spreader, AdvIBdr.callVirtual(
+                target,
+                "java/lang/invoke/MethodHandle",
+                "asSpreader",
+                "java/lang/invoke/MethodHandle",
+                objectArrayClass(),
+                AdvIBdr.arrayLength(callArguments)));
+
+        ib.tryCatch(
+                invokeBlock -> invokeBlock.returnValue(AdvIBdr.callVirtual(
+                        spreader,
+                        "java/lang/invoke/MethodHandle",
+                        "invoke",
+                        "java/lang/Object",
+                        callArguments)),
+                "java/lang/Throwable",
+                "exception",
+                caught -> caught.throwValue(rethrow(caught.getLocal("exception"))));
+
+        ib.returnValue(AdvIBdr.nullValue("java/lang/Object"));
         return method;
     }
 
