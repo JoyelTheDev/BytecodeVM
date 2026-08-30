@@ -32,6 +32,8 @@ public record ObfuscationReport(
         int calledMethodsIncluded,
         int calledMethodsExcluded,
         int fixedConstants,
+        int preEncryptedStrings,
+        int preEncryptedNumbers,
         Map<String, Integer> skippedMethods,
         int vmSetCount,
         List<VMSet> vmSets,
@@ -64,6 +66,7 @@ public record ObfuscationReport(
                 inputClasses, inputResources, totalMethods, eligibleMethods,
                 explicitlyIncludedMethods, explicitlyExcludedMethods, matchedMethods,
                 calledMethodsIncluded, calledMethodsExcluded, fixedConstants,
+                preEncryptedStrings, preEncryptedNumbers,
                 skippedMethods, vmSetCount, vmSets, methods, diagnostics,
                 outputClasses, outputResources, generatedClasses,
                 outputVerified);
@@ -77,6 +80,7 @@ public record ObfuscationReport(
                 inputClasses, inputResources, totalMethods, eligibleMethods,
                 explicitlyIncludedMethods, explicitlyExcludedMethods, matchedMethods,
                 calledMethodsIncluded, calledMethodsExcluded, fixedConstants,
+                preEncryptedStrings, preEncryptedNumbers,
                 skippedMethods, vmSetCount, vmSets, methods, diagnostics,
                 outputClasses, outputResources, generatedClasses,
                 value);

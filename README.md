@@ -77,8 +77,8 @@ generation records. `--log-file <file>` additionally writes the same logs to a f
 `--quiet` suppresses normal logger output and command summaries. The banner and errors remain visible.
 
 The JSON report records the effective configuration, seed, input/output SHA-256, method
-selection and skip reasons, per-method VM assignments, VM structure counts, generated class
-counts and elapsed time. This makes `inspect` suitable for CI
+selection and skip reasons, pre-encrypted string/number and fixed-constant counts, per-method
+VM assignments, VM structure counts, generated class counts and elapsed time. This makes `inspect` suitable for CI
 checks before a release build.
 
 Legacy `--config`, `--defaultconfig`, and `--defaultrun` invocations remain accepted and are

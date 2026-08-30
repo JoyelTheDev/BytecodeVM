@@ -179,42 +179,31 @@ public class Obfuscator
         outputResourceCount = context.resources.size();
     }
 
-    private int[] runPreTransformers(Collection<ClassNode> classNodes)
+    private PreTransformStats runPreTransformers(Collection<ClassNode> classNodes)
     {
-        int[] result = new int[3];
-
         int fixedConstants = new ConstantFixTransformer(config).transform(classNodes);
         if (fixedConstants != 0)
         {
             logger.info("{}", LogColors.scan("Moved " + LogColors.strong(fixedConstants) + " static final constant(s) into <clinit>"));
         }
-        result[0] = fixedConstants;
-
         int encryptedStrings = new StringTransformer(config).transform(classNodes);
         if(encryptedStrings != 0)
         {
             logger.info("{}", LogColors.scan("Encrypted " + LogColors.strong(encryptedStrings) + " strings before virtualization"));
         }
-        result[1] = encryptedStrings;
-
         int encryptedNumbers = new NumberTransformer(config).transform(classNodes);
         if(encryptedNumbers != 0)
         {
             logger.info("{}", LogColors.scan("Encrypted " + LogColors.strong(encryptedNumbers) + " numbers before virtualization"));
         }
-        result[2] = encryptedNumbers;
-
-        return result;
+        return new PreTransformStats(fixedConstants, encryptedStrings, encryptedNumbers);
     }
 
     private void processJar(JarTransformer.JarContext context)
     {
         logger.info("{}", LogColors.scan("Scanning input file for methods to obfuscate"));
 
-        int[] changes = runPreTransformers(context.classes.values());
-        int fixedConstants = changes[0];
-        int encryptedStrings = changes[1];
-        int encryptedNumbers = changes[2];
+        PreTransformStats transforms = runPreTransformers(context.classes.values());
 
         String globalLocation = "BytecodeVM";
 
@@ -387,7 +376,9 @@ public class Obfuscator
                 matchedMethods,
                 calledMethodsIncluded,
                 calledMethodsExcluded,
-                fixedConstants);
+                transforms.fixedConstants,
+                transforms.encryptedStrings,
+                transforms.encryptedNumbers);
         createPlanningDiagnostics(explicitlyIncludedMethods, matchedMethods);
 
         logger.info("{}", LogColors.scan(
@@ -450,6 +441,8 @@ public class Obfuscator
                 planningStats.calledMethodsIncluded,
                 planningStats.calledMethodsExcluded,
                 planningStats.fixedConstants,
+                planningStats.preEncryptedStrings,
+                planningStats.preEncryptedNumbers,
                 skippedMethods,
                 vmSets.size(),
                 vmSets,
@@ -998,6 +991,13 @@ public class Obfuscator
     {
     }
 
+    private record PreTransformStats(
+            int fixedConstants,
+            int encryptedStrings,
+            int encryptedNumbers)
+    {
+    }
+
     private record PlanningStats(
             int totalMethods,
             int eligibleMethods,
@@ -1006,11 +1006,13 @@ public class Obfuscator
             int matchedMethods,
             int calledMethodsIncluded,
             int calledMethodsExcluded,
-            int fixedConstants)
+            int fixedConstants,
+            int preEncryptedStrings,
+            int preEncryptedNumbers)
     {
         private static PlanningStats empty()
         {
-            return new PlanningStats(0, 0, 0, 0, 0, 0, 0, 0);
+            return new PlanningStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         }
     }
 
