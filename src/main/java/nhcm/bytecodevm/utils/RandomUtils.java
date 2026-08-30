@@ -4,10 +4,12 @@ import java.security.SecureRandom;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class RandomUtils
 {
-    private static volatile Random random = new SecureRandom();
+    private static final AtomicReference<Random> seededRandom = new AtomicReference<>(null);
 
     private RandomUtils()
     {
@@ -16,18 +18,19 @@ public class RandomUtils
     /** Uses a deterministic source for reproducible debugging builds. */
     public static void useSeed(long seed)
     {
-        random = new Random(seed);
+        seededRandom.set(new Random(seed));
     }
 
     /** Restores non-deterministic generation for normal protection builds. */
     public static void useSecureRandom()
     {
-        random = new SecureRandom();
+        seededRandom.set(null);
     }
 
     public static int randomInt()
     {
-        return random.nextInt();
+        Random seeded = seededRandom.get();
+        return seeded != null ? seeded.nextInt() : ThreadLocalRandom.current().nextInt();
     }
 
     public static int randomInt(int bound)
@@ -37,7 +40,8 @@ public class RandomUtils
             throw new IllegalArgumentException("bound must be positive");
         }
 
-        return random.nextInt(bound);
+        Random seeded = seededRandom.get();
+        return seeded != null ? seeded.nextInt(bound) : ThreadLocalRandom.current().nextInt(bound);
     }
 
     public static int randomInt(int min, int max)
@@ -52,21 +56,34 @@ public class RandomUtils
             return randomInt();
         }
 
-        return random.nextInt(max - min + 1) + min;
+        Random seeded = seededRandom.get();
+        return seeded != null
+                ? seeded.nextInt(max - min + 1) + min
+                : ThreadLocalRandom.current().nextInt(min, max + 1);
     }
 
     public static boolean randomBoolean()
     {
-        return random.nextBoolean();
+        Random seeded = seededRandom.get();
+        return seeded != null ? seeded.nextBoolean() : ThreadLocalRandom.current().nextBoolean();
     }
 
     public static double randomDouble()
     {
-        return random.nextDouble();
+        Random seeded = seededRandom.get();
+        return seeded != null ? seeded.nextDouble() : ThreadLocalRandom.current().nextDouble();
     }
 
     public static <T> void shuffle(List<T> list)
     {
-        Collections.shuffle(list, random);
+        Random seeded = seededRandom.get();
+        if (seeded != null)
+        {
+            Collections.shuffle(list, seeded);
+        }
+        else
+        {
+            Collections.shuffle(list, ThreadLocalRandom.current());
+        }
     }
 }
