@@ -5,6 +5,7 @@ import nhcm.bytecodevm.advInsn.Expr;
 import nhcm.bytecodevm.advInsn.Local;
 import nhcm.bytecodevm.enums.Opcs;
 import nhcm.bytecodevm.enums.VMOpcode;
+import nhcm.bytecodevm.advInsn.Condition;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretBranch;
 import nhcm.bytecodevm.generator.virtualization.vminterpret.InterpretContext;
 
@@ -119,7 +120,7 @@ public class InvokeDynamicBranch extends InterpretBranch
                 context.opcode());
     }
 
-    private static AdvIBdr.Condition isCategory2Return(Local returnType)
+    private static Condition isCategory2Return(Local returnType)
     {
         return AdvIBdr.or(
                 AdvIBdr.equal(returnType, AdvIBdr.staticField("java/lang/Long", "TYPE", "java/lang/Class")),
